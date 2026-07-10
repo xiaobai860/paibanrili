@@ -13,3 +13,4 @@ Thumbs.db
 *.py
 crash_log.txt
 logcat_full.txt
+.qoderignore
