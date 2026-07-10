@@ -190,6 +190,53 @@ fun ScheduleDetailScreen(
 
             }
 
+            // ── 附加状态 ──────────────────────────────────────────────
+            if (state.shiftStatuses.isNotEmpty() && selectedShift != null) {
+                item {
+                    SectionLabel("附加状态")
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        state.shiftStatuses.forEach { status ->
+                            val appliedSt = if (record?.appliedStatus?.statusId == status.id) record?.appliedStatus else null
+                            val applied   = appliedSt != null
+                            StatusRow(
+                                status    = status,
+                                applied   = applied,
+                                startTime = appliedSt?.startTime,
+                                endTime   = appliedSt?.endTime,
+                                onToggle  = { vm.toggleStatus(status.id, null, null) },
+                                onEditTime = { showStatusEditor = status.id }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ── 补贴/扣款 ─────────────────────────────────────────────
+            if (state.extraItems.isNotEmpty()) {
+                item {
+                    SectionLabel("补贴 / 扣款")
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        state.extraItems.forEach { item ->
+                            val checked = record?.extraItemIds?.contains(item.id) == true
+                            ExtraItemRow(item, checked) { vm.toggleExtraItem(item.id) }
+                        }
+                    }
+                }
+            }
+
+            // ── 备注 ──────────────────────────────────────────────────
+            item {
+                SectionLabel("备注（可选）")
+                OutlinedTextField(
+                    value         = record?.remark ?: "",
+                    onValueChange = vm::setRemark,
+                    placeholder   = { Text("输入备注信息…") },
+                    modifier      = Modifier.fillMaxWidth().wrapContentHeight(),
+                    maxLines      = Int.MAX_VALUE,
+                    minLines      = 2
+                )
+            }
+
             // ── 计薪方式 ──────────────────────────────────────────────
             if (selectedShift != null && !isRestShift) {
                 item {
@@ -237,53 +284,6 @@ fun ScheduleDetailScreen(
                         }
                     }
                 }
-            }
-
-            // ── 附加状态 ──────────────────────────────────────────────
-            if (state.shiftStatuses.isNotEmpty() && selectedShift != null) {
-                item {
-                    SectionLabel("附加状态")
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        state.shiftStatuses.forEach { status ->
-                            val appliedSt = if (record?.appliedStatus?.statusId == status.id) record?.appliedStatus else null
-                            val applied   = appliedSt != null
-                            StatusRow(
-                                status    = status,
-                                applied   = applied,
-                                startTime = appliedSt?.startTime,
-                                endTime   = appliedSt?.endTime,
-                                onToggle  = { vm.toggleStatus(status.id, null, null) },
-                                onEditTime = { showStatusEditor = status.id }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // ── 补贴/扣款 ─────────────────────────────────────────────
-            if (state.extraItems.isNotEmpty()) {
-                item {
-                    SectionLabel("补贴 / 扣款")
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        state.extraItems.forEach { item ->
-                            val checked = record?.extraItemIds?.contains(item.id) == true
-                            ExtraItemRow(item, checked) { vm.toggleExtraItem(item.id) }
-                        }
-                    }
-                }
-            }
-
-            // ── 备注 ──────────────────────────────────────────────────
-            item {
-                SectionLabel("备注（可选）")
-                OutlinedTextField(
-                    value         = record?.remark ?: "",
-                    onValueChange = vm::setRemark,
-                    placeholder   = { Text("输入备注信息…") },
-                    modifier      = Modifier.fillMaxWidth().heightIn(min = 48.dp, max = 120.dp).wrapContentHeight(),
-                    maxLines      = Int.MAX_VALUE,
-                    minLines      = 2
-                )
             }
 
             // ── 保存按钮 ──────────────────────────────────────────────
@@ -373,7 +373,7 @@ private fun StatusRow(
                 onClick      = onEditTime,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
             ) {
-                Text(timeLabel, style = MaterialTheme.typography.labelSmall)
+                Text(timeLabel, style = MaterialTheme.typography.bodyMedium)
             }
         }
         Checkbox(checked = applied, onCheckedChange = { onToggle() })
