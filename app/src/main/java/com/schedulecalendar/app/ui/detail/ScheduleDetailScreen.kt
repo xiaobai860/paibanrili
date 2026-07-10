@@ -302,10 +302,7 @@ fun ScheduleDetailScreen(
                             modifier = Modifier.padding(bottom = 6.dp)
                         ) {
                             Text(
-                                text = "自动（${when {
-                                    state.previewHours > 0 -> "工作日"
-                                    else -> "按日期判断"
-                                }}）",
+                                text = "自动（${state.autoModeLabel.ifEmpty { "按日期判断" }}）",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)

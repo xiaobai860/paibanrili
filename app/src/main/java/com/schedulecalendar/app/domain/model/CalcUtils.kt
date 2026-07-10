@@ -192,17 +192,7 @@ object CalcUtils {
             if (grainH > 0) roundD2(floor(h / grainH) * grainH) else roundD2(h)
 
         // 按计薪方式分类
-        val mode = record.salaryMode ?: run {
-            val parts = dateStr.split("-")
-            val y = parts.getOrNull(0)?.toIntOrNull() ?: 0
-            val m = parts.getOrNull(1)?.toIntOrNull()?.minus(1) ?: 0
-            val d = parts.getOrNull(2)?.toIntOrNull() ?: 0
-            when {
-                HolidayData.isLegalHoliday(dateStr) -> SalaryMode.HOLIDAY
-                isWeekend(y, m, d)                  -> SalaryMode.WEEKEND
-                else                                -> SalaryMode.NORMAL
-            }
-        }
+        val mode = record.salaryMode ?: autoSalaryMode(dateStr)
 
         return when (mode) {
             SalaryMode.HOLIDAY -> zero.copy(holiday = floorGrain(worked))
@@ -454,6 +444,22 @@ object CalcUtils {
     }
 
     // ── 周末判断 ──────────────────────────────────────────────────────
+
+    /**
+     * 根据日期自动推断计薪方式（供 UI 和 calcDayHours 共用）
+     * @param dateStr 格式 "YYYY-MM-DD"
+     */
+    fun autoSalaryMode(dateStr: String): SalaryMode {
+        val parts = dateStr.split("-")
+        val y = parts.getOrNull(0)?.toIntOrNull() ?: 0
+        val m = parts.getOrNull(1)?.toIntOrNull()?.minus(1) ?: 0
+        val d = parts.getOrNull(2)?.toIntOrNull() ?: 0
+        return when {
+            HolidayData.isLegalHoliday(dateStr) -> SalaryMode.HOLIDAY
+            isWeekend(y, m, d)                  -> SalaryMode.WEEKEND
+            else                                 -> SalaryMode.NORMAL
+        }
+    }
 
     /**
      * 判断是否周末（考虑调休补班）

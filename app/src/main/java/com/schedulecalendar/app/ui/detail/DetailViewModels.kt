@@ -37,6 +37,8 @@ data class ScheduleDetailState(
     val record: ScheduleRecord?           = null,
     /** 实时工时预览 */
     val previewHours: Double              = 0.0,
+    /** 自动模式下的计薪方式标签（“工作日”/“周末”/“节假日”） */
+    val autoModeLabel: String             = "",
     val loading: Boolean                  = true
 )
 
@@ -101,7 +103,16 @@ class ScheduleDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val attendConfig = prefs.attendConfigFlow.first()
             val h = CalcUtils.calcDayHours(rec, date, st.shifts, st.globalBreaks, attendConfig)
-            _state.update { it.copy(previewHours = CalcUtils.roundD2(h.normal + h.overtime + h.weekend + h.holiday)) }
+            val autoMode = CalcUtils.autoSalaryMode(date)
+            val label = when (autoMode) {
+                SalaryMode.HOLIDAY -> "节假日"
+                SalaryMode.WEEKEND -> "周末"
+                SalaryMode.NORMAL  -> "工作日"
+            }
+            _state.update { it.copy(
+                previewHours = CalcUtils.roundD2(h.normal + h.overtime + h.weekend + h.holiday),
+                autoModeLabel = label
+            ) }
         }
     }
 
