@@ -1808,9 +1808,9 @@ private fun DateDetailSection(
                 val daysDiff = java.time.temporal.ChronoUnit.DAYS.between(todayDate, selectedDateObj)
 
                 if (daysDiff == 0L) {
-                    // 今天：根据倒计时情况显示
-                    if (daysLeft == 0 && countdownText.isNotEmpty()) {
-                        // 今天是节假日：倒计时 + "今日事今日毕" 同一行显示
+                    // 今天：有倒计时时追加"今日事今日毕"，无倒计时时单独显示
+                    if (countdownText.isNotEmpty()) {
+                        // 今天且有倒计时（无论 daysLeft 是否为 0）：倒计时 + "今日事今日毕" 同一行显示
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1828,14 +1828,6 @@ private fun DateDetailSection(
                                 color = Green700
                             )
                         }
-                    } else if (countdownText.isNotEmpty()) {
-                        // 今天但非节假日（daysLeft > 0）：仅显示倒计时
-                        Text(
-                            text = countdownText,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Green700
-                        )
                     } else {
                         // 今天且无倒计时：仅显示"今日事今日毕"
                         Text(
