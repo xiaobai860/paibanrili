@@ -1,0 +1,34 @@
+{
+  "sessions" : [ {
+    "id" : "dbe5eee6-c36f-40de-8967-a13df806b48f",
+    "title" : "你好",
+    "createdAt" : 1782565227814,
+    "backendSessionId" : "3fcb6252-626a-40d6-89af-fa3de06fc9ad",
+    "messages" : [ "You: 你好", "Agent: 你好！我是 Rikki，你的 AI 编程助手。\uD83D\uDE0A\n\n当前工作区是 **排班日历** Android 项目。有什么我可以帮你的吗？比如：\n\n- 查看/编辑项目代码\n- 构建或运行应用\n- 搜索文件或内容\n- 解决编译或运行时问题\n\n请告诉我你的需求！" ],
+    "uiMessages" : [ {
+      "id" : "8a0ec7c8-fa9e-4406-af57-0cbead8c49d8",
+      "role" : "user",
+      "messageID" : null,
+      "text" : "你好",
+      "thought" : "",
+      "timestamp" : 1782565242728,
+      "toolActivities" : [ ],
+      "sessionChanges" : [ ],
+      "undoneSessionChangeKeys" : [ ],
+      "showSessionChangeSummary" : false
+    }, {
+      "id" : "3b132710-8194-4114-8927-57b5b2ea790c",
+      "role" : "assistant",
+      "messageID" : "msg_0",
+      "text" : "你好！我是 Rikki，你的 AI 编程助手。\uD83D\uDE0A\n\n当前工作区是 **排班日历** Android 项目。有什么我可以帮你的吗？比如：\n\n- 查看/编辑项目代码\n- 构建或运行应用\n- 搜索文件或内容\n- 解决编译或运行时问题\n\n请告诉我你的需求！",
+      "thought" : "The user is greeting me in Chinese with \"你好\" (Hello). Let me respond in a friendly manner and ask how I can help.",
+      "timestamp" : 1782565245249,
+      "toolActivities" : [ ],
+      "sessionChanges" : [ ],
+      "undoneSessionChangeKeys" : [ ],
+      "showSessionChangeSummary" : false
+    } ]
+  } ],
+  "currentSessionId" : "dbe5eee6-c36f-40de-8967-a13df806b48f",
+  "lines" : [ ]
+}

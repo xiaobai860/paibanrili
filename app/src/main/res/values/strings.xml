@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">排班日历</string>
+    <string name="widget_label">排班日历</string>
+    <string name="widget_description">显示当月班次统计信息</string>
+
+    <!-- 快捷方式字符串 -->
+    <string name="shortcut_clock_in_short">上班打卡</string>
+    <string name="shortcut_clock_in_long">记录上班打卡时间</string>
+    <string name="shortcut_clock_in_disabled">无法打卡</string>
+    <string name="shortcut_clock_out_short">下班打卡</string>
+    <string name="shortcut_clock_out_long">记录下班打卡时间</string>
+    <string name="shortcut_clock_out_disabled">无法打卡</string>
+</resources>

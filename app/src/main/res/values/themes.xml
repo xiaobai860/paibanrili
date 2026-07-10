@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Activity 桥接主题：纯 Compose 应用，Activity 只需 NoActionBar 即可。
+    所有界面颜色/排版由 Compose MaterialTheme 控制，AppCompat 是 activity-compose 的传递依赖，无需额外添加。
+    android:statusBarColor/navigationBarColor 设为透明以配合 enableEdgeToEdge()。
+-->
+<resources>
+    <style name="Theme.ScheduleCalendar" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+</resources>
