@@ -155,14 +155,16 @@ fun NumericSettingRow(label: String, value: String, onValueChange: (String) -> U
 }
 
 /**
- * 时间选择器输入框 —— 点击后弹出 Material3 TimePicker 对话框，
- * 替代键盘输入，适合 HH:mm 格式的时间字段。
+ * 时间选择器输入框 —— 点击后弹出 Material3 TimePicker 对话框。
+ * 当提供 [onRequestDialog] 时，点击仅触发回调（由父级渲染对话框，适用于 LazyColumn 等场景）；
+ * 否则使用内部对话框（自包含）。
  *
  * @param time        当前时间字符串，格式 "HH:mm"，空字符串表示未设置
  * @param onTimeChange 用户选择新时间后的回调
  * @param label       输入框标签文字
  * @param enabled     是否可交互
  * @param defaultTime 默认时间字符串，格式 "HH:mm"，当 time 为空时用作选择器初始值
+ * @param onRequestDialog 可选回调，提供后点击仅触发此回调；未提供时使用内部对话框
  * @param modifier    外部修饰符
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -173,19 +175,19 @@ fun TimePickerField(
     label: String,
     enabled: Boolean = true,
     defaultTime: String = "",
+    onRequestDialog: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
-    // 从 "HH:mm" 解析出时/分，time 为空时使用 defaultTime
     val effectiveTime = if (time.isNotEmpty()) time else defaultTime
     val parts   = effectiveTime.split(":")
     val initH   = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 8
     val initM   = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
 
-    // 用 Box 包裹，clickable 放在 Box 上以拦截触摸事件，
-    // 避免 OutlinedTextField 内部消费 click 导致无法弹出选择器
-    Box(modifier = modifier.clickable(enabled = enabled) { showDialog = true }) {
+    Box(modifier = modifier.clickable(enabled = enabled) {
+        if (onRequestDialog != null) onRequestDialog() else showDialog = true
+    }) {
         OutlinedTextField(
             value         = time,
             onValueChange = {},
@@ -211,7 +213,8 @@ fun TimePickerField(
         )
     }
 
-    if (showDialog) {
+    // 仅当未提供 onRequestDialog 时使用内部对话框
+    if (onRequestDialog == null && showDialog) {
         val state = rememberTimePickerState(
             initialHour   = initH,
             initialMinute = initM,
@@ -268,7 +271,6 @@ fun ExpandableTimePicker(
     val initH = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 8
     val initM = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
 
-    // 基础收起状态：模仿 TimePickerField 的 OutlinedTextField 风格
     Box(modifier = modifier.clickable(enabled = enabled) { showDialog = true }) {
         OutlinedTextField(
             value         = time,
@@ -295,7 +297,6 @@ fun ExpandableTimePicker(
         )
     }
 
-    // 展开后的选择器弹窗
     if (showDialog) {
         val state = rememberTimePickerState(
             initialHour   = initH,
@@ -327,4 +328,3 @@ fun ExpandableTimePicker(
         )
     }
 }
-

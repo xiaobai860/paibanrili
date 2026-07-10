@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,7 +18,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,9 +35,11 @@ import com.schedulecalendar.app.ui.component.TimePickerField
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import com.schedulecalendar.app.domain.model.LunarCalendar
 import com.schedulecalendar.app.domain.model.HolidayData
+import kotlinx.coroutines.delay
 import java.time.DayOfWeek
 import java.time.LocalDate
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ScheduleDetailScreen(
     navController: NavController,
@@ -40,6 +47,7 @@ fun ScheduleDetailScreen(
 ) {
     val state       by vm.state.collectAsStateWithLifecycle()
     val snackbar     = remember { SnackbarHostState() }
+    val listState    = rememberLazyListState()
 
     LaunchedEffect(Unit) {
         vm.uiEvent.collect { ev ->
@@ -53,9 +61,21 @@ fun ScheduleDetailScreen(
     var showShiftPicker  by remember { mutableStateOf(false) }
     var showSalaryPicker by remember { mutableStateOf(false) }
     var showStatusEditor by remember { mutableStateOf<String?>(null) } // statusId being edited
+    var remarkFocused    by remember { mutableStateOf(false) }
+    val remarkBringIntoView = remember { BringIntoViewRequester() }
+
+    // ── 时间选择器对话框状态（提升到 LazyColumn 外部渲染） ──
+    data class TimeDialogConfig(
+        val label: String,
+        val currentTime: String,
+        val defaultTime: String,
+        val onConfirm: (String) -> Unit
+    )
+    var timeDialogConfig by remember { mutableStateOf<TimeDialogConfig?>(null) }
 
     val date    = state.date
     val record  = state.record
+    val remarkText = record?.remark ?: ""
     val parts   = date.split("-")
     val y = parts.getOrNull(0)?.toIntOrNull() ?: 0
     val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
@@ -69,6 +89,14 @@ fun ScheduleDetailScreen(
     } else ""
     val selectedShift = record?.shiftId?.let { id -> state.shifts.find { it.id == id } }
     val isRestShift   = selectedShift?.builtInType == "rest"
+
+    // 备注获得焦点或内容变化时，请求将输入框滚动到可见区域
+    LaunchedEffect(remarkFocused, remarkText) {
+        if (remarkFocused) {
+            delay(400) // 等待软键盘动画基本完成
+            remarkBringIntoView.bringIntoView()
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -93,6 +121,7 @@ fun ScheduleDetailScreen(
                 bottom = pad.calculateBottomPadding() + 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
+            state = listState,
             modifier = Modifier.imePadding()
         ) {
 
@@ -179,6 +208,14 @@ fun ScheduleDetailScreen(
                             onTimeChange = vm::setActualStart,
                             label        = "实际上班",
                             defaultTime  = selectedShift.startTime,
+                            onRequestDialog = {
+                                timeDialogConfig = TimeDialogConfig(
+                                    label = "实际上班",
+                                    currentTime = record?.actualStartTime ?: "",
+                                    defaultTime = selectedShift.startTime,
+                                    onConfirm = vm::setActualStart
+                                )
+                            },
                             modifier     = Modifier.weight(1f)
                         )
                         TimePickerField(
@@ -186,6 +223,14 @@ fun ScheduleDetailScreen(
                             onTimeChange = vm::setActualEnd,
                             label        = "实际下班",
                             defaultTime  = selectedShift.endTime,
+                            onRequestDialog = {
+                                timeDialogConfig = TimeDialogConfig(
+                                    label = "实际下班",
+                                    currentTime = record?.actualEndTime ?: "",
+                                    defaultTime = selectedShift.endTime,
+                                    onConfirm = vm::setActualEnd
+                                )
+                            },
                             modifier     = Modifier.weight(1f)
                         )
                     }
@@ -234,7 +279,12 @@ fun ScheduleDetailScreen(
                     value         = record?.remark ?: "",
                     onValueChange = vm::setRemark,
                     placeholder   = { Text("输入备注信息…") },
-                    modifier      = Modifier.fillMaxWidth(),
+                    modifier      = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { event ->
+                            remarkFocused = event.isFocused
+                        }
+                        .bringIntoViewRequester(remarkBringIntoView),
                     maxLines      = Int.MAX_VALUE,
                     minLines      = 2
                 )
@@ -320,6 +370,40 @@ fun ScheduleDetailScreen(
             defaultEndTime   = selectedShift?.endTime   ?: "",
             onConfirm = { s, e -> vm.updateStatusTime(sid, s.ifBlank { null }, e.ifBlank { null }); showStatusEditor = null },
             onDismiss = { showStatusEditor = null }
+        )
+    }
+
+    // ── 时间选择器对话框（在 LazyColumn 外部渲染，避免被裁剪） ──
+    timeDialogConfig?.let { config ->
+        val effectiveTime = if (config.currentTime.isNotEmpty()) config.currentTime else config.defaultTime
+        val parts = effectiveTime.split(":")
+        val initH = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 8
+        val initM = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+        val pickerState = rememberTimePickerState(
+            initialHour = initH, initialMinute = initM, is24Hour = true
+        )
+        AlertDialog(
+            onDismissRequest = { timeDialogConfig = null },
+            title = { Text(config.label, style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    TimePicker(state = pickerState)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val hh = pickerState.hour.toString().padStart(2, '0')
+                    val mm = pickerState.minute.toString().padStart(2, '0')
+                    config.onConfirm("$hh:$mm")
+                    timeDialogConfig = null
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { timeDialogConfig = null }) { Text("取消") }
+            }
         )
     }
 }
@@ -416,6 +500,7 @@ private fun ExtraItemRow(item: ExtraItem, checked: Boolean, onToggle: () -> Unit
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StatusTimeDialog(
     startTime: String,
@@ -427,6 +512,9 @@ private fun StatusTimeDialog(
 ) {
     var s by remember { mutableStateOf(startTime) }
     var e by remember { mutableStateOf(endTime) }
+    // 内部时间选择器对话框（"开始"或"结束"）
+    var editingField by remember { mutableStateOf<String?>(null) } // "start" or "end"
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title   = { Text("设置状态时间段") },
@@ -437,6 +525,7 @@ private fun StatusTimeDialog(
                     onTimeChange = { s = it },
                     label        = "开始",
                     defaultTime  = defaultStartTime,
+                    onRequestDialog = { editingField = "start" },
                     modifier     = Modifier.weight(1f)
                 )
                 TimePickerField(
@@ -444,6 +533,7 @@ private fun StatusTimeDialog(
                     onTimeChange = { e = it },
                     label        = "结束",
                     defaultTime  = defaultEndTime,
+                    onRequestDialog = { editingField = "end" },
                     modifier     = Modifier.weight(1f)
                 )
             }
@@ -451,6 +541,43 @@ private fun StatusTimeDialog(
         confirmButton = { TextButton(onClick = { onConfirm(s, e) }) { Text("确认") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
+
+    // 时间选择器弹窗（在 AlertDialog 外部渲染）
+    if (editingField != null) {
+        val isStart = editingField == "start"
+        val currentTime = if (isStart) s else e
+        val defaultTime = if (isStart) defaultStartTime else defaultEndTime
+        val effectiveTime = if (currentTime.isNotEmpty()) currentTime else defaultTime
+        val parts = effectiveTime.split(":")
+        val initH = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 8
+        val initM = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+        val pickerState = rememberTimePickerState(
+            initialHour = initH, initialMinute = initM, is24Hour = true
+        )
+        AlertDialog(
+            onDismissRequest = { editingField = null },
+            title = { Text(if (isStart) "开始时间" else "结束时间", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    TimePicker(state = pickerState)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val hh = pickerState.hour.toString().padStart(2, '0')
+                    val mm = pickerState.minute.toString().padStart(2, '0')
+                    if (isStart) s = "$hh:$mm" else e = "$hh:$mm"
+                    editingField = null
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingField = null }) { Text("取消") }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
