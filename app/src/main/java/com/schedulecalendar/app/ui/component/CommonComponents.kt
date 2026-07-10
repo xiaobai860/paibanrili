@@ -162,6 +162,7 @@ fun NumericSettingRow(label: String, value: String, onValueChange: (String) -> U
  * @param onTimeChange 用户选择新时间后的回调
  * @param label       输入框标签文字
  * @param enabled     是否可交互
+ * @param defaultTime 默认时间字符串，格式 "HH:mm"，当 time 为空时用作选择器初始值
  * @param modifier    外部修饰符
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -171,12 +172,14 @@ fun TimePickerField(
     onTimeChange: (String) -> Unit,
     label: String,
     enabled: Boolean = true,
+    defaultTime: String = "",
     modifier: Modifier = Modifier
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
-    // 从 "HH:mm" 解析出时/分
-    val parts   = time.split(":")
+    // 从 "HH:mm" 解析出时/分，time 为空时使用 defaultTime
+    val effectiveTime = if (time.isNotEmpty()) time else defaultTime
+    val parts   = effectiveTime.split(":")
     val initH   = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 8
     val initM   = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
 

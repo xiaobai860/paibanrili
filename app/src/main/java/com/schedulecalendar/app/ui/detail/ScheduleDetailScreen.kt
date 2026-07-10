@@ -92,7 +92,8 @@ fun ScheduleDetailScreen(
                 top   = pad.calculateTopPadding() + 8.dp,
                 bottom = pad.calculateBottomPadding() + 24.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.imePadding()
         ) {
 
             // ── 日期信息卡片 ──────────────────────────────────────────
@@ -177,12 +178,14 @@ fun ScheduleDetailScreen(
                             time         = record?.actualStartTime ?: "",
                             onTimeChange = vm::setActualStart,
                             label        = "实际上班",
+                            defaultTime  = selectedShift.startTime,
                             modifier     = Modifier.weight(1f)
                         )
                         TimePickerField(
                             time         = record?.actualEndTime ?: "",
                             onTimeChange = vm::setActualEnd,
                             label        = "实际下班",
+                            defaultTime  = selectedShift.endTime,
                             modifier     = Modifier.weight(1f)
                         )
                     }
@@ -231,7 +234,7 @@ fun ScheduleDetailScreen(
                     value         = record?.remark ?: "",
                     onValueChange = vm::setRemark,
                     placeholder   = { Text("输入备注信息…") },
-                    modifier      = Modifier.fillMaxWidth().wrapContentHeight(),
+                    modifier      = Modifier.fillMaxWidth(),
                     maxLines      = Int.MAX_VALUE,
                     minLines      = 2
                 )
@@ -313,6 +316,8 @@ fun ScheduleDetailScreen(
         StatusTimeDialog(
             startTime = appliedSt?.startTime ?: "",
             endTime   = appliedSt?.endTime   ?: "",
+            defaultStartTime = selectedShift?.startTime ?: "",
+            defaultEndTime   = selectedShift?.endTime   ?: "",
             onConfirm = { s, e -> vm.updateStatusTime(sid, s.ifBlank { null }, e.ifBlank { null }); showStatusEditor = null },
             onDismiss = { showStatusEditor = null }
         )
@@ -415,6 +420,8 @@ private fun ExtraItemRow(item: ExtraItem, checked: Boolean, onToggle: () -> Unit
 private fun StatusTimeDialog(
     startTime: String,
     endTime: String,
+    defaultStartTime: String,
+    defaultEndTime: String,
     onConfirm: (String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -429,12 +436,14 @@ private fun StatusTimeDialog(
                     time         = s,
                     onTimeChange = { s = it },
                     label        = "开始",
+                    defaultTime  = defaultStartTime,
                     modifier     = Modifier.weight(1f)
                 )
                 TimePickerField(
                     time         = e,
                     onTimeChange = { e = it },
                     label        = "结束",
+                    defaultTime  = defaultEndTime,
                     modifier     = Modifier.weight(1f)
                 )
             }
