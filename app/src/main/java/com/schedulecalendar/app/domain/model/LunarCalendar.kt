@@ -121,83 +121,26 @@ object LunarCalendar {
         val shiChen: List<ShiChen>   // 12时辰吉凶
     )
 
-    private val defaultHuangLi = HuangLiInfo("平", false, listOf("裁衣", "修造", "会亲友", "合帐", "造畜稠", "上梁", "盖屋", "竖柱"), listOf("嫁娶", "移徙", "入宅", "栽种", "开市", "交易"))
-
-    private val huangLiTable = mapOf(
-        // 甲子旬
-        "甲子" to HuangLiInfo("小吉", true, listOf("祈福", "求嗣", "出行", "订盟", "纳采", "裁衣", "合帐", "安机械"), listOf("开仓", "动土", "安葬", "破土")),
-        "乙丑" to HuangLiInfo("吉", true, listOf("嫁娶", "移徙", "纳采", "订盟", "祈福", "修造", "动土", "竖柱"), listOf("栽种", "安葬", "开市", "交易")),
-        "丙寅" to HuangLiInfo("小吉", true, listOf("出行", "会亲友", "裁衣", "修造", "动土", "上梁", "开市", "交易"), listOf("祈福", "入宅", "移徙", "安床")),
-        "丁卯" to HuangLiInfo("平", false, listOf("裁衣", "修造", "造畜稠", "合帐", "会亲友"), listOf("嫁娶", "移徙", "入宅", "栽种")),
-        "戊辰" to HuangLiInfo("小吉", true, listOf("祈福", "求嗣", "解除", "竖柱", "上梁", "纳畜", "入殓", "破土"), listOf("开市", "交易", "出行", "赴任")),
-        "己巳" to HuangLiInfo("平", false, listOf("裁衣", "冠笄", "修造", "动土", "上梁"), listOf("嫁娶", "出行", "移徙", "入宅")),
-        "庚午" to HuangLiInfo("大吉", true, listOf("嫁娶", "出行", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("纳采", "开市", "交易", "栽种")),
-        "辛未" to HuangLiInfo("吉", true, listOf("开市", "交易", "祈福", "求嗣", "出行", "裁衣", "会亲友", "竖柱"), listOf("安葬", "修坟", "破土", "动土")),
-        "壬申" to HuangLiInfo("凶", false, listOf("破屋", "坏垣", "解除"), listOf("嫁娶", "移徙", "入宅", "开市", "交易", "出行")),
-        "癸酉" to HuangLiInfo("小吉", true, listOf("祈福", "求嗣", "出行", "解除", "竖柱", "上梁", "入殓", "安葬"), listOf("开市", "交易", "动土", "栽种")),
-        // 甲戌旬
-        "甲戌" to HuangLiInfo("平", false, listOf("裁衣", "修造", "造畜稠", "上梁", "盖屋"), listOf("嫁娶", "出行", "移徙", "入宅")),
-        "乙亥" to HuangLiInfo("吉", true, listOf("祭祀", "祈福", "求嗣", "解除", "裁衣", "会亲友", "竖柱", "上梁"), listOf("开市", "交易", "出行", "赴任")),
-        "丙子" to HuangLiInfo("凶", false, listOf("破屋", "坏垣", "解除"), listOf("嫁娶", "开市", "出行", "移徙", "入宅", "交易")),
-        "丁丑" to HuangLiInfo("小吉", true, listOf("祈福", "求嗣", "裁衣", "修造", "动土", "竖柱", "上梁", "盖屋"), listOf("安葬", "修坟", "出行", "赴任")),
-        "戊寅" to HuangLiInfo("大吉", true, listOf("嫁娶", "出行", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("移徙", "入宅", "安床", "开市")),
-        "己卯" to HuangLiInfo("平", false, listOf("裁衣", "冠笄", "合帐", "会亲友", "修造", "动土"), listOf("嫁娶", "移徙", "入宅", "栽种")),
-        "庚辰" to HuangLiInfo("吉", true, listOf("出行", "会亲友", "祈福", "求嗣", "解除", "裁衣", "竖柱", "上梁"), listOf("动土", "安葬", "入殓", "破土")),
-        "辛巳" to HuangLiInfo("凶", false, listOf("破屋", "坏垣", "解除"), listOf("嫁娶", "开市", "出行", "移徙", "入宅", "交易")),
-        "壬午" to HuangLiInfo("小吉", true, listOf("祈福", "求嗣", "解除", "裁衣", "修造", "会亲友", "竖柱", "上梁"), listOf("动土", "安床", "开市", "交易")),
-        "癸未" to HuangLiInfo("平", false, listOf("裁衣", "修造", "造畜稠", "会亲友", "上梁"), listOf("嫁娶", "出行", "移徙", "栽种")),
-        // 甲申旬
-        "甲申" to HuangLiInfo("吉", true, listOf("嫁娶", "出行", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("动土", "安葬", "破土", "入殓")),
-        "乙酉" to HuangLiInfo("小吉", true, listOf("祈福", "求嗣", "出行", "解除", "竖柱", "上梁", "入殓", "安葬"), listOf("开市", "交易", "栽种", "动土")),
-        "丙戌" to HuangLiInfo("平", false, listOf("裁衣", "修造", "会亲友", "造畜稠", "合帐"), listOf("嫁娶", "移徙", "入宅", "栽种")),
-        "丁亥" to HuangLiInfo("小吉", true, listOf("出行", "会亲友", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("动土", "安床", "入宅", "移徙")),
-        "戊子" to HuangLiInfo("吉", true, listOf("嫁娶", "祈福", "求嗣", "解除", "裁衣", "修造", "动土", "竖柱"), listOf("动土", "破土", "入殓", "安葬")),
-        "己丑" to HuangLiInfo("大凶", false, listOf("破屋", "坏垣", "解除"), listOf("嫁娶", "开市", "出行", "移徙", "入宅", "交易", "栽种", "动土")),
-        "庚寅" to HuangLiInfo("吉", true, listOf("出行", "会亲友", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("动土", "安葬", "入殓", "破土")),
-        "辛卯" to HuangLiInfo("凶", false, listOf("破屋", "坏垣", "解除"), listOf("嫁娶", "开市", "出行", "移徙", "入宅", "交易")),
-        "壬辰" to HuangLiInfo("小吉", true, listOf("祈福", "求嗣", "出行", "解除", "竖柱", "上梁", "入殓", "安葬"), listOf("开市", "交易", "栽种", "动土")),
-        "癸巳" to HuangLiInfo("平", false, listOf("裁衣", "修造", "会亲友", "合帐", "造畜稠"), listOf("嫁娶", "出行", "移徙", "栽种")),
-        // 甲午旬
-        "甲午" to HuangLiInfo("大吉", true, listOf("嫁娶", "出行", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("动土", "破土", "入殓", "安葬")),
-        "乙未" to HuangLiInfo("吉", true, listOf("开市", "交易", "祈福", "求嗣", "出行", "裁衣", "会亲友", "竖柱"), listOf("安葬", "修坟", "破土", "动土")),
-        "丙申" to HuangLiInfo("小吉", true, listOf("出行", "会亲友", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("动土", "安床", "入宅", "移徙")),
-        "丁酉" to HuangLiInfo("平", false, listOf("裁衣", "冠笄", "会亲友", "合帐", "造畜稠"), listOf("嫁娶", "移徙", "入宅", "栽种")),
-        "戊戌" to HuangLiInfo("凶", false, listOf("破屋", "坏垣", "解除"), listOf("嫁娶", "开市", "出行", "移徙", "入宅", "交易")),
-        "己亥" to HuangLiInfo("吉", true, listOf("嫁娶", "祈福", "求嗣", "解除", "裁衣", "修造", "动土", "竖柱"), listOf("动土", "破土", "入殓", "安葬")),
-        "庚子" to HuangLiInfo("小吉", true, listOf("祈福", "求嗣", "出行", "解除", "裁衣", "会亲友", "竖柱", "上梁"), listOf("开市", "交易", "栽种", "动土")),
-        "辛丑" to HuangLiInfo("平", false, listOf("裁衣", "修造", "会亲友", "合帐", "造畜稠"), listOf("嫁娶", "出行", "移徙", "栽种")),
-        "壬寅" to HuangLiInfo("大吉", true, listOf("嫁娶", "出行", "祈福", "求嗣", "会亲友", "解除", "裁衣", "修造"), listOf("动土", "安葬", "破土", "入殓")),
-        "癸卯" to HuangLiInfo("吉", true, listOf("祈福", "求嗣", "出行", "解除", "竖柱", "上梁", "入殓", "安葬"), listOf("开市", "交易", "栽种", "动土")),
-        // 甲辰旬
-        "甲辰" to HuangLiInfo("吉", true, listOf("祈福", "求嗣", "出行", "解除", "裁衣", "修造", "竖柱", "上梁"), listOf("开市", "交易", "栽种", "动土")),
-        "乙巳" to HuangLiInfo("小吉", true, listOf("出行", "会亲友", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("动土", "安床", "入宅", "移徙")),
-        "丙午" to HuangLiInfo("平", false, listOf("裁衣", "冠笄", "会亲友", "合帐", "造畜稠"), listOf("嫁娶", "移徙", "入宅", "栽种")),
-        "丁未" to HuangLiInfo("凶", false, listOf("破屋", "坏垣", "解除"), listOf("嫁娶", "开市", "出行", "移徙", "入宅", "交易")),
-        "戊申" to HuangLiInfo("吉", true, listOf("嫁娶", "出行", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("动土", "安葬", "破土", "入殓")),
-        "己酉" to HuangLiInfo("小吉", true, listOf("祈福", "求嗣", "出行", "解除", "竖柱", "上梁", "入殓", "安葬"), listOf("开市", "交易", "栽种", "动土")),
-        "庚戌" to HuangLiInfo("大吉", true, listOf("嫁娶", "出行", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("动土", "破土", "入殓", "安葬")),
-        "辛亥" to HuangLiInfo("平", false, listOf("裁衣", "修造", "会亲友", "合帐", "造畜稠"), listOf("嫁娶", "出行", "移徙", "栽种")),
-        "壬子" to HuangLiInfo("凶", false, listOf("破屋", "坏垣", "解除"), listOf("嫁娶", "开市", "出行", "移徙", "入宅", "交易")),
-        "癸丑" to HuangLiInfo("吉", true, listOf("祈福", "求嗣", "出行", "解除", "裁衣", "修造", "竖柱", "上梁"), listOf("开市", "交易", "栽种", "动土")),
-        // 甲寅旬
-        "甲寅" to HuangLiInfo("大吉", true, listOf("嫁娶", "出行", "会亲友", "祈福", "求嗣", "解除", "裁衣", "修造"), listOf("动土", "安葬", "破土", "入殓")),
-        "乙卯" to HuangLiInfo("吉", true, listOf("祈福", "求嗣", "出行", "解除", "竖柱", "上梁", "入殓", "安葬"), listOf("开市", "交易", "栽种", "动土")),
-        "丙辰" to HuangLiInfo("小吉", true, listOf("出行", "会亲友", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("动土", "安床", "入宅", "移徙")),
-        "丁巳" to HuangLiInfo("平", false, listOf("裁衣", "冠笄", "会亲友", "合帐", "造畜稠"), listOf("嫁娶", "移徙", "入宅", "栽种")),
-        "戊午" to HuangLiInfo("凶", false, listOf("破屋", "坏垣", "解除"), listOf("嫁娶", "开市", "出行", "移徙", "入宅", "交易")),
-        "己未" to HuangLiInfo("吉", true, listOf("嫁娶", "祈福", "求嗣", "解除", "裁衣", "修造", "动土", "竖柱"), listOf("动土", "破土", "入殓", "安葬")),
-        "庚申" to HuangLiInfo("小吉", true, listOf("祈福", "求嗣", "出行", "解除", "裁衣", "会亲友", "竖柱", "上梁"), listOf("开市", "交易", "栽种", "动土")),
-        "辛酉" to HuangLiInfo("平", false, listOf("裁衣", "修造", "会亲友", "合帐", "造畜稠"), listOf("嫁娶", "出行", "移徙", "栽种")),
-        "壬戌" to HuangLiInfo("大吉", true, listOf("嫁娶", "出行", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("动土", "破土", "入殓", "安葬")),
-        "癸亥" to HuangLiInfo("吉", true, listOf("出行", "会亲友", "祈福", "求嗣", "解除", "裁衣", "修造", "动土"), listOf("动土", "安葬", "破土", "入殓")),
-    )
-
     fun getHuangLiInfo(year: Int, month: Int, day: Int): HuangLiInfo {
         return try {
-            val dayGanZhi = getDayGanZhi(year, month, day)
-            huangLiTable[dayGanZhi] ?: defaultHuangLi
+            val solarDay = SolarDay.fromYmd(year, month, day)
+            val lunarDayObj = solarDay.getLunarDay()
+            val recommends = lunarDayObj.getRecommends().map { it.getName() }
+            val avoids = lunarDayObj.getAvoids().map { it.getName() }
+            // 根据宜忌数量判断吉凶等级
+            val goodCount = recommends.size
+            val badCount = avoids.size
+            val (level, isGood) = when {
+                goodCount >= 7 -> "大吉" to true
+                goodCount >= 5 -> "吉" to true
+                goodCount >= 3 -> "小吉" to true
+                badCount >= 7 -> "大凶" to false
+                badCount >= 5 -> "凶" to false
+                else -> "平" to false
+            }
+            HuangLiInfo(level, isGood, recommends, avoids)
         } catch (_: Exception) {
-            defaultHuangLi
+            HuangLiInfo("平", false, emptyList(), emptyList())
         }
     }
 
@@ -220,7 +163,7 @@ object LunarCalendar {
         val pengZu = pengZuByGanZhi(dayGanZhi)
         val jiShen = jiShenByDay(dayNum)
         val xiongSha = xiongShaByDay(dayNum)
-        val constellation = constellationByMonthDay(month, day)
+        val constellation = SolarDay.fromYmd(year, month, day).getConstellation().getName() + "座"
         val naYinWuXing = naYinWuXing(dayGanZhi)
         val taiShen = getTaiShen(dayNum)
         val shiChen = getShiChen(dayGanZhi)
@@ -427,12 +370,7 @@ object LunarCalendar {
         return xiongSha.filterIndexed { idx, _ -> (dayNum + idx * 2) % 4 == 0 }.take(3)
     }
 
-    private fun constellationByMonthDay(month: Int, day: Int): String {
-        val dates = intArrayOf(0,20,19,21,20,21,22,23,23,23,24,22,22,21)
-        val names = arrayOf("","水瓶座","双鱼座","白羊座","金牛座","双子座",
-            "巨蟹座","狮子座","处女座","天秤座","天蝎座","射手座","摩羯座")
-        return if (day >= dates[month]) names[month + 1] else names[month]
-    }
+
 
     private val zhiShenTable = mapOf(
         1 to listOf("建"), 2 to listOf("除"), 3 to listOf("满"), 4 to listOf("平"),

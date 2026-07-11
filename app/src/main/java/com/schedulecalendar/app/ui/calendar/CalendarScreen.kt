@@ -61,6 +61,7 @@ import com.schedulecalendar.app.ui.theme.Green100
 import com.schedulecalendar.app.ui.theme.Green700
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import com.schedulecalendar.app.ui.theme.ScheduleCalendarTheme
+import com.tyme.solar.SolarDay
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -1810,6 +1811,30 @@ private fun DateDetailSection(
                     text = festivalText,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            // 梅雨天提示
+            val plumRainText = try {
+                val plumRainDay = SolarDay.fromYmd(year, month, day).getPlumRainDay()
+                if (plumRainDay != null) {
+                    val plumRain = plumRainDay.getPlumRain()
+                    if (plumRain.getIndex() == 0) {
+                        // 入梅期间：toString() 返回 "入梅第N天"
+                        val s = plumRainDay.toString()
+                        if (s.startsWith("入梅第1天")) "今日入梅" else "梅雨天（$s）"
+                    } else {
+                        // 出梅
+                        "今日出梅"
+                    }
+                } else null
+            } catch (_: Exception) { null }
+            if (plumRainText != null) {
+                Text(
+                    text = plumRainText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF5C6BC0),
+                    fontWeight = FontWeight.Medium
                 )
             }
 
