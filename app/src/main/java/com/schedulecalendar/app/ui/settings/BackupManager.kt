@@ -2,6 +2,7 @@
 package com.schedulecalendar.app.ui.settings
 
 import android.content.Context
+import android.net.Uri
 import com.google.gson.Gson
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.*
@@ -44,10 +45,60 @@ class BackupManager @Inject constructor(
     private suspend fun currentBackupDir(): File {
         val customPath = prefs.getBackupCustomPath()
         return if (customPath.isNotBlank()) {
-            File(customPath).also { it.mkdirs() }
+            val realPath = resolveSafPath(customPath)
+            File(realPath).also { it.mkdirs() }
         } else {
             privateBackupDir
         }
+    }
+
+    /**
+     * 将 SAF 路径（URI 字符串或 tree URI 的 path 部分）解析为真实文件系统路径。
+     * 支持格式：
+     *  - content://com.android.externalstorage.document/tree/primary%3ADownload%2F...
+     *  - /tree/primary:Download/...（旧版存储的 uri.path）
+     *  - 普通文件系统路径（直接返回）
+     */
+    private fun resolveSafPath(rawPath: String): String {
+        // 1. 如果是 content:// URI，提取 tree document id
+        if (rawPath.startsWith("content://")) {
+            return try {
+                val uri = Uri.parse(rawPath)
+                // path 形如 /tree/primary%3ADownload%2F...
+                val treeSeg = uri.path?.removePrefix("/tree/") ?: return rawPath
+                val decoded = java.net.URLDecoder.decode(treeSeg, "UTF-8")
+                resolveDocumentId(decoded)
+            } catch (_: Exception) {
+                rawPath
+            }
+        }
+        // 2. 如果是旧版存储的 /tree/... 格式
+        if (rawPath.startsWith("/tree/")) {
+            return try {
+                val treeSeg = rawPath.removePrefix("/tree/")
+                val decoded = java.net.URLDecoder.decode(treeSeg, "UTF-8")
+                resolveDocumentId(decoded)
+            } catch (_: Exception) {
+                rawPath
+            }
+        }
+        // 3. 普通路径直接返回
+        return rawPath
+    }
+
+    /**
+     * 将 SAF document id（如 "primary:Download/MyData"）转换为文件系统路径。
+     */
+    private fun resolveDocumentId(docId: String): String {
+        val parts = docId.split(":", limit = 2)
+        val volume = parts[0]
+        val relativePath = if (parts.size > 1) parts[1] else ""
+        val basePath = when (volume.lowercase()) {
+            "primary" -> "/storage/emulated/0"
+            "home"    -> "/storage/emulated/0"
+            else      -> "/storage/$volume"
+        }
+        return if (relativePath.isNotEmpty()) "$basePath/$relativePath" else basePath
     }
 
     // ── 应用数据自动备份（每天最新一条） ──────────────────

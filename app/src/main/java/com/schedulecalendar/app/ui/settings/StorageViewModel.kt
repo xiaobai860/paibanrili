@@ -37,6 +37,7 @@ data class StorageUiState(
     val appDataKeepCount:   Int = 5,
     val shiftConfigKeepCount: Int = 10,
     val customBackupPath:   String = "",
+    val defaultBackupPath:  String = "",
     val dbSizeBytes:        Long = 0L,
     val backupSizeBytes:    Long = 0L,
     val freeSizeBytes:      Long = 0L,
@@ -78,7 +79,13 @@ class StorageViewModel @Inject constructor(
             val appKeep = prefs.getAppDataKeepCount()
             val shiftKeep = prefs.getShiftConfigKeepCount()
             val customPath = prefs.getBackupCustomPath()
-            _state.update { it.copy(appDataKeepCount = appKeep, shiftConfigKeepCount = shiftKeep, customBackupPath = customPath) }
+            val defaultPath = java.io.File(context.filesDir, "backups").absolutePath
+            _state.update { it.copy(
+                appDataKeepCount = appKeep,
+                shiftConfigKeepCount = shiftKeep,
+                customBackupPath = customPath,
+                defaultBackupPath = defaultPath
+            ) }
             reload()
         }
     }
@@ -164,6 +171,43 @@ class StorageViewModel @Inject constructor(
     fun updateCustomPath(path: String) {
         _state.update { it.copy(customBackupPath = path) }
         viewModelScope.launch { prefs.saveBackupCustomPath(path) }
+    }
+
+    /** 将 SAF URI 字符串解析为可读的文件系统路径（用于 UI 显示） */
+    fun resolveDisplayPath(rawPath: String): String {
+        if (rawPath.isBlank()) return ""
+        if (rawPath.startsWith("content://")) {
+            return try {
+                val uri = android.net.Uri.parse(rawPath)
+                val treeSeg = uri.path?.removePrefix("/tree/") ?: return rawPath
+                val decoded = java.net.URLDecoder.decode(treeSeg, "UTF-8")
+                val parts = decoded.split(":", limit = 2)
+                val volume = parts[0]
+                val rel = if (parts.size > 1) parts[1] else ""
+                val base = when (volume.lowercase()) {
+                    "primary" -> "/storage/emulated/0"
+                    "home"    -> "/storage/emulated/0"
+                    else      -> "/storage/$volume"
+                }
+                if (rel.isNotEmpty()) "$base/$rel" else base
+            } catch (_: Exception) { rawPath }
+        }
+        if (rawPath.startsWith("/tree/")) {
+            return try {
+                val treeSeg = rawPath.removePrefix("/tree/")
+                val decoded = java.net.URLDecoder.decode(treeSeg, "UTF-8")
+                val parts = decoded.split(":", limit = 2)
+                val volume = parts[0]
+                val rel = if (parts.size > 1) parts[1] else ""
+                val base = when (volume.lowercase()) {
+                    "primary" -> "/storage/emulated/0"
+                    "home"    -> "/storage/emulated/0"
+                    else      -> "/storage/$volume"
+                }
+                if (rel.isNotEmpty()) "$base/$rel" else base
+            } catch (_: Exception) { rawPath }
+        }
+        return rawPath
     }
 
     /** 导出备份文件到 SAF URI */

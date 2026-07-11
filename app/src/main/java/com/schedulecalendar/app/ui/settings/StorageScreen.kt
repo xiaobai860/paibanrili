@@ -78,8 +78,8 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val path = uri.path ?: return@rememberLauncherForActivityResult
-        vm.updateCustomPath(path)
+        // 保存完整 URI 字符串，以便 BackupManager 解析为真实文件系统路径
+        vm.updateCustomPath(uri.toString())
     }
 
     // 分享文件（FileProvider 适配 Android 7.0+）
@@ -249,8 +249,8 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("备份存储路径", fontWeight = FontWeight.Medium, fontSize = 14.sp)
                         Text(
-                            if (state.customBackupPath.isNotBlank()) state.customBackupPath
-                            else "应用私有目录（默认）",
+                            if (state.customBackupPath.isNotBlank()) vm.resolveDisplayPath(state.customBackupPath)
+                            else "${state.defaultBackupPath}（默认）",
                             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2, overflow = TextOverflow.Ellipsis
                         )
