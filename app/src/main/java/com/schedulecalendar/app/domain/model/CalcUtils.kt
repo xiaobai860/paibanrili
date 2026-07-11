@@ -154,13 +154,34 @@ object CalcUtils {
         attendConfig: AttendConfig
     ): DayHours {
         val zero = DayHours()
-        // 内置班次（休息/调休/请假）不产生工时
+        // 通过 shiftId 推导有效排班类型
         val effectiveType = when (record.shiftId) {
             BUILTIN_SHIFT_LEAVE -> ScheduleType.LEAVE
             BUILTIN_SHIFT_SWAP  -> ScheduleType.SWAP
             BUILTIN_SHIFT_REST  -> ScheduleType.REST
             else -> record.type
         }
+
+        // 休息/调休班次：如果附加状态有时间段，则按该时间段计算工时
+        if (effectiveType == ScheduleType.REST || effectiveType == ScheduleType.SWAP) {
+            val ast = record.appliedStatus ?: return zero
+            if (ast.startTime.isNullOrEmpty() || ast.endTime.isNullOrEmpty()) return zero
+            val rawH   = calcHourDiff(ast.startTime, ast.endTime)
+            val breakH = calcGlobalBreakHours(ast.startTime, ast.endTime, breaks)
+            val worked = roundD2((max(0.0, rawH - breakH) * 60).roundToInt() / 60.0)
+            if (worked <= 0.0) return zero
+            val grainH = if (attendConfig.overtimeGranMin > 0) attendConfig.overtimeGranMin / 60.0 else 0.0
+            fun floorGrain(h: Double) =
+                if (grainH > 0) roundD2(floor(h / grainH) * grainH) else roundD2(h)
+            val mode = record.salaryMode ?: autoSalaryMode(dateStr)
+            return when (mode) {
+                SalaryMode.HOLIDAY -> zero.copy(holiday = floorGrain(worked))
+                SalaryMode.WEEKEND -> zero.copy(weekend = floorGrain(worked))
+                SalaryMode.NORMAL  -> zero.copy(normal = floorGrain(worked))
+            }
+        }
+
+        // 请假/非SHIFT 不产生工时
         if (effectiveType != ScheduleType.SHIFT || record.shiftId == null) return zero
 
         val shift = shifts.find { it.id == record.shiftId } ?: return zero
@@ -239,12 +260,24 @@ object CalcUtils {
                 else -> record.type
             }
 
-            if (effectiveType == ScheduleType.SHIFT) {
+            if (effectiveType == ScheduleType.SHIFT
+                || effectiveType == ScheduleType.REST
+                || effectiveType == ScheduleType.SWAP) {
                 val hours = calcDayHours(record, date, shifts, breaks, attendConfig)
-                normalHours   += hours.normal
-                overtimeHours += hours.overtime
-                weekendHours  += hours.weekend
-                holidayHours  += hours.holiday
+                val totalH = hours.normal + hours.overtime + hours.weekend + hours.holiday
+                // 休息/调休且无工时：计入休息/调休天数
+                if (effectiveType != ScheduleType.SHIFT && totalH <= 0.0) {
+                    when (effectiveType) {
+                        ScheduleType.SWAP  -> swapDays++
+                        ScheduleType.REST  -> restDays++
+                        else -> {}
+                    }
+                } else {
+                    normalHours   += hours.normal
+                    overtimeHours += hours.overtime
+                    weekendHours  += hours.weekend
+                    holidayHours  += hours.holiday
+                }
 
                 // 状态时间段工时汇总
                 record.appliedStatus?.let { ast ->
@@ -259,25 +292,25 @@ object CalcUtils {
                     }
                 }
 
-                // 迟到/早退计数
-                val shift = if (record.shiftId != null) shifts.find { s -> s.id == record.shiftId } else null
-                if (shift != null && shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) {
-                    if (record.actualStartTime != null) {
-                        val lateMin = timeToMin(record.actualStartTime) - timeToMin(shift.startTime)
-                        if (lateMin > attendConfig.lateToleranceMin) lateCount++
-                    }
-                    if (record.actualEndTime != null) {
-                        val sS = timeToMin(shift.startTime)
-                        val (_, normSE) = normRange(sS, timeToMin(shift.endTime))
-                        val (_, normAE) = normRange(sS, timeToMin(record.actualEndTime))
-                        val earlyMin = normSE - normAE
-                        if (earlyMin > attendConfig.earlyLeaveToleranceMin) earlyLeaveCount++
+                // 迟到/早退计数（仅普通班次）
+                if (effectiveType == ScheduleType.SHIFT) {
+                    val shift = if (record.shiftId != null) shifts.find { s -> s.id == record.shiftId } else null
+                    if (shift != null && shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) {
+                        if (record.actualStartTime != null) {
+                            val lateMin = timeToMin(record.actualStartTime) - timeToMin(shift.startTime)
+                            if (lateMin > attendConfig.lateToleranceMin) lateCount++
+                        }
+                        if (record.actualEndTime != null) {
+                            val sS = timeToMin(shift.startTime)
+                            val (_, normSE) = normRange(sS, timeToMin(shift.endTime))
+                            val (_, normAE) = normRange(sS, timeToMin(record.actualEndTime))
+                            val earlyMin = normSE - normAE
+                            if (earlyMin > attendConfig.earlyLeaveToleranceMin) earlyLeaveCount++
+                        }
                     }
                 }
             } else when (effectiveType) {
                 ScheduleType.LEAVE -> leaveDays++
-                ScheduleType.SWAP  -> swapDays++
-                ScheduleType.REST  -> restDays++
                 else -> {}
             }
         }
@@ -330,7 +363,9 @@ object CalcUtils {
                 BUILTIN_SHIFT_REST  -> ScheduleType.REST
                 else -> record.type
             }
-            if (effectiveType != ScheduleType.SHIFT) continue
+            if (effectiveType != ScheduleType.SHIFT
+                && effectiveType != ScheduleType.REST
+                && effectiveType != ScheduleType.SWAP) continue
 
             val hours = calcDayHours(record, date, shifts, breaks, attendConfig)
             normalSalary   += hours.normal   * salaryConfig.normalRate
@@ -433,7 +468,9 @@ object CalcUtils {
             BUILTIN_SHIFT_REST  -> ScheduleType.REST
             else                -> record.type
         }
-        if (effectiveType != ScheduleType.SHIFT) return 0.0
+        if (effectiveType != ScheduleType.SHIFT
+            && effectiveType != ScheduleType.REST
+            && effectiveType != ScheduleType.SWAP) return 0.0
         val hours = calcDayHours(record, dateStr, shifts, breaks, attendConfig)
         return roundD2(
             hours.normal   * salaryConfig.normalRate +

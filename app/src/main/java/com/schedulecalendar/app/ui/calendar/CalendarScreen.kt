@@ -602,7 +602,7 @@ private fun DayCell(
     modifier: Modifier = Modifier
 ) {
     val shiftColor = shift?.color?.let { safeColor(it) }
-    val isRest = shift?.builtInType == "rest"
+    val isRest = shift?.builtInType == "rest" || shift?.builtInType == "swap"
 
     // ── 视觉状态 ──────────────────────────────────────────────
     val interactionSource = remember { MutableInteractionSource() }

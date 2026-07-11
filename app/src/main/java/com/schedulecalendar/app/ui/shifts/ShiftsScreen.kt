@@ -252,8 +252,7 @@ private fun ShiftsTab(
                         val infoText = if (isBuiltin) {
                             when (shift.builtInType) {
                                 "rest" -> "\u4f11\u606f\u65e5\uff0c\u4e0d\u8ba1\u5de5\u65f6"
-                                "swap" -> "\u8c03\u4f11\u65e5\uff0c\u8ba1\u5165\u8c03\u4f11"
-                                "leave" -> "\u8bf7\u5047\uff0c\u8ba1\u5165\u8bf7\u5047"
+                                "swap" -> "\u8c03\u4f11\u65e5\uff0c\u4e0d\u8ba1\u5de5\u65f6"
                                 else -> ""
                             }
                         } else buildString {

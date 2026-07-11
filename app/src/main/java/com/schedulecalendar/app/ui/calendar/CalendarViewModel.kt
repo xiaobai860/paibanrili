@@ -253,7 +253,7 @@ class CalendarViewModel @Inject constructor(
             val dateStr = "%04d-%02d-%02d".format(year, month, d)
             val record  = schedules[dateStr]
             val shift   = record?.shiftId?.let { id -> shifts.find { it.id == id } }
-            if (shift == null || shift.builtInType == "rest") continue
+            if (shift == null || shift.builtInType == "rest" || shift.builtInType == "swap") continue
 
             val sn = shift.name
             // 漏打卡检测：有班次但缺少打卡记录，上班/下班分别独立判断
@@ -762,10 +762,11 @@ class CalendarViewModel @Inject constructor(
         val todayShift = schedules[todayStr]?.shiftId?.let { id -> shifts.find { it.id == id } }
         val workDays   = schedules.values.count { r ->
             val sh = shifts.find { it.id == r.shiftId }
-            sh != null && sh.builtInType != "rest"
+            sh != null && sh.builtInType != "rest" && sh.builtInType != "swap"
         }
         val restDays   = schedules.values.count { r ->
             shifts.find { it.id == r.shiftId }?.builtInType == "rest"
+                || shifts.find { it.id == r.shiftId }?.builtInType == "swap"
         }
         // 更新 Glance 小组件
         val widgetData = GlanceWidgetData(

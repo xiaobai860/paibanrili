@@ -310,7 +310,7 @@ class HoursDetailViewModel @Inject constructor(
                 details.filter { it.date <= todayStr && it.record != null && it.shift != null }.mapNotNull { d ->
                     val rec = d.record ?: return@mapNotNull null
                     val shift = d.shift ?: return@mapNotNull null
-                    if (shift.builtInType == "rest") return@mapNotNull null
+                    if (shift.builtInType == "rest" || shift.builtInType == "swap") return@mapNotNull null
                     val missingStart = rec.actualStartTime == null
                     val missingEnd   = rec.actualEndTime == null
                     if (!missingStart && !missingEnd) return@mapNotNull null

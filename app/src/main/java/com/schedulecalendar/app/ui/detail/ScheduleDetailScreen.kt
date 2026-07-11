@@ -89,6 +89,8 @@ fun ScheduleDetailScreen(
     } else ""
     val selectedShift = record?.shiftId?.let { id -> state.shifts.find { it.id == id } }
     val isRestShift   = selectedShift?.builtInType == "rest"
+    val isSwapShift   = selectedShift?.builtInType == "swap"
+    val isRestOrSwap  = isRestShift || isSwapShift
 
     // 备注获得焦点或内容变化时，请求将输入框滚动到可见区域
     LaunchedEffect(remarkFocused, remarkText) {
@@ -184,7 +186,7 @@ fun ScheduleDetailScreen(
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(selectedShift.name, fontWeight = FontWeight.SemiBold)
-                            if (!isRestShift)
+                            if (!isRestOrSwap)
                                 Text("${selectedShift.startTime} – ${selectedShift.endTime}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -198,8 +200,8 @@ fun ScheduleDetailScreen(
                 }
             }
 
-            // ── 实际打卡时间（非休息班次才显示） ────────────────────────
-            if (selectedShift != null && !isRestShift) {
+            // ── 实际打卡时间（非休息/调休班次才显示） ────────────────────────
+            if (selectedShift != null && !isRestOrSwap) {
                 item {
                     SectionLabel("实际打卡时间（可选）")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -239,11 +241,17 @@ fun ScheduleDetailScreen(
             }
 
             // ── 附加状态 ──────────────────────────────────────────────
-            if (state.shiftStatuses.isNotEmpty() && selectedShift != null) {
+            // 休息/调休班次时，隐藏内置"调休"和"请假"状态
+            val visibleStatuses = if (isRestOrSwap) {
+                state.shiftStatuses.filter { s ->
+                    s.id != BUILTIN_STATUS_SWAP && s.id != BUILTIN_STATUS_LEAVE
+                }
+            } else state.shiftStatuses
+            if (visibleStatuses.isNotEmpty() && selectedShift != null) {
                 item {
                     SectionLabel("附加状态")
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        state.shiftStatuses.forEach { status ->
+                        visibleStatuses.forEach { status ->
                             val appliedSt = if (record?.appliedStatus?.statusId == status.id) record?.appliedStatus else null
                             val applied   = appliedSt != null
                             StatusRow(
@@ -291,7 +299,7 @@ fun ScheduleDetailScreen(
             }
 
             // ── 计薪方式 ──────────────────────────────────────────────
-            if (selectedShift != null && !isRestShift) {
+            if (selectedShift != null && !isRestOrSwap) {
                 item {
                     SectionLabel("计薪方式")
                     if (record?.salaryMode == null) {
@@ -601,7 +609,7 @@ private fun ShiftPickerSheet(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(shift.name, style = MaterialTheme.typography.bodyLarge)
-                        if (shift.startTime.isNotEmpty() && shift.builtInType != "rest")
+                        if (shift.startTime.isNotEmpty() && shift.builtInType != "rest" && shift.builtInType != "swap")
                             Text("${shift.startTime} – ${shift.endTime}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
