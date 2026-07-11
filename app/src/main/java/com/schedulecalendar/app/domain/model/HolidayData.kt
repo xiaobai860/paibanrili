@@ -560,7 +560,8 @@ object HolidayData {
             lunarMonth == 8 && lunarDay == 15 -> "中秋节"
             lunarMonth == 9 && lunarDay == 9 -> "重阳节"
             lunarMonth == 12 && lunarDay == 8 -> "腊八节"
-            lunarMonth == 12 && lunarDay == 23 -> "小年"
+            lunarMonth == 12 && lunarDay == 23 -> "北方小年"
+            lunarMonth == 12 && lunarDay == 24 -> "南方小年"
             lunarMonth == 12 && lunarDay == 30 -> "除夕"
             // 处理腊月二十九为除夕的情况（小月）
             lunarMonth == 12 && lunarDay == 29 && !lunar.isLeap -> {

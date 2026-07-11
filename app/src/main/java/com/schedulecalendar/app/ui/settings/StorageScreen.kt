@@ -586,12 +586,12 @@ private fun BackupFileRow(
                         tint = MaterialTheme.colorScheme.error)
                 }
             }
-            // 手动备份角标（左上角叠加，偏移避开文件图标，不占用行内空间）
+            // 手动备份角标（整行左上角，无偏移）
             if (file.isManual) {
                 Surface(
                     shape = RoundedCornerShape(bottomEnd = 4.dp),
                     color = MaterialTheme.colorScheme.tertiaryContainer,
-                    modifier = Modifier.align(Alignment.TopStart).padding(start = 36.dp)
+                    modifier = Modifier.align(Alignment.TopStart)
                 ) {
                     Text(
                         "手动",
