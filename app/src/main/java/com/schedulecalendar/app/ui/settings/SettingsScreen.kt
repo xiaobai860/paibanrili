@@ -44,8 +44,8 @@ fun SettingsScreen(navController: NavController, vm: SettingsViewModel = hiltVie
     ) { padding ->
         LazyColumn(
             Modifier.padding(padding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // ── 薪资配置 ──────────────────────────────────────────
             item {
@@ -160,7 +160,7 @@ private fun SettingsCard(
             Column(
                 Modifier.then(
                     if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
-                ).padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)
+                ).padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -243,7 +243,7 @@ private fun PermissionManagementSection() {
             // 卡片头部
             Column(
                 Modifier.clickable { expanded = !expanded }
-                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)
+                    .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {

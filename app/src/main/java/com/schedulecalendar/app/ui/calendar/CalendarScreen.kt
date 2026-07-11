@@ -111,7 +111,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 CenterAlignedTopAppBar(
                     windowInsets = WindowInsets(0, 0, 0, 0),
                     title = {
@@ -227,7 +227,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                     )
                 )
                 // 星期标题行（固定在顶部，不随内容滚动）
-                Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 2.dp)) {
+                Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 2.dp, vertical = 0.dp)) {
                     WEEK_LABELS.forEachIndexed { i, label ->
                         Text(label, Modifier.weight(1f), textAlign = TextAlign.Center,
                             fontSize = 12.sp,
@@ -236,7 +236,10 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             fontWeight = FontWeight.Medium)
                     }
                 }
-                HorizontalDivider(Modifier.padding(top = 2.dp))
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outline,
+                    thickness = 0.5.dp
+                )
             }
         }
     ) { contentPadding ->
@@ -655,6 +658,20 @@ private fun DayCell(
         prevDate == null || !HolidayData.isLegalHoliday(prevDate)
     } else false
 
+    // ── 农历行显示内容（按优先级）──────────────────────────────
+    // 1. 法定节假日名称（最高优先级，保持现有逻辑）
+    // 2. 二十四节气名称
+    // 3. 传统民俗节日名称
+    // 4. 官方纪念日名称
+    // 5. 热门国际节假日名称
+    // 6. 普通农历日期（最低优先级）
+    val festivalInfo = HolidayData.getFullFestivalInfo(dateStr)
+    val lunarDisplayText = when {
+        isHolidayFirstDay && holidayName != null -> holidayName
+        festivalInfo.isNotEmpty() -> festivalInfo.first()
+        else -> lunarText
+    }
+
     // ── 班次/状态标签颜色 ──────────────────────────────────────
     val appliedSt = record?.appliedStatus?.let { ast -> shiftStatuses.find { it.id == ast.statusId } }
     // 仅当方案数据行中配置了 SHIFT/STATUS 时才显示对应标签
@@ -769,15 +786,10 @@ private fun DayCell(
             // ── 3. 农历文字（12dp）─────────────────────────
             Box(Modifier.fillMaxWidth().height(lunarHeight), contentAlignment = Alignment.Center) {
                 val lunarColor = lunarTextFg
-                if (isHolidayFirstDay && holidayName != null) {
-                    Text(holidayName, fontSize = lunarTextSize, lineHeight = lunarTextSize,
-                        style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
-                        color = HolidayRed, maxLines = 1, overflow = TextOverflow.Clip)
-                } else {
-                    Text(lunarText, fontSize = lunarTextSize, lineHeight = lunarTextSize,
-                        style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
-                        color = lunarColor, maxLines = 1, overflow = TextOverflow.Clip)
-                }
+                Text(lunarDisplayText, fontSize = lunarTextSize, lineHeight = lunarTextSize,
+                    style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
+                    color = if (isHolidayFirstDay && holidayName != null) HolidayRed else lunarColor,
+                    maxLines = 1, overflow = TextOverflow.Clip)
             }
             // ── 4. 农历→数据行间距 3dp ──────────────────
             Spacer(Modifier.height(dataGap))

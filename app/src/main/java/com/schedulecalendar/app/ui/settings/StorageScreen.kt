@@ -484,7 +484,13 @@ private fun BackupTypeCard(
                     modifier = Modifier.size(24.dp)
                 )
                 Column(Modifier.weight(1f)) {
-                    Text(type.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(type.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        if (keepCount == 0) {
+                            Text("（已禁用自动备份）", fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     Text(type.desc, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Surface(
@@ -501,7 +507,7 @@ private fun BackupTypeCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("最多保留（自动备份）", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f))
-                IconButton(onClick = { if (keepCount > 1) onKeepChange(keepCount - 1) },
+                IconButton(onClick = { if (keepCount > 0) onKeepChange(keepCount - 1) },
                     modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Remove, "减少", Modifier.size(18.dp))
                 }
@@ -580,18 +586,18 @@ private fun BackupFileRow(
                         tint = MaterialTheme.colorScheme.error)
                 }
             }
-            // 手动备份角标（右上角叠加，不占用行内空间）
+            // 手动备份角标（左上角叠加，偏移避开文件图标，不占用行内空间）
             if (file.isManual) {
                 Surface(
-                    shape = RoundedCornerShape(bottomStart = 6.dp),
+                    shape = RoundedCornerShape(bottomEnd = 4.dp),
                     color = MaterialTheme.colorScheme.tertiaryContainer,
-                    modifier = Modifier.align(Alignment.TopEnd)
+                    modifier = Modifier.align(Alignment.TopStart).padding(start = 36.dp)
                 ) {
                     Text(
                         "手动",
-                        fontSize = 9.sp,
+                        fontSize = 8.sp,
                         color = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
                     )
                 }
             }
