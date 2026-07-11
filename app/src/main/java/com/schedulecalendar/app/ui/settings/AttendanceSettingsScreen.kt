@@ -2,8 +2,6 @@
 package com.schedulecalendar.app.ui.settings
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -12,6 +10,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.schedulecalendar.app.domain.model.AttendConfig
+import com.schedulecalendar.app.ui.component.ScheduleTopBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -22,16 +21,7 @@ fun AttendanceSettingsScreen(
     val state by vm.state.collectAsStateWithLifecycle()
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("考勤设置") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                }
-            )
-        }
+        topBar = { ScheduleTopBar("考勤设置", onBack = { navController.popBackStack() }) }
     ) { padding ->
         AttendConfigSection(
             config = state.attendConfig,

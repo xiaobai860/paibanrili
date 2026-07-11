@@ -38,20 +38,6 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
     val context  = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
 
-    // SAF 导出
-    var pendingExportJson by remember { mutableStateOf<String?>(null) }
-    var pendingExportName by remember { mutableStateOf("backup.json") }
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        val json = pendingExportJson ?: return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
-        }
-        pendingExportJson = null
-    }
-
     // SAF 导入
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -140,6 +126,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                     type           = BackupType.APP_DATA,
                     keepCount      = state.appDataKeepCount,
                     backupCount    = state.appDataBackups.size,
+                    keepUnit       = "天",
                     onKeepChange   = { vm.updateKeepCount(BackupType.APP_DATA, it) },
                     onCreateBackup = { vm.createBackup(BackupType.APP_DATA) }
                 )
@@ -149,13 +136,6 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                     BackupFileRow(
                         file      = file,
                         onRestore = { restoreTarget = file },
-                        onExport  = {
-                            vm.prepareExportJson(file) { json, name ->
-                                pendingExportJson = json
-                                pendingExportName = name
-                                exportLauncher.launch(name)
-                            }
-                        },
                         onShare   = { shareFile(file) },
                         onDelete  = { deleteTarget = file }
                     )
@@ -176,6 +156,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                     type           = BackupType.SHIFT_CONFIG,
                     keepCount      = state.shiftConfigKeepCount,
                     backupCount    = state.shiftConfigBackups.size,
+                    keepUnit       = "份",
                     onKeepChange   = { vm.updateKeepCount(BackupType.SHIFT_CONFIG, it) },
                     onCreateBackup = { vm.createBackup(BackupType.SHIFT_CONFIG) }
                 )
@@ -185,13 +166,6 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                     BackupFileRow(
                         file      = file,
                         onRestore = { restoreTarget = file },
-                        onExport  = {
-                            vm.prepareExportJson(file) { json, name ->
-                                pendingExportJson = json
-                                pendingExportName = name
-                                exportLauncher.launch(name)
-                            }
-                        },
                         onShare   = { shareFile(file) },
                         onDelete  = { deleteTarget = file }
                     )
@@ -490,6 +464,7 @@ private fun BackupTypeCard(
     type: BackupType,
     keepCount: Int,
     backupCount: Int,
+    keepUnit: String,
     onKeepChange: (Int) -> Unit,
     onCreateBackup: () -> Unit
 ) {
@@ -521,16 +496,16 @@ private fun BackupTypeCard(
                         fontWeight = FontWeight.SemiBold)
                 }
             }
-            // 保留份数调节
+            // 保留份数调节（仅自动备份）
             Row(verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("最多保留", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Text("最多保留（自动备份）", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f))
                 IconButton(onClick = { if (keepCount > 1) onKeepChange(keepCount - 1) },
                     modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Remove, "减少", Modifier.size(18.dp))
                 }
-                Text("$keepCount 份", fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                Text("$keepCount $keepUnit", fontSize = 14.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.width(40.dp),
                     textAlign = TextAlign.Center)
                 IconButton(onClick = { onKeepChange(keepCount + 1) },
@@ -558,7 +533,6 @@ private fun BackupTypeCard(
 private fun BackupFileRow(
     file: BackupFile,
     onRestore: () -> Unit,
-    onExport:  () -> Unit,
     onShare:   () -> Unit,
     onDelete:  () -> Unit
 ) {
@@ -571,37 +545,55 @@ private fun BackupFileRow(
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
-        Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(Icons.Default.InsertDriveFile, null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp))
-            Column(Modifier.weight(1f)) {
-                Text(file.name, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    "${fmt.format(Instant.ofEpochMilli(file.createdAt))}  ·  ${formatBytes(file.sizeBytes)}",
-                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        Box {
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Default.InsertDriveFile, null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        file.name,
+                        fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = if (file.isManual) MaterialTheme.colorScheme.tertiary
+                                else MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "${fmt.format(Instant.ofEpochMilli(file.createdAt))}  ·  ${formatBytes(file.sizeBytes)}",
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                // 操作按钮
+                IconButton(onClick = onRestore, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Default.Restore, "恢复", Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary)
+                }
+                IconButton(onClick = onShare, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Default.Share, "分享", Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.tertiary)
+                }
+                IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Default.DeleteOutline, "删除", Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.error)
+                }
             }
-            // 操作按钮
-            IconButton(onClick = onRestore, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Default.Restore, "恢复", Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.primary)
-            }
-            IconButton(onClick = onShare, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Default.Share, "分享", Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.tertiary)
-            }
-            IconButton(onClick = onExport, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Default.SaveAlt, "导出", Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.secondary)
-            }
-            IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Default.DeleteOutline, "删除", Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.error)
+            // 手动备份角标（右上角叠加，不占用行内空间）
+            if (file.isManual) {
+                Surface(
+                    shape = RoundedCornerShape(bottomStart = 6.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    Text(
+                        "手动",
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
+                }
             }
         }
     }

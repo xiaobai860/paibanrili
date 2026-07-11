@@ -114,17 +114,18 @@ class BackupManager @Inject constructor(
         runCatching {
             val json = buildAppDataJson()
             val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"))
-            // 查找今天已有的备份，替换之
-            val existingToday = privateBackupDir.listFiles { f ->
-                f.name.startsWith("appdata_") && f.name.contains(today) && f.name.endsWith(".json")
-            }
-            val fileName = "appdata_${today}_${LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss"))}.json"
             val targetDir = currentBackupDir()
+            // 查找今天已有的自动备份，替换之
+            val existingToday = targetDir.listFiles { f ->
+                f.name.startsWith("应用数据_") && f.name.contains(today)
+                    && !f.name.contains("_manual") && f.name.endsWith(".json")
+            }
+            val fileName = "应用数据_${today}_${LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss"))}.json"
             val file = File(targetDir, fileName)
             file.writeText(json)
-            // 删除今天旧的备份（如果有）
+            // 删除今天旧的自动备份（如果有）
             existingToday?.filter { it.absolutePath != file.absolutePath }?.forEach { it.delete() }
-            // 裁剪保留份数（基于私有目录）
+            // 裁剪保留天数
             pruneAppDataBackups(keepCount)
         }
     }
@@ -143,7 +144,7 @@ class BackupManager @Inject constructor(
             val json = buildShiftConfigJson()
             val ts = LocalDateTime.now().format(tsFormatter)
             val targetDir = currentBackupDir()
-            val file = File(targetDir, "shiftcfg_${ts}.json")
+            val file = File(targetDir, "班次配置_${ts}.json")
             file.writeText(json)
             pruneShiftConfigBackups(keepCount)
         }
@@ -155,9 +156,8 @@ class BackupManager @Inject constructor(
         val json = buildAppDataJson()
         val ts = LocalDateTime.now().format(tsFormatter)
         val targetDir = currentBackupDir()
-        val file = File(targetDir, "appdata_${ts}.json")
+        val file = File(targetDir, "应用数据_${ts}_manual.json")
         file.writeText(json)
-        pruneAppDataBackups(prefs.getAppDataKeepCount())
         file
     }
 
@@ -165,16 +165,38 @@ class BackupManager @Inject constructor(
         val json = buildShiftConfigJson()
         val ts = LocalDateTime.now().format(tsFormatter)
         val targetDir = currentBackupDir()
-        val file = File(targetDir, "shiftcfg_${ts}.json")
+        val file = File(targetDir, "班次配置_${ts}_manual.json")
         file.writeText(json)
-        pruneShiftConfigBackups(prefs.getShiftConfigKeepCount())
         file
     }
 
     // ── 恢复（始终从私有目录读取） ─────────────────────
 
-    fun listAppDataBackups(): List<BackupFile> = listBackupFiles(BackupType.APP_DATA, privateBackupDir)
-    fun listShiftConfigBackups(): List<BackupFile> = listBackupFiles(BackupType.SHIFT_CONFIG, privateBackupDir)
+    // ── 备份列表（合并私有目录 + 自定义路径） ─────────
+
+    suspend fun listAppDataBackups(): List<BackupFile> {
+        val dirs = allBackupDirs()
+        return dirs.flatMap { listBackupFiles(BackupType.APP_DATA, it) }
+            .distinctBy { it.path }
+    }
+
+    suspend fun listShiftConfigBackups(): List<BackupFile> {
+        val dirs = allBackupDirs()
+        return dirs.flatMap { listBackupFiles(BackupType.SHIFT_CONFIG, it) }
+            .distinctBy { it.path }
+    }
+
+    /** 返回所有需要扫描的备份目录（私有目录 + 自定义路径） */
+    private suspend fun allBackupDirs(): List<File> {
+        val dirs = mutableListOf(privateBackupDir)
+        val customPath = prefs.getBackupCustomPath()
+        if (customPath.isNotBlank()) {
+            val realPath = resolveSafPath(customPath)
+            val dir = File(realPath)
+            if (dir.exists()) dirs.add(dir)
+        }
+        return dirs
+    }
 
     /** 从私有目录恢复应用数据 */
     suspend fun restoreAppDataFromPrivate(fileName: String) {
@@ -263,28 +285,46 @@ class BackupManager @Inject constructor(
     }
 
     private fun listBackupFiles(type: BackupType, dir: File): List<BackupFile> {
-        val prefix = if (type == BackupType.APP_DATA) "appdata_" else "shiftcfg_"
-        return dir.listFiles { f -> f.name.startsWith(prefix) && f.name.endsWith(".json") }
-            ?.map { f ->
-                BackupFile(
-                    name = f.name, path = f.absolutePath, type = type,
-                    sizeBytes = f.length(), createdAt = f.lastModified()
-                )
-            } ?: emptyList()
+        val prefixes = if (type == BackupType.APP_DATA) {
+            listOf("应用数据_", "appdata_")  // 新前缀 + 旧前缀兼容
+        } else {
+            listOf("班次配置_", "shiftcfg_")
+        }
+        return dir.listFiles { f ->
+            f.name.endsWith(".json") && prefixes.any { f.name.startsWith(it) }
+        }?.map { f ->
+            BackupFile(
+                name = f.name, path = f.absolutePath, type = type,
+                sizeBytes = f.length(), createdAt = f.lastModified(),
+                isManual = f.name.contains("_manual")
+            )
+        } ?: emptyList()
     }
 
+    /** 启动时按当前保留数量执行全局裁剪（跨目录合并后按时间排序） */
+    suspend fun pruneAllBackups() {
+        pruneAppDataBackups(prefs.getAppDataKeepCount())
+        pruneShiftConfigBackups(prefs.getShiftConfigKeepCount())
+    }
+
+    /** 裁剪自动备份（仅自动备份，手动备份不删除），跨目录全局合并后按时间裁剪 */
     private suspend fun pruneAppDataBackups(keepCount: Int) {
         if (keepCount <= 0) return
-        val files = listBackupFiles(BackupType.APP_DATA, privateBackupDir)
+        val allFiles = allBackupDirs().flatMap { listBackupFiles(BackupType.APP_DATA, it) }
+            .distinctBy { it.path }
+            .filter { !it.isManual }
             .sortedByDescending { it.createdAt }
-        if (files.size > keepCount) files.drop(keepCount).forEach { File(it.path).delete() }
+        if (allFiles.size > keepCount) allFiles.drop(keepCount).forEach { File(it.path).delete() }
     }
 
+    /** 裁剪自动备份（仅自动备份，手动备份不删除），跨目录全局合并后按时间裁剪 */
     private suspend fun pruneShiftConfigBackups(keepCount: Int) {
         if (keepCount <= 0) return
-        val files = listBackupFiles(BackupType.SHIFT_CONFIG, privateBackupDir)
+        val allFiles = allBackupDirs().flatMap { listBackupFiles(BackupType.SHIFT_CONFIG, it) }
+            .distinctBy { it.path }
+            .filter { !it.isManual }
             .sortedByDescending { it.createdAt }
-        if (files.size > keepCount) files.drop(keepCount).forEach { File(it.path).delete() }
+        if (allFiles.size > keepCount) allFiles.drop(keepCount).forEach { File(it.path).delete() }
     }
 }
 

@@ -2,17 +2,17 @@
 package com.schedulecalendar.app.ui.settings
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.schedulecalendar.app.domain.model.SalaryConfig
+import com.schedulecalendar.app.ui.component.ScheduleTopBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -23,16 +23,7 @@ fun SalarySettingsScreen(
     val state by vm.state.collectAsStateWithLifecycle()
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("薪资设置") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                }
-            )
-        }
+        topBar = { ScheduleTopBar("薪资设置", onBack = { navController.popBackStack() }) }
     ) { padding ->
         SalaryConfigSection(
             config = state.salaryConfig,

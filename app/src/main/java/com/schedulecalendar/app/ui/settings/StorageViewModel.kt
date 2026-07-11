@@ -26,7 +26,8 @@ data class BackupFile(
     val path: String,
     val type: BackupType,
     val sizeBytes: Long,
-    val createdAt: Long   // epoch ms
+    val createdAt: Long,   // epoch ms
+    val isManual: Boolean = false
 )
 
 // ── UiState / UiEvent ─────────────────────────────────────────────────────────
@@ -86,6 +87,8 @@ class StorageViewModel @Inject constructor(
                 customBackupPath = customPath,
                 defaultBackupPath = defaultPath
             ) }
+            // 启动时按当前保留数量裁剪多余的旧自动备份
+            backupManager.pruneAllBackups()
             reload()
         }
     }

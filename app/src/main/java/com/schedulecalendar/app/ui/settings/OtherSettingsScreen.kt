@@ -1,29 +1,18 @@
 package com.schedulecalendar.app.ui.settings
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.schedulecalendar.app.ui.component.ScheduleTopBar
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OtherSettingsScreen(navController: NavController) {
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("其它设置") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                }
-            )
-        }
+        topBar = { ScheduleTopBar("其它设置", onBack = { navController.popBackStack() }) }
     ) { padding ->
         Box(
             Modifier.fillMaxSize().padding(padding),

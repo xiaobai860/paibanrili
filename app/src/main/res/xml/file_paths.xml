@@ -3,4 +3,6 @@
     <files-path name="backups" path="backups/" />
     <external-files-path name="external_backups" path="backups/" />
     <cache-path name="cache" path="/" />
+    <!-- 覆盖用户通过 SAF 选择的自定义备份路径（可能位于任意存储位置） -->
+    <root-path name="root" path="." />
 </paths>
