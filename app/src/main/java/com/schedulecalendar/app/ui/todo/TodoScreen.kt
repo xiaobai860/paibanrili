@@ -3,8 +3,12 @@ package com.schedulecalendar.app.ui.todo
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,8 +33,12 @@ import com.schedulecalendar.app.ui.calendar.CalendarViewModel
 import com.schedulecalendar.app.ui.calendar.TodoItem
 import com.schedulecalendar.app.ui.calendar.TodoType
 import com.schedulecalendar.app.ui.component.TimePickerField
+import com.schedulecalendar.app.domain.model.HolidayData
 import com.schedulecalendar.app.ui.navigation.RouteScheduleDetail
+import com.schedulecalendar.app.ui.theme.HolidayRed
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 // ── 数据类 ────────────────────────────────────────────────────────────────
 
@@ -134,7 +142,7 @@ fun TodoScreen(navController: NavController, vm: CalendarViewModel = hiltViewMod
                         vm = vm
                     )
                     2 -> PlaceholderTab("\u7eaa\u5ff5\u65e5")
-                    3 -> PlaceholderTab("\u8282\u5047\u65e5")
+                    3 -> HolidayTab()
                 }
             }
         }
@@ -802,5 +810,252 @@ private fun OvertimeActionDialog(
                 Text("\u4e0d\u662f\u52a0\u73ed")
             }
         }
+    )
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 节假日标签页
+// ════════════════════════════════════════════════════════════════════════════
+
+private data class HolidayListItem(
+    val date: String,       // "YYYY-MM-DD"
+    val name: String,
+    val category: String,
+    val dayOfWeek: String
+)
+
+private fun gatherAllHolidays(): List<HolidayListItem> {
+    val today = LocalDate.now()
+    val currentYear = today.year
+    val startYear = currentYear
+    val endYear = currentYear + 2
+    val results = mutableListOf<HolidayListItem>()
+    val dowLabels = arrayOf("周一","周二","周三","周四","周五","周六","周日")
+
+    fun fmtDow(ds: String): String {
+        val d = LocalDate.parse(ds)
+        return dowLabels[d.dayOfWeek.value - 1]
+    }
+
+    // 1. 法定节假日（取每个假期第一天）
+    val legalDates = mutableSetOf<String>()
+    val allHolidayNames = mutableMapOf<String, String>() // date -> name
+    for (year in startYear..endYear) {
+        for (m in 1..12) {
+            for (d in 1..31) {
+                try {
+                    val ds = "%04d-%02d-%02d".format(year, m, d)
+                    val hn = HolidayData.getHolidayName(ds)
+                    if (hn != null && !hn.contains("补班")) {
+                        allHolidayNames[ds] = hn
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+    // 取每个假期最早的那天
+    val firstDays = mutableMapOf<String, String>() // name -> earliest date
+    for ((date, name) in allHolidayNames) {
+        val existing = firstDays[name]
+        if (existing == null || date < existing) {
+            firstDays[name] = date
+        }
+    }
+    for ((name, date) in firstDays) {
+        legalDates.add(date)
+        results.add(HolidayListItem(date, name, "法定", fmtDow(date)))
+    }
+
+    // 2. 节气 + 传统节日 + 国际节日（扫描每天）
+    for (year in startYear..endYear) {
+        val start = LocalDate.of(year, 1, 1)
+        val daysInYear = start.lengthOfYear()
+        for (i in 0 until daysInYear) {
+            val d = start.plusDays(i.toLong())
+            val ds = d.toString()
+            if (ds in legalDates) continue
+
+            val solarTerm = HolidayData.getSolarTerm(ds)
+            if (solarTerm != null) {
+                results.add(HolidayListItem(ds, solarTerm, "节气", fmtDow(ds)))
+            }
+            val trad = HolidayData.getTraditionalFestival(ds)
+            if (trad != null) {
+                results.add(HolidayListItem(ds, trad, "传统", fmtDow(ds)))
+            }
+            val intl = HolidayData.getInternationalFestival(ds)
+            if (intl != null) {
+                results.add(HolidayListItem(ds, intl, "国际", fmtDow(ds)))
+            }
+        }
+    }
+
+    return results.sortedBy { it.date }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HolidayTab() {
+    val holidays = remember { gatherAllHolidays() }
+    val today = remember { LocalDate.now() }
+    val listState = rememberLazyListState()
+
+    // 自动滚动到最近的节日
+    LaunchedEffect(holidays) {
+        val todayStr = today.toString()
+        var nearestIdx = 0
+        // 找最近的过去或未来节日
+        val futureIdx = holidays.indexOfFirst { it.date >= todayStr }
+        if (futureIdx >= 0) {
+            nearestIdx = if (futureIdx > 0) {
+                val prev = holidays[futureIdx - 1]
+                val curr = holidays[futureIdx]
+                val prevDiff = ChronoUnit.DAYS.between(LocalDate.parse(prev.date), today)
+                val currDiff = ChronoUnit.DAYS.between(today, LocalDate.parse(curr.date))
+                if (prevDiff <= currDiff) futureIdx - 1 else futureIdx
+            } else futureIdx
+        } else {
+            nearestIdx = holidays.lastIndex
+        }
+        if (nearestIdx > 0) {
+            listState.scrollToItem(nearestIdx)
+        }
+    }
+
+    LazyColumn(
+        state = listState,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // 按月份分组显示
+        val grouped = holidays.groupBy { it.date.substring(0, 7) } // "YYYY-MM"
+        val sortedMonths = grouped.keys.sorted()
+
+        for (month in sortedMonths) {
+            val items = grouped[month] ?: continue
+            val monthLabel = try {
+                val y = month.substring(0, 4).toInt()
+                val m = month.substring(5, 7).toInt()
+                "${y}年${m}月"
+            } catch (_: Exception) { month }
+
+            stickyHeader {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.width(3.dp).height(14.dp)
+                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            monthLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            items(items) { item ->
+                HolidayRow(item, today)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HolidayRow(item: HolidayListItem, today: LocalDate) {
+    val date = try { LocalDate.parse(item.date) } catch (_: Exception) { return }
+    val diff = ChronoUnit.DAYS.between(today, date).toInt()
+    val diffText = when {
+        diff == 0 -> "今天"
+        diff > 0 -> "${diff} 天后"
+        else -> "${-diff} 天前"
+    }
+    val isToday = diff == 0
+    val catColor = when (item.category) {
+        "法定" -> HolidayRed
+        "节气" -> Color(0xFF059669)
+        "传统" -> Color(0xFFD97706)
+        "国际" -> Color(0xFF2563EB)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val dateDisplay = try {
+        val m = item.date.substring(5, 7).toInt()
+        val d = item.date.substring(8, 10).toInt()
+        "${m}月${d}日"
+    } catch (_: Exception) { item.date }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = if (isToday) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 左侧：日期 + 星期
+            Column(Modifier.width(72.dp)) {
+                Text(
+                    dateDisplay,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isToday) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    item.dayOfWeek,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            // 中间：节日名 + 分类标签
+            Column(Modifier.weight(1f)) {
+                Text(
+                    item.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isToday) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface
+                )
+                Surface(
+                    shape = RoundedCornerShape(3.dp),
+                    color = catColor.copy(alpha = 0.1f)
+                ) {
+                    Text(
+                        item.category,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = catColor,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        fontSize = 10.sp
+                    )
+                }
+            }
+            // 右侧：倒计时
+            Text(
+                diffText,
+                style = MaterialTheme.typography.labelSmall,
+                color = when {
+                    isToday -> MaterialTheme.colorScheme.primary
+                    diff > 0 -> Color(0xFF059669)
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
+            )
+        }
+    }
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 12.dp),
+        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)
     )
 }

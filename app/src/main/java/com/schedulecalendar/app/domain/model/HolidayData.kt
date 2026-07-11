@@ -554,6 +554,7 @@ object HolidayData {
             lunarMonth == 1 && lunarDay == 1 -> "春节"
             lunarMonth == 1 && lunarDay == 15 -> "元宵节"
             lunarMonth == 2 && lunarDay == 2 -> "龙抬头"
+            lunarMonth == 3 && lunarDay == 3 -> "上巳节"
             lunarMonth == 5 && lunarDay == 5 -> "端午节"
             lunarMonth == 7 && lunarDay == 7 -> "七夕节"
             lunarMonth == 7 && lunarDay == 15 -> "中元节"

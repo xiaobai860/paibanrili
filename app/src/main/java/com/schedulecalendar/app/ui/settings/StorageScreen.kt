@@ -597,7 +597,7 @@ private fun BackupFileRow(
                         "手动",
                         fontSize = 8.sp,
                         color = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
+                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.dp)
                     )
                 }
             }
