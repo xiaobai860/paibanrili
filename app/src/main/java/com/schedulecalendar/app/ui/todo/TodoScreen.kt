@@ -280,17 +280,13 @@ private fun TodoTab(
         }
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(horizontal = 4.dp, vertical = 4.dp)
+            .padding(bottom = 8.dp)
+            .verticalScroll(rememberScrollState())
     ) {
-        Column(
-            Modifier
-                .padding(bottom = 8.dp)
-                .verticalScroll(rememberScrollState())
-        ) {
 
             // ── 有待办数据时才显示子区块 ──────────────────────────
             if (hasAnyTodo) {
@@ -435,12 +431,11 @@ private fun TodoTab(
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Default.CheckCircle, contentDescription = null,
                             tint = Color(0xFF059669), modifier = Modifier.size(36.dp))
-                        Text("\u5168\u90e8\u5df2\u5904\u7406", style = MaterialTheme.typography.bodyMedium,
+                        Text("全部已处理", style = MaterialTheme.typography.bodyMedium,
                             color = Color(0xFF059669), fontWeight = FontWeight.Medium)
                     }
                 }
             }
-        }
     }
 }
 
