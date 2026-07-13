@@ -216,17 +216,22 @@ private fun TodoTab(
     vm: CalendarViewModel
 ) {
     // ── 分类待办 ──────────────────────────────────────────────
-    val missedInTodos = todos.filter { it.type == TodoType.MISSED_CLOCK_IN }
-    val missedOutTodos = todos.filter { it.type == TodoType.MISSED_CLOCK_OUT }
-    val missedTodos = missedInTodos + missedOutTodos
-
-    val filledInTodos = todos.filter { it.type == TodoType.FILLED_CLOCK_IN }
-    val filledOutTodos = todos.filter { it.type == TodoType.FILLED_CLOCK_OUT }
-    val filledTodos = filledInTodos + filledOutTodos
-
-    val pendingOTTodos = todos.filter { it.type == TodoType.PENDING_EARLY_OT || it.type == TodoType.PENDING_LATE_OT }
-    val confirmedOTTodos = todos.filter { it.type == TodoType.CONFIRMED_EARLY_OT || it.type == TodoType.CONFIRMED_LATE_OT }
-    val ignoredOTTodos = todos.filter { it.type == TodoType.IGNORED_EARLY_OT || it.type == TodoType.IGNORED_LATE_OT }
+    // ── 分类待办（用 remember 缓存，避免每次重组重新 filter）──────────────────────
+    val missedTodos = remember(todos) {
+        todos.filter { it.type == TodoType.MISSED_CLOCK_IN || it.type == TodoType.MISSED_CLOCK_OUT }
+    }
+    val filledTodos = remember(todos) {
+        todos.filter { it.type == TodoType.FILLED_CLOCK_IN || it.type == TodoType.FILLED_CLOCK_OUT }
+    }
+    val pendingOTTodos = remember(todos) {
+        todos.filter { it.type == TodoType.PENDING_EARLY_OT || it.type == TodoType.PENDING_LATE_OT }
+    }
+    val confirmedOTTodos = remember(todos) {
+        todos.filter { it.type == TodoType.CONFIRMED_EARLY_OT || it.type == TodoType.CONFIRMED_LATE_OT }
+    }
+    val ignoredOTTodos = remember(todos) {
+        todos.filter { it.type == TodoType.IGNORED_EARLY_OT || it.type == TodoType.IGNORED_LATE_OT }
+    }
 
     val hasAnyTodo = missedTodos.isNotEmpty() || pendingOTTodos.isNotEmpty()
 
@@ -782,25 +787,27 @@ private fun HolidayTab() {
     val today = remember { LocalDate.now() }
     val listState = rememberLazyListState()
 
-    // 自动滚动到最近的节日
+    // 自动滚动到当前月份
     LaunchedEffect(holidays) {
-        val todayStr = today.toString()
-        var nearestIdx = 0
-        // 找最近的过去或未来节日
-        val futureIdx = holidays.indexOfFirst { it.date >= todayStr }
-        if (futureIdx >= 0) {
-            nearestIdx = if (futureIdx > 0) {
+        val currentMonthKey = "%04d-%02d".format(today.year, today.monthValue)
+        val currentMonthIdx = holidays.indexOfFirst { it.date.startsWith(currentMonthKey) }
+        val targetIdx = if (currentMonthIdx >= 0) {
+            currentMonthIdx
+        } else {
+            // 当月无节假日，回退到最近的节日
+            val todayStr = today.toString()
+            val futureIdx = holidays.indexOfFirst { it.date >= todayStr }
+            if (futureIdx > 0) {
                 val prev = holidays[futureIdx - 1]
                 val curr = holidays[futureIdx]
                 val prevDiff = ChronoUnit.DAYS.between(LocalDate.parse(prev.date), today)
                 val currDiff = ChronoUnit.DAYS.between(today, LocalDate.parse(curr.date))
                 if (prevDiff <= currDiff) futureIdx - 1 else futureIdx
-            } else futureIdx
-        } else {
-            nearestIdx = holidays.lastIndex
+            } else if (futureIdx == 0) 0
+            else holidays.lastIndex
         }
-        if (nearestIdx > 0) {
-            listState.scrollToItem(nearestIdx)
+        if (targetIdx > 0) {
+            listState.scrollToItem(targetIdx)
         }
     }
 

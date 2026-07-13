@@ -310,15 +310,15 @@ class CalendarViewModel @Inject constructor(
     fun goToPrevMonth() {
         val s = _state.value
         val (y, m) = if (s.month == 1) s.year - 1 to 12 else s.year to s.month - 1
-        // 不设置loading=true，由AnimatedContent处理过渡动画
-        _state.update { it.copy(year = y, month = m, todos = emptyList(), dayDetails = emptyMap(), schedules = emptyMap()) }
+        // 不清除旧数据，避免切换闪烁；新数据到达后自动替换
+        _state.update { it.copy(year = y, month = m) }
         loadCurrentMonth()
     }
 
     fun goToNextMonth() {
         val s = _state.value
         val (y, m) = if (s.month == 12) s.year + 1 to 1 else s.year to s.month + 1
-        _state.update { it.copy(year = y, month = m, todos = emptyList(), dayDetails = emptyMap(), schedules = emptyMap()) }
+        _state.update { it.copy(year = y, month = m) }
         loadCurrentMonth()
     }
 
@@ -331,8 +331,8 @@ class CalendarViewModel @Inject constructor(
             // 同月：仅更新选中日期，不触发loading，避免闪烁
             _state.update { it.copy(selectedDate = todayStr) }
         } else {
-            // 跨月：更新年月+选中日期，由AnimatedContent处理过渡动画
-            _state.update { it.copy(year = today.year, month = today.monthValue, selectedDate = todayStr, schedules = emptyMap(), dayDetails = emptyMap()) }
+            // 跨月：不清除旧数据，避免闪烁
+            _state.update { it.copy(year = today.year, month = today.monthValue, selectedDate = todayStr) }
             loadCurrentMonth()
         }
     }

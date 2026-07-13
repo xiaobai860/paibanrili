@@ -223,11 +223,7 @@ private fun ShiftsTab(
 
             Card(
                 Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(if (isBuiltin) 0.dp else 1.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isBuiltin) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    else MaterialTheme.colorScheme.surface
-                )
+                elevation = CardDefaults.cardElevation(1.dp)
             ) {
                 Row(
                     Modifier.padding(vertical = 2.dp, horizontal = 14.dp)
