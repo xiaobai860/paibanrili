@@ -129,6 +129,8 @@ fun TodoScreen(navController: NavController, vm: CalendarViewModel = hiltViewMod
                     0 -> PlaceholderTab("\u65e5\u7a0b")
                     1 -> TodoTab(
                         todos = state.todos,
+                        year = state.year,
+                        month = state.month,
                         missedExpanded = missedExpanded,
                         onMissedToggle = { missedExpanded = !missedExpanded },
                         filledExpanded = filledExpanded,
@@ -201,6 +203,8 @@ private fun PlaceholderTab(title: String) {
 @Composable
 private fun TodoTab(
     todos: List<TodoItem>,
+    year: Int,
+    month: Int,
     missedExpanded: Boolean,
     onMissedToggle: () -> Unit,
     filledExpanded: Boolean,
@@ -234,6 +238,39 @@ private fun TodoTab(
     }
 
     val hasAnyTodo = missedTodos.isNotEmpty() || pendingOTTodos.isNotEmpty()
+
+    // 月份切换控件
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            TextButton(
+                onClick = { vm.goToPrevMonth() },
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+            ) {
+                Icon(Icons.Default.ChevronLeft, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(2.dp))
+                Text("上月", fontSize = 13.sp)
+            }
+            Text(
+                year.toString() + "\u5e74" + month.toString() + "\u6708",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            TextButton(
+                onClick = { vm.goToNextMonth() },
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+            ) {
+                Text("下月", fontSize = 13.sp)
+                Spacer(Modifier.width(2.dp))
+                Icon(Icons.Default.ChevronRight, null, Modifier.size(18.dp))
+            }
+        }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
@@ -448,12 +485,10 @@ private fun TodoSection(
             Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items.forEach { todo ->
-                    Surface(
+                    Box(
                         modifier = Modifier.fillMaxWidth().then(
                             if (onItemClick != null) Modifier.clickable { onItemClick(todo.date) } else Modifier
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
                     ) {
                         itemContent(todo)
                     }
@@ -533,78 +568,72 @@ private fun UnifiedTodoRow(
     val (dateDisplay, dayOfWeek) = formatTodoDateDisplay(todo.date)
     val typeLabel = if (isClockIn) "上班" else "下班"
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 左侧：日期 + 星期
-            Column(Modifier.width(72.dp)) {
-                Text(dateDisplay,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface)
-                if (dayOfWeek.isNotEmpty()) {
-                    Text(dayOfWeek,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+        // 左侧：日期 + 星期
+        Column(Modifier.width(72.dp)) {
+            Text(dateDisplay,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface)
+            if (dayOfWeek.isNotEmpty()) {
+                Text(dayOfWeek,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Spacer(Modifier.width(8.dp))
-            // 中间：类型标签 + 附加信息
-            Column(Modifier.weight(1f)) {
-                Surface(
-                    shape = RoundedCornerShape(3.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+        }
+        Spacer(Modifier.width(8.dp))
+        // 中间：类型标签 + 附加信息
+        Column(Modifier.weight(1f)) {
+            Surface(
+                shape = RoundedCornerShape(3.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+            ) {
+                Text(typeLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                    fontSize = 10.sp)
+            }
+            if (todo.shiftName.isNotEmpty()) {
+                Text(todo.shiftName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (todo.overtimeMinutes > 0) {
+                val otLabel = if (isClockIn) "早到" else "晚退"
+                Text("$otLabel ${todo.overtimeMinutes}分钟",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary)
+            }
+            if (todo.clockTime.isNotEmpty()) {
+                Text(todo.clockTime,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (todo.actualTime.isNotEmpty()) {
+                Text("(${todo.actualTime})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        // 右侧：操作
+        if (onAction != null) {
+            if (actionIcon != null) {
+                IconButton(onClick = onAction, modifier = Modifier.size(28.dp)) {
+                    Icon(actionIcon, contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else if (actionLabel != null) {
+                TextButton(
+                    onClick = onAction,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp)
                 ) {
-                    Text(typeLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                        fontSize = 10.sp)
-                }
-                if (todo.shiftName.isNotEmpty()) {
-                    Text(todo.shiftName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (todo.overtimeMinutes > 0) {
-                    val otLabel = if (isClockIn) "早到" else "晚退"
-                    Text("$otLabel ${todo.overtimeMinutes}分钟",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary)
-                }
-                if (todo.clockTime.isNotEmpty()) {
-                    Text(todo.clockTime,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (todo.actualTime.isNotEmpty()) {
-                    Text("(${todo.actualTime})",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            // 右侧：操作
-            if (onAction != null) {
-                if (actionIcon != null) {
-                    IconButton(onClick = onAction, modifier = Modifier.size(28.dp)) {
-                        Icon(actionIcon, contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                } else if (actionLabel != null) {
-                    TextButton(
-                        onClick = onAction,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        modifier = Modifier.height(28.dp)
-                    ) {
-                        Text(actionLabel, fontSize = 13.sp)
-                    }
+                    Text(actionLabel, fontSize = 13.sp)
                 }
             }
         }
@@ -806,7 +835,7 @@ private fun HolidayTab() {
             } else if (futureIdx == 0) 0
             else holidays.lastIndex
         }
-        if (targetIdx > 0) {
+        if (targetIdx >= 0) {
             listState.scrollToItem(targetIdx)
         }
     }

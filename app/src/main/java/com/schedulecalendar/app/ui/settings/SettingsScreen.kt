@@ -1,11 +1,8 @@
 package com.schedulecalendar.app.ui.settings
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Environment
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -209,16 +206,7 @@ private fun PermissionManagementSection() {
         }
     }
 
-    // 存储权限
-    val hasStorage = remember(refreshTrigger) {
-        if (Build.VERSION.SDK_INT >= 30) {
-            Environment.isExternalStorageManager()
-        } else {
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
-        }
-    }
+    // 存储权限（已移除：应用使用 SAF 存储访问框架，不需要“所有文件访问”权限）
 
     // 通知权限（Android 13+）
     val hasNotification = remember(refreshTrigger) {
@@ -274,23 +262,6 @@ private fun PermissionManagementSection() {
                 ) {
                     HorizontalDivider()
                     Spacer(Modifier.height(4.dp))
-
-                    // 存储权限
-                    PermissionItem(
-                        name = if (Build.VERSION.SDK_INT >= 30) "所有文件访问" else "存储读写",
-                        description = "备份与恢复功能需要访问存储空间",
-                        granted = hasStorage,
-                        onAction = {
-                            if (Build.VERSION.SDK_INT >= 30) {
-                                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                                    data = android.net.Uri.parse("package:${context.packageName}")
-                                }
-                                context.startActivity(intent)
-                            } else {
-                                permLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                            }
-                        }
-                    )
 
                     // 通知权限
                     PermissionItem(
