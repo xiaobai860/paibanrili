@@ -11,7 +11,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -234,46 +236,28 @@ private fun TodoTab(
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(Modifier.padding(bottom = 8.dp)) {
-
-            // ── 待办中心标题行 ──────────────────────────────────────
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.Notifications, contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("\u5f85\u529e\u4e2d\u5fc3", style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.width(8.dp))
-                if (hasAnyTodo) {
-                    val parts = mutableListOf<String>()
-                    if (missedTodos.isNotEmpty()) parts.add("\u6f0f\u6253\u5361 ${missedTodos.size} \u6761")
-                    if (pendingOTTodos.isNotEmpty()) parts.add("\u52a0\u73ed\u786e\u8ba4 ${pendingOTTodos.size} \u6761")
-                    Text(
-                        "(${parts.joinToString(" / ")})",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.Medium
-                    )
-                } else {
-                    Text("\u5168\u90e8\u5df2\u5904\u7406", style = MaterialTheme.typography.bodySmall, color = Color(0xFF059669))
-                }
-            }
+        Column(
+            Modifier
+                .padding(bottom = 8.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
 
             // ── 有待办数据时才显示子区块 ──────────────────────────
             if (hasAnyTodo) {
                 // ── 漏打卡待补录 ──────────────────────────────────────────
+                val sortedMissed = sortTodosByDateDesc(missedTodos)
                 TodoSection(
                     icon = Icons.Default.Update, iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    title = "\u6f0f\u6253\u5361\u5f85\u8865\u5f55", count = missedTodos.size,
-                    expanded = missedExpanded, onToggle = onMissedToggle, emptyText = "\u65e0",
-                    items = missedTodos, onItemClick = null,
+                    title = "漏打卡待补录", count = missedTodos.size,
+                    expanded = missedExpanded, onToggle = onMissedToggle, emptyText = "无",
+                    items = sortedMissed, onItemClick = null,
                     itemContent = { todo ->
-                        MissedClockTodoItem(
+                        val isClockIn = todo.type == TodoType.MISSED_CLOCK_IN
+                        UnifiedTodoRow(
                             todo = todo,
-                            onFill = { onFillMissedClock(todo.date, todo.type == TodoType.MISSED_CLOCK_IN) }
+                            isClockIn = isClockIn,
+                            onAction = { onFillMissedClock(todo.date, isClockIn) },
+                            actionLabel = "补录"
                         )
                     }
                 )
@@ -285,60 +269,20 @@ private fun TodoTab(
                     expanded = filledExpanded, onToggle = onFilledToggle
                 )
                 AnimatedVisibility(visible = filledExpanded && filledTodos.isNotEmpty()) {
+                    val sortedFilled = sortTodosByDateDesc(filledTodos)
                     Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        filledTodos.forEach { todo ->
+                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        sortedFilled.forEach { todo ->
                             val isClockIn = todo.type == TodoType.FILLED_CLOCK_IN
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            ) {
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(shape = RoundedCornerShape(4.dp),
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)) {
-                                        Text(if (isClockIn) "\u4e0a\u73ed" else "\u4e0b\u73ed",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        text = if (todo.date.length >= 10) todo.date.substring(5) else todo.date,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    if (todo.shiftName.isNotEmpty()) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            todo.shiftName,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    if (todo.clockTime.isNotEmpty()) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            todo.clockTime,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Spacer(Modifier.weight(1f))
-                                    IconButton(
-                                        onClick = {
-                                            if (isClockIn) vm.unfillMissedClockIn(todo.date)
-                                            else vm.unfillMissedClockOut(todo.date)
-                                        },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(Icons.Default.Undo, contentDescription = "\u64a4\u9500",
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-                            }
+                            UnifiedTodoRow(
+                                todo = todo,
+                                isClockIn = isClockIn,
+                                onAction = {
+                                    if (isClockIn) vm.unfillMissedClockIn(todo.date)
+                                    else vm.unfillMissedClockOut(todo.date)
+                                },
+                                actionIcon = Icons.Default.Undo
+                            )
                         }
                     }
                 }
@@ -358,12 +302,14 @@ private fun TodoTab(
                     icon = Icons.Default.Schedule, iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                     title = "\u7591\u4f3c\u52a0\u73ed\u5f85\u786e\u8ba4", count = pendingOTTodos.size,
                     expanded = otPendingExpanded, onToggle = onOtPendingToggle, emptyText = "\u65e0",
-                    items = pendingOTTodos, onItemClick = null,
+                    items = sortTodosByDateDesc(pendingOTTodos), onItemClick = null,
                     itemContent = { todo ->
                         val isEarly = todo.type == TodoType.PENDING_EARLY_OT
-                        OvertimeTodoItem(
-                            todo = todo, isEarly = isEarly,
-                            onAction = { onOvertimeAction(todo.date, isEarly) }
+                        UnifiedTodoRow(
+                            todo = todo,
+                            isClockIn = isEarly,
+                            onAction = { onOvertimeAction(todo.date, isEarly) },
+                            actionLabel = "\u786e\u8ba4"
                         )
                     }
                 )
@@ -375,60 +321,20 @@ private fun TodoTab(
                     expanded = otConfirmedExpanded, onToggle = onOtConfirmedToggle
                 )
                 AnimatedVisibility(visible = otConfirmedExpanded && confirmedOTTodos.isNotEmpty()) {
+                    val sortedConfirmed = sortTodosByDateDesc(confirmedOTTodos)
                     Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        confirmedOTTodos.forEach { todo ->
+                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        sortedConfirmed.forEach { todo ->
                             val isEarly = todo.type == TodoType.CONFIRMED_EARLY_OT
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            ) {
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = if (todo.date.length >= 10) todo.date.substring(5) else todo.date,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    if (todo.shiftName.isNotEmpty()) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            todo.shiftName,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    if (todo.overtimeMinutes > 0) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            "${if (isEarly) "\u65e9\u5230" else "\u665a\u9000"} ${todo.overtimeMinutes}\u5206\u949f",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.tertiary
-                                        )
-                                    }
-                                    if (todo.actualTime.isNotEmpty()) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            "(${todo.actualTime})",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Spacer(Modifier.weight(1f))
-                                    IconButton(
-                                        onClick = {
-                                            if (isEarly) vm.unconfirmEarlyOvertime(todo.date)
-                                            else vm.unconfirmLateOvertime(todo.date)
-                                        },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(Icons.Default.Undo, contentDescription = "\u64a4\u9500",
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-                            }
+                            UnifiedTodoRow(
+                                todo = todo,
+                                isClockIn = isEarly,
+                                onAction = {
+                                    if (isEarly) vm.unconfirmEarlyOvertime(todo.date)
+                                    else vm.unconfirmLateOvertime(todo.date)
+                                },
+                                actionIcon = Icons.Default.Undo
+                            )
                         }
                     }
                 }
@@ -447,60 +353,20 @@ private fun TodoTab(
                     expanded = otIgnoredExpanded, onToggle = onOtIgnoredToggle
                 )
                 AnimatedVisibility(visible = otIgnoredExpanded && ignoredOTTodos.isNotEmpty()) {
+                    val sortedIgnored = sortTodosByDateDesc(ignoredOTTodos)
                     Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        ignoredOTTodos.forEach { todo ->
+                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        sortedIgnored.forEach { todo ->
                             val isEarly = todo.type == TodoType.IGNORED_EARLY_OT
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            ) {
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = if (todo.date.length >= 10) todo.date.substring(5) else todo.date,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    if (todo.shiftName.isNotEmpty()) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            todo.shiftName,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    if (todo.overtimeMinutes > 0) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            "${if (isEarly) "\u65e9\u5230" else "\u665a\u9000"} ${todo.overtimeMinutes}\u5206\u949f",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.tertiary
-                                        )
-                                    }
-                                    if (todo.actualTime.isNotEmpty()) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            "(${todo.actualTime})",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Spacer(Modifier.weight(1f))
-                                    IconButton(
-                                        onClick = {
-                                            if (isEarly) vm.unignoreEarlyArrival(todo.date)
-                                            else vm.unignoreLateLeave(todo.date)
-                                        },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(Icons.Default.Undo, contentDescription = "\u64a4\u9500",
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-                            }
+                            UnifiedTodoRow(
+                                todo = todo,
+                                isClockIn = isEarly,
+                                onAction = {
+                                    if (isEarly) vm.unignoreEarlyArrival(todo.date)
+                                    else vm.unignoreLateLeave(todo.date)
+                                },
+                                actionIcon = Icons.Default.Undo
+                            )
                         }
                     }
                 }
@@ -511,6 +377,18 @@ private fun TodoTab(
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } // end if (hasAnyTodo)
+            } else {
+                // 无待办事项时显示
+                Box(Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                    contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null,
+                            tint = Color(0xFF059669), modifier = Modifier.size(36.dp))
+                        Text("\u5168\u90e8\u5df2\u5904\u7406", style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF059669), fontWeight = FontWeight.Medium)
+                    }
+                }
             }
         }
     }
@@ -619,107 +497,111 @@ private fun CollapsibleCountRow(
     }
 }
 
-// ── 漏打卡补录事项行（上班/下班独立显示 + 补录按钮） ──────────────────
+// ── 待办排序工具：按日期降序，同日期上班在前 ────────────────────────
 
-@Composable
-private fun MissedClockTodoItem(
-    todo: TodoItem,
-    onFill: () -> Unit
-) {
-    val isClockIn = todo.type == TodoType.MISSED_CLOCK_IN
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.error.copy(alpha = 0.1f)) {
-            Text(
-                text = if (isClockIn) "\u4e0a\u73ed" else "\u4e0b\u73ed",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = if (todo.date.length >= 10) todo.date.substring(5) else todo.date,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        if (todo.shiftName.isNotEmpty()) {
-            Spacer(Modifier.width(6.dp))
-            Text(
-                todo.shiftName,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        if (todo.clockTime.isNotEmpty()) {
-            Spacer(Modifier.width(6.dp))
-            Text(
-                todo.clockTime,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.weight(1f))
-        TextButton(
-            onClick = onFill,
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-            modifier = Modifier.height(28.dp)
-        ) {
-            Text("\u8865\u5f55", fontSize = 13.sp)
-        }
+private fun sortTodosByDateDesc(todos: List<TodoItem>): List<TodoItem> {
+    return todos.sortedWith(compareByDescending<TodoItem> { it.date })
+}
+
+// ── 日期显示格式化 ────────────────────────────────────────────────
+
+private fun formatTodoDateDisplay(date: String): Pair<String, String> {
+    return try {
+        val d = LocalDate.parse(date)
+        val dowLabels = arrayOf("周一","周二","周三","周四","周五","周六","周日")
+        "${d.monthValue}月${d.dayOfMonth}日" to dowLabels[d.dayOfWeek.value - 1]
+    } catch (_: Exception) {
+        (if (date.length >= 10) date.substring(5) else date) to ""
     }
 }
 
-// ── 加班处理事项行（早到/晚退独立显示 + 处理按钮） ──────────────────
+// ── 统一待办行（与 HolidayRow 样式一致） ─────────────────────────
 
 @Composable
-private fun OvertimeTodoItem(
+private fun UnifiedTodoRow(
     todo: TodoItem,
-    isEarly: Boolean,
-    onAction: () -> Unit
+    isClockIn: Boolean,
+    onAction: (() -> Unit)? = null,
+    actionLabel: String? = null,
+    actionIcon: ImageVector? = null
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+    val (dateDisplay, dayOfWeek) = formatTodoDateDisplay(todo.date)
+    val typeLabel = if (isClockIn) "上班" else "下班"
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
-        Text(
-            text = if (todo.date.length >= 10) todo.date.substring(5) else todo.date,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        if (todo.shiftName.isNotEmpty()) {
-            Spacer(Modifier.width(6.dp))
-            Text(
-                todo.shiftName,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        if (todo.overtimeMinutes > 0) {
-            Spacer(Modifier.width(6.dp))
-            Text(
-                "${if (isEarly) "\u65e9\u5230" else "\u665a\u9000"} ${todo.overtimeMinutes}\u5206\u949f",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.tertiary
-            )
-        }
-        if (todo.actualTime.isNotEmpty()) {
-            Spacer(Modifier.width(6.dp))
-            Text(
-                "(${todo.actualTime})",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.weight(1f))
-        TextButton(
-            onClick = onAction,
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-            modifier = Modifier.height(28.dp)
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("\u5904\u7406", fontSize = 13.sp)
+            // 左侧：日期 + 星期
+            Column(Modifier.width(72.dp)) {
+                Text(dateDisplay,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface)
+                if (dayOfWeek.isNotEmpty()) {
+                    Text(dayOfWeek,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            // 中间：类型标签 + 附加信息
+            Column(Modifier.weight(1f)) {
+                Surface(
+                    shape = RoundedCornerShape(3.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                ) {
+                    Text(typeLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        fontSize = 10.sp)
+                }
+                if (todo.shiftName.isNotEmpty()) {
+                    Text(todo.shiftName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (todo.overtimeMinutes > 0) {
+                    val otLabel = if (isClockIn) "早到" else "晚退"
+                    Text("$otLabel ${todo.overtimeMinutes}分钟",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary)
+                }
+                if (todo.clockTime.isNotEmpty()) {
+                    Text(todo.clockTime,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (todo.actualTime.isNotEmpty()) {
+                    Text("(${todo.actualTime})",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            // 右侧：操作
+            if (onAction != null) {
+                if (actionIcon != null) {
+                    IconButton(onClick = onAction, modifier = Modifier.size(28.dp)) {
+                        Icon(actionIcon, contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else if (actionLabel != null) {
+                    TextButton(
+                        onClick = onAction,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text(actionLabel, fontSize = 13.sp)
+                    }
+                }
+            }
         }
     }
 }

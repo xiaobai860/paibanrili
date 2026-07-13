@@ -355,8 +355,6 @@ object CalcUtils {
             if (!date.startsWith(prefix)) continue
             if (dateFilter != null && !dateFilter(date)) continue
 
-            // 与 calcDayHours/calcMonthHours 完全一致：通过 shiftId 推导 effectiveType
-            // 避免 record.type 字段不准确导致错误过滤（用户排班时 type 可能都是 SHIFT）
             val effectiveType = when (record.shiftId) {
                 BUILTIN_SHIFT_LEAVE -> ScheduleType.LEAVE
                 BUILTIN_SHIFT_SWAP  -> ScheduleType.SWAP
@@ -368,6 +366,7 @@ object CalcUtils {
                 && effectiveType != ScheduleType.SWAP) continue
 
             val hours = calcDayHours(record, date, shifts, breaks, attendConfig)
+
             normalSalary   += hours.normal   * salaryConfig.normalRate
             overtimeSalary += hours.overtime * salaryConfig.overtimeRate
             weekendSalary  += hours.weekend  * salaryConfig.weekendRate

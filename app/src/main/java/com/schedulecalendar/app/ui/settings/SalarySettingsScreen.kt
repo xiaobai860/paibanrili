@@ -2,12 +2,13 @@
 package com.schedulecalendar.app.ui.settings
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -39,6 +40,7 @@ private fun SalaryConfigSection(
     onSave: (SalaryConfig) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // ── 标准工时制字段 ──
     var baseSalary   by remember(config) { mutableStateOf(config.baseSalary.toInputString()) }
     var basePerf     by remember(config) { mutableStateOf(config.basePerformance.toInputString()) }
     var normalRate   by remember(config) { mutableStateOf(config.normalRate.toInputString()) }
@@ -48,7 +50,7 @@ private fun SalaryConfigSection(
     var insurance    by remember(config) { mutableStateOf(config.socialInsurance.toInputString()) }
     var housingFund  by remember(config) { mutableStateOf(config.housingFundDeduction.toInputString()) }
 
-    fun save() = onSave(SalaryConfig(
+    fun buildConfig() = SalaryConfig(
         baseSalary          = baseSalary.toDoubleOrNull()   ?: 0.0,
         basePerformance     = basePerf.toDoubleOrNull()     ?: 0.0,
         normalRate          = normalRate.toDoubleOrNull()   ?: 0.0,
@@ -57,17 +59,31 @@ private fun SalaryConfigSection(
         holidayRate         = holRate.toDoubleOrNull()      ?: 0.0,
         socialInsurance     = insurance.toDoubleOrNull()    ?: 0.0,
         housingFundDeduction = housingFund.toDoubleOrNull() ?: 0.0
-    ))
+    )
 
-    Column(modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ProtectedNumField("\u57fa\u7840\u5e95\u85aa (\u5143/\u6708)", baseSalary)   { baseSalary  = it; save() }
-        ProtectedNumField("\u57fa\u7840\u7ee9\u6548 (\u5143/\u6708)", basePerf)     { basePerf    = it; save() }
-        ProtectedNumField("\u6b63\u5e38\u65f6\u85aa (\u5143/\u65f6)", normalRate)   { normalRate  = it; save() }
-        ProtectedNumField("\u52a0\u73ed\u65f6\u85aa (\u5143/\u65f6)", otRate)       { otRate      = it; save() }
-        ProtectedNumField("\u5468\u672b\u65f6\u85aa (\u5143/\u65f6)", wkndRate)     { wkndRate    = it; save() }
-        ProtectedNumField("\u8282\u5047\u65e5\u65f6\u85aa (\u5143/\u65f6)", holRate)     { holRate     = it; save() }
-        ProtectedNumField("\u793e\u4fdd\u6263\u6b3e (\u5143/\u6708)", insurance)   { insurance   = it; save() }
-        ProtectedNumField("\u516c\u79ef\u91d1\u6263\u6b3e (\u5143/\u6708)", housingFund)  { housingFund = it; save() }
+    fun save() = onSave(buildConfig())
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // ── 标准工时制 ──
+        Text("标准工时制", style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+
+        ProtectedNumField("基础底薪 (元/月)", baseSalary)   { baseSalary  = it; save() }
+        ProtectedNumField("基础绩效 (元/月)", basePerf)     { basePerf    = it; save() }
+        ProtectedNumField("正常时薪 (元/时)", normalRate)   { normalRate  = it; save() }
+        ProtectedNumField("加班时薪 (元/时)", otRate)       { otRate      = it; save() }
+        ProtectedNumField("周末时薪 (元/时)", wkndRate)     { wkndRate    = it; save() }
+        ProtectedNumField("节假日时薪 (元/时)", holRate)    { holRate     = it; save() }
+        ProtectedNumField("社保扣款 (元/月)", insurance)    { insurance   = it; save() }
+        ProtectedNumField("公积金扣款 (元/月)", housingFund){ housingFund = it; save() }
+
+        // 底部间距，避免被导航栏遮挡
+        Spacer(Modifier.height(16.dp))
     }
 }
