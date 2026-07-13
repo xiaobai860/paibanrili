@@ -32,6 +32,7 @@ import com.schedulecalendar.app.ui.shifts.ShiftEditorScreen
 import com.schedulecalendar.app.ui.shifts.ShiftsScreen
 import com.schedulecalendar.app.ui.statistics.StatisticsScreen
 import com.schedulecalendar.app.ui.todo.TodoScreen
+import com.schedulecalendar.app.ui.settings.ReminderSettingsScreen
 import com.schedulecalendar.app.ui.calendar.HuangLiScreen
 
 /** Tab 配置（使用类型安全路由 Any 统一持有） */
@@ -108,6 +109,7 @@ fun AppNavHost() {
             composable<RouteDisplaySchemes>    { DisplaySchemesScreen(navController) }
             composable<RouteShiftEditor>       { ShiftEditorScreen(navController) }
             composable<RouteHuangLi> { HuangLiScreen(navController) }
+            composable<RouteReminderSettings> { ReminderSettingsScreen(navController) }
         }
     }
 }

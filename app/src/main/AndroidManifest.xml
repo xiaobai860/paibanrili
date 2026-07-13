@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.READ_CALENDAR"/>
+    <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
 
     <application
         android:name=".ScheduleApp"
@@ -64,6 +68,11 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/schedule_widget_info"/>
         </receiver>
+
+        <!-- 上下班提醒闹钟接收器 -->
+        <receiver
+            android:name=".reminder.AlarmReceiver"
+            android:exported="false" />
 
     </application>
 </manifest>

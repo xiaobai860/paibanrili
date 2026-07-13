@@ -1,6 +1,7 @@
 package com.schedulecalendar.app.ui.settings
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -81,6 +82,16 @@ fun SettingsScreen(navController: NavController, vm: SettingsViewModel = hiltVie
                     title = "自动打卡",
                     description = "自动打卡规则设置",
                     onClick = { navController.navigate(RouteAutoClockSettings) }
+                )
+            }
+
+            // ── 上下班提醒 ──────────────────────────────────
+            item {
+                SettingsCard(
+                    icon = Icons.Default.Alarm,
+                    title = "上下班提醒",
+                    description = "设置上下班提醒方式与时间",
+                    onClick = { navController.navigate(RouteReminderSettings) }
                 )
             }
 
@@ -208,6 +219,28 @@ private fun PermissionManagementSection() {
 
     // 存储权限（已移除：应用使用 SAF 存储访问框架，不需要“所有文件访问”权限）
 
+    // 日历读取权限
+    val hasCalendar = remember(refreshTrigger) {
+        ContextCompat.checkSelfPermission(
+            context, Manifest.permission.READ_CALENDAR
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    // 日历写入权限
+    val hasWriteCalendar = remember(refreshTrigger) {
+        ContextCompat.checkSelfPermission(
+            context, Manifest.permission.WRITE_CALENDAR
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    // 精确闹钟权限（Android 12+）
+    val hasExactAlarm = remember(refreshTrigger) {
+        if (Build.VERSION.SDK_INT >= 31) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            alarmManager.canScheduleExactAlarms()
+        } else true
+    }
+
     // 通知权限（Android 13+）
     val hasNotification = remember(refreshTrigger) {
         if (Build.VERSION.SDK_INT >= 33) {
@@ -274,6 +307,35 @@ private fun PermissionManagementSection() {
                             }
                         }
                     )
+
+                    // 日历读取权限
+                    PermissionItem(
+                        name = "日历读取",
+                        description = "读取系统日历事件用于日程显示",
+                        granted = hasCalendar,
+                        onAction = { permLauncher.launch(Manifest.permission.READ_CALENDAR) }
+                    )
+
+                    // 日历写入权限
+                    PermissionItem(
+                        name = "日历写入",
+                        description = "同步修改系统日历事件",
+                        granted = hasWriteCalendar,
+                        onAction = { permLauncher.launch(Manifest.permission.WRITE_CALENDAR) }
+                    )
+
+                    // 精确闹钟权限
+                    if (Build.VERSION.SDK_INT >= 31) {
+                        PermissionItem(
+                            name = "精确闹钟",
+                            description = "用于上下班提醒的精确触发",
+                            granted = hasExactAlarm,
+                            onAction = {
+                                val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
 
                     Spacer(Modifier.height(4.dp))
                 }

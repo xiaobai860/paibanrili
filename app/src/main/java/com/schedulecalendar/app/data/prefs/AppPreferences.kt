@@ -49,6 +49,14 @@ class AppPreferences @Inject constructor(
         val KEY_APP_DATA_KEEP_COUNT    = intPreferencesKey("app_data_keep_count")
         val KEY_SHIFT_CONFIG_KEEP_COUNT = intPreferencesKey("shift_config_keep_count")
         val KEY_BACKUP_CUSTOM_PATH     = stringPreferencesKey("backup_custom_path")
+        // ── 上下班提醒配置 ──
+        val KEY_REMINDER_ENABLED        = stringPreferencesKey("reminder_enabled")
+        val KEY_REMINDER_METHOD          = stringPreferencesKey("reminder_method")
+        val KEY_REMINDER_CLOCK_IN        = stringPreferencesKey("reminder_clock_in")
+        val KEY_REMINDER_CLOCK_OUT       = stringPreferencesKey("reminder_clock_out")
+        val KEY_REMINDER_CLOCK_IN_MINUTES = intPreferencesKey("reminder_clock_in_minutes")
+        val KEY_REMINDER_CLOCK_OUT_MINUTES = intPreferencesKey("reminder_clock_out_minutes")
+        val KEY_DISABLED_ACCOUNT_IDS     = stringPreferencesKey("disabled_calendar_accounts")
     }
 
     // ── 薪资配置 ───────────────────────────────────
@@ -181,4 +189,69 @@ class AppPreferences @Inject constructor(
 
     /** 清除所有 DataStore 键值对，恢复出厂默认值 */
     suspend fun clearAll() = context.dataStore.edit { it.clear() }
+
+    // ── 上下班提醒配置 ───────────────────────────────────
+
+    /** 提醒是否启用 */
+    suspend fun getReminderEnabled(): Boolean =
+        context.dataStore.data.first()[KEY_REMINDER_ENABLED] == "true"
+    suspend fun saveReminderEnabled(enabled: Boolean) = context.dataStore.edit {
+        it[KEY_REMINDER_ENABLED] = enabled.toString()
+    }
+    val reminderEnabledFlow: Flow<Boolean> = context.dataStore.data.map {
+        it[KEY_REMINDER_ENABLED] == "true"
+    }
+
+    /** 提醒方式："calendar"=日历提醒，"alarm"=闹钟提醒 */
+    suspend fun getReminderMethod(): String =
+        context.dataStore.data.first()[KEY_REMINDER_METHOD] ?: "alarm"
+    suspend fun saveReminderMethod(method: String) = context.dataStore.edit {
+        it[KEY_REMINDER_METHOD] = method
+    }
+    val reminderMethodFlow: Flow<String> = context.dataStore.data.map {
+        it[KEY_REMINDER_METHOD] ?: "alarm"
+    }
+
+    /** 提醒内容："both" / "clock_in" / "clock_out" */
+    suspend fun getReminderClockIn(): Boolean =
+        context.dataStore.data.first()[KEY_REMINDER_CLOCK_IN] != "false"
+    suspend fun saveReminderClockIn(enabled: Boolean) = context.dataStore.edit {
+        it[KEY_REMINDER_CLOCK_IN] = enabled.toString()
+    }
+    suspend fun getReminderClockOut(): Boolean =
+        context.dataStore.data.first()[KEY_REMINDER_CLOCK_OUT] != "false"
+    suspend fun saveReminderClockOut(enabled: Boolean) = context.dataStore.edit {
+        it[KEY_REMINDER_CLOCK_OUT] = enabled.toString()
+    }
+
+    /** 提前提醒时间（分钟） */
+    suspend fun getReminderClockInMinutes(): Int =
+        context.dataStore.data.first()[KEY_REMINDER_CLOCK_IN_MINUTES] ?: 15
+    suspend fun saveReminderClockInMinutes(minutes: Int) = context.dataStore.edit {
+        it[KEY_REMINDER_CLOCK_IN_MINUTES] = minutes
+    }
+    suspend fun getReminderClockOutMinutes(): Int =
+        context.dataStore.data.first()[KEY_REMINDER_CLOCK_OUT_MINUTES] ?: 0
+    suspend fun saveReminderClockOutMinutes(minutes: Int) = context.dataStore.edit {
+        it[KEY_REMINDER_CLOCK_OUT_MINUTES] = minutes
+    }
+    val reminderSettingsFlow = kotlinx.coroutines.flow.combine(
+        reminderEnabledFlow, reminderMethodFlow
+    ) { enabled, method ->
+        ReminderSettingsSnapshot(enabled, method)
+    }
+
+    data class ReminderSettingsSnapshot(val enabled: Boolean, val method: String)
+
+    /** 已禁用的日历账户 ID 列表 */
+    suspend fun getDisabledAccountIds(): Set<Long> =
+        context.dataStore.data.first()[KEY_DISABLED_ACCOUNT_IDS]
+            ?.split(",")?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
+    suspend fun saveDisabledAccountIds(ids: Set<Long>) = context.dataStore.edit {
+        it[KEY_DISABLED_ACCOUNT_IDS] = ids.joinToString(",")
+    }
+    val disabledAccountIdsFlow: Flow<Set<Long>> = context.dataStore.data.map {
+        it[KEY_DISABLED_ACCOUNT_IDS]
+            ?.split(",")?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
+    }
 }

@@ -25,3 +25,4 @@ import kotlinx.serialization.Serializable
 @Serializable object RouteDisplaySchemes
 @Serializable data class RouteShiftEditor(val shiftId: String? = null)
 @Serializable data class RouteHuangLi(val date: String)
+@Serializable object RouteReminderSettings

@@ -1,6 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/ui/todo/TodoScreen.kt
 package com.schedulecalendar.app.ui.todo
 
+import android.Manifest
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -39,8 +40,11 @@ import com.schedulecalendar.app.domain.model.HolidayData
 import com.schedulecalendar.app.ui.navigation.RouteScheduleDetail
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+import java.util.Date
+import java.util.Locale
 
 // ── 数据类 ────────────────────────────────────────────────────────────────
 
@@ -54,7 +58,11 @@ private data class OvertimeActionTarget(val date: String, val isEarly: Boolean)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun TodoScreen(navController: NavController, vm: CalendarViewModel = hiltViewModel()) {
+fun TodoScreen(
+    navController: NavController,
+    vm: CalendarViewModel = hiltViewModel(),
+    eventVm: CalendarEventViewModel = hiltViewModel()
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -126,7 +134,7 @@ fun TodoScreen(navController: NavController, vm: CalendarViewModel = hiltViewMod
         ) { page ->
             Box(Modifier.fillMaxSize()) {
                 when (page) {
-                    0 -> PlaceholderTab("\u65e5\u7a0b")
+                    0 -> CalendarEventTab(vm = eventVm)
                     1 -> TodoTab(
                         todos = state.todos,
                         year = state.year,
@@ -724,6 +732,290 @@ private fun OvertimeActionDialog(
                 Icon(Icons.Default.Close, null, Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("\u4e0d\u662f\u52a0\u73ed")
+            }
+        }
+    )
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 日程标签页（系统日历事件显示）
+// ════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun CalendarEventTab(vm: CalendarEventViewModel) {
+    val eventState by vm.state.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val permLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            vm.checkPermission()
+            vm.loadEvents()
+        }
+    }
+
+    when {
+        !eventState.hasPermission -> {
+            // 无权限时显示授权引导
+            Box(
+                modifier = Modifier.fillMaxSize().padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.CalendarMonth, null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text("需要日历读取权限", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "授予权限后可显示系统日历事件",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = { permLauncher.launch(Manifest.permission.READ_CALENDAR) }) {
+                        Text("授予权限")
+                    }
+                }
+            }
+        }
+        eventState.isLoading -> {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
+        eventState.events.isEmpty() -> {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.EventNote, null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text("近期没有日程事件", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "在系统日历中添加事件后会在此显示",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        else -> {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // 按日期分组
+                val grouped = eventState.events.groupBy { event ->
+                    try {
+                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                        sdf.format(Date(event.dtStart))
+                    } catch (_: Exception) { "未知日期" }
+                }
+                val sortedDates = grouped.keys.sorted()
+
+                for (dateStr in sortedDates) {
+                    val dayEvents = grouped[dateStr] ?: continue
+                    val displayDate = try {
+                        val parts = dateStr.split("-")
+                        if (parts.size == 3) "${parts[1].toInt()}月${parts[2].toInt()}日" else dateStr
+                    } catch (_: Exception) { dateStr }
+
+                    stickyHeader {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.surface
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier.width(3.dp).height(14.dp)
+                                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    displayDate,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "${dayEvents.size}个事件",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    items(dayEvents, key = { it.id }) { event ->
+                        CalendarEventRow(event = event, onClick = { vm.selectEvent(event) })
+                    }
+                }
+            }
+        }
+    }
+
+    // ── 详情/编辑弹窗 ─────────────────────────────────────
+    eventState.selectedEvent?.let { event ->
+        if (eventState.showEditDialog) {
+            CalendarEventDetailDialog(
+                event = event,
+                onDismiss = { vm.dismissDetailDialog() },
+                onEdit = { updated -> vm.updateEvent(updated) },
+                onDelete = { vm.showDeleteConfirm(event) }
+            )
+        }
+        if (eventState.showDeleteDialog) {
+            AlertDialog(
+                onDismissRequest = { vm.dismissDeleteDialog() },
+                title = { Text("删除日程") },
+                text = { Text("确认删除「${event.title}」？此操作将同步到系统日历。") },
+                confirmButton = {
+                    TextButton(onClick = { vm.deleteEvent(event.id) }) {
+                        Text("删除", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { vm.dismissDeleteDialog() }) { Text("取消") }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalendarEventRow(
+    event: com.schedulecalendar.app.data.calendar.CalendarEventInfo,
+    onClick: () -> Unit
+) {
+    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val startStr = remember(event.dtStart) { timeFormat.format(Date(event.dtStart)) }
+    val endStr = remember(event.dtEnd) { timeFormat.format(Date(event.dtEnd)) }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        onClick = onClick
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 左侧时间
+            Column(Modifier.width(60.dp)) {
+                Text(
+                    startStr,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    endStr,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            // 中间：标题 + 账户信息
+            Column(Modifier.weight(1f)) {
+                Text(
+                    event.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (event.accountName.isNotEmpty()) {
+                    Text(
+                        event.accountName,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            // 右侧箭头
+            Icon(
+                Icons.Default.ChevronRight, null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+/**
+ * 日历事件详情/编辑弹窗
+ */
+@Composable
+private fun CalendarEventDetailDialog(
+    event: com.schedulecalendar.app.data.calendar.CalendarEventInfo,
+    onDismiss: () -> Unit,
+    onEdit: (com.schedulecalendar.app.data.calendar.CalendarEventInfo) -> Unit,
+    onDelete: () -> Unit
+) {
+    var title by remember(event.id) { mutableStateOf(event.title) }
+    var description by remember(event.id) { mutableStateOf(event.description ?: "") }
+    var location by remember(event.id) { mutableStateOf(event.eventLocation ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("日程详情") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("标题") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("描述") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2, maxLines = 4
+                )
+                OutlinedTextField(
+                    value = location,
+                    onValueChange = { location = it },
+                    label = { Text("地点") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onEdit(
+                        event.copy(
+                            title = title,
+                            description = description.ifBlank { null },
+                            eventLocation = location.ifBlank { null }
+                        )
+                    )
+                }
+            ) { Text("保存") }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onDelete) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = onDismiss) { Text("取消") }
             }
         }
     )
