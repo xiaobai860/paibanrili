@@ -116,9 +116,8 @@ data class SalaryConfig(
     val overtimeRate: Double        = 0.0,   // 加班时薪（元/小时）
     val weekendRate: Double         = 0.0,   // 周末时薪（元/小时）
     val holidayRate: Double         = 0.0,   // 节假日时薪（元/小时）
-    val normalMonthlyHours: Double  = 0.0,   // 月标准工时（用于时薪反算）
     val socialInsurance: Double     = 0.0,   // 社保扣款（元/月）
-    val incomeTax: Double           = 0.0    // 个人所得税（元/月）
+    val housingFundDeduction: Double = 0.0   // 公积金扣款（元/月）
 )
 
 /** 考勤规则配置 */
@@ -264,8 +263,8 @@ data class SalarySummary(
     val totalSubsidy: Double        = 0.0,
     val totalDeduction: Double      = 0.0,
     val socialInsurance: Double     = 0.0,  // 社保扣款
-    val incomeTax: Double           = 0.0,  // 个人所得税
-    val totalSalary: Double         = 0.0   // 实发工资（已扣社保/税）
+    val housingFundDeduction: Double = 0.0,  // 公积金扣款
+    val totalSalary: Double         = 0.0   // 实发工资（已扣社保/公积金）
 )
 
 /** 日期节假日信息 */

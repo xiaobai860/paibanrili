@@ -399,7 +399,7 @@ object CalcUtils {
         val totalSalary = salaryConfig.baseSalary + salaryConfig.basePerformance +
                 normalSalary + overtimeSalary + weekendSalary + holidaySalary +
                 totalSubsidy - totalDeduction -
-                salaryConfig.socialInsurance - salaryConfig.incomeTax
+                salaryConfig.socialInsurance - salaryConfig.housingFundDeduction
 
         return SalarySummary(
             baseSalary      = salaryConfig.baseSalary,
@@ -411,7 +411,7 @@ object CalcUtils {
             totalSubsidy    = roundD2(totalSubsidy),
             totalDeduction  = roundD2(totalDeduction),
             socialInsurance = salaryConfig.socialInsurance,
-            incomeTax       = salaryConfig.incomeTax,
+            housingFundDeduction = salaryConfig.housingFundDeduction,
             totalSalary     = roundD2(totalSalary)
         )
     }

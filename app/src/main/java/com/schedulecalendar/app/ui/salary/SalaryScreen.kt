@@ -218,14 +218,14 @@ private fun SalaryDetailGrid(actual: SalarySummary, future: SalarySummary?) {
                 isDeduction = true, modifier = Modifier.weight(1f))
         }
         // 社保 + 个税（仅配置了才显示）
-        if (actual.socialInsurance > 0 || actual.incomeTax > 0) {
+        if (actual.socialInsurance > 0 || actual.housingFundDeduction > 0) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (actual.socialInsurance > 0)
                     SalaryStatCell("社保扣款", actual.socialInsurance,
                         valueColor = MaterialTheme.colorScheme.error,
                         isDeduction = true, modifier = Modifier.weight(1f))
-                if (actual.incomeTax > 0)
-                    SalaryStatCell("个人所得税", actual.incomeTax,
+                if (actual.housingFundDeduction > 0)
+                    SalaryStatCell("公积金扣款", actual.housingFundDeduction,
                         valueColor = MaterialTheme.colorScheme.error,
                         isDeduction = true, modifier = Modifier.weight(1f))
             }

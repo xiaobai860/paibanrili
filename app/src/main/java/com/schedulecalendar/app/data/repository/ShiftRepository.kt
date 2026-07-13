@@ -15,8 +15,11 @@ class ShiftRepository @Inject constructor(
 ) {
     /** 观察有效（未归档）的班次 */
     fun observeActive(): Flow<List<Shift>> = dao.observeActive().map { list -> list.map { it.toDomain() } }
-    /** 观察所有班次（含已归档） */
-    fun observeAll(): Flow<List<Shift>> = dao.observeAll().map { list -> list.map { it.toDomain() } }
+    /** 观察所有班次（含已归档 + 内置班次，用于日历网格历史数据展示查找） */
+    fun observeAll(): Flow<List<Shift>> = dao.observeAll().map { list ->
+        val builtinIds = BUILTIN_SHIFTS.map { it.id }.toSet()
+        BUILTIN_SHIFTS + list.filter { it.id !in builtinIds }.map { it.toDomain() }
+    }
     suspend fun getAll(): List<Shift> = dao.getAll().map { it.toDomain() }
 
     /** 获取所有班次，含内置（休息/调休/请假），用于排班选择 */

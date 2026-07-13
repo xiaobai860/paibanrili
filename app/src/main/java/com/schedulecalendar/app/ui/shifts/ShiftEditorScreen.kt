@@ -113,20 +113,10 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
             // \u65f6\u957f\u4fe1\u606f\u9884\u89c8\u677f\u5757
             item {
                 val totalHours = CalcUtils.calcHourDiff(s.startTime, s.endTime)
-                // 仅计算与上下班时间段有交集的休息时间
-                val shiftWorkCross = CalcUtils.timeToMin(s.startTime) >= CalcUtils.timeToMin(s.endTime) && s.startTime.isNotEmpty() && s.endTime.isNotEmpty()
-                val wS = CalcUtils.timeToMin(s.startTime)
-                val wE = CalcUtils.timeToMin(s.endTime)
-                val effectiveWorkE = if (shiftWorkCross) wE + 1440 else wE
-                val breakMinutes = s.allBreaks.sumOf { b ->
-                    val bS = CalcUtils.timeToMin(b.startTime)
-                    val bE = CalcUtils.timeToMin(b.endTime)
-                    val effectiveBreakE = if (bE < bS) bE + 1440 else bE
-                    val oStart = maxOf(wS, bS)
-                    val oEnd   = minOf(effectiveWorkE, effectiveBreakE)
-                    maxOf(0, oEnd - oStart)
-                }
-                val breakHours = breakMinutes / 60.0
+                // 使用 CalcUtils.calcGlobalBreakHours 正确计算班次与不计入时段的交集
+                val breakHours = if (s.startTime.isNotEmpty() && s.endTime.isNotEmpty()) {
+                    CalcUtils.calcGlobalBreakHours(s.startTime, s.endTime, s.allBreaks)
+                } else 0.0
                 val actualHours = maxOf(0.0, totalHours - breakHours)
 
                 SectionLabel("\u65f6\u957f\u9884\u89c8")
@@ -196,13 +186,13 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
                     ) {
                         s.allExtraItems.forEach { extra ->
                             val linked = extra.id in s.linkedExtraIds
-                            val typeColor = if (extra.type == "subsidy") Color(0xFF059669) else Color(0xFFDC2626)
+                            val typeColor = if (extra.type == "allowance") Color(0xFF059669) else Color(0xFFDC2626)
                             FilterChip(
                                 selected = linked,
                                 onClick  = { vm.toggleExtraLink(extra.id) },
                                 label    = {
                                     Text(
-                                        text  = "${extra.name} ${if (extra.type == "subsidy") "+\u00a5${extra.amount}" else "-\u00a5${extra.amount}"}",
+                                        text  = "${extra.name} ${if (extra.type == "allowance") "+\u00a5${extra.amount}" else "-\u00a5${extra.amount}"}",
                                         fontSize = 13.sp
                                     )
                                 },
