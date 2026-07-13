@@ -35,10 +35,17 @@ data class ScheduleDetailState(
     val extraItems: List<ExtraItem>       = emptyList(),
     val globalBreaks: List<ShiftBreak>    = emptyList(),
     val record: ScheduleRecord?           = null,
-    /** 实时工时预览 */
+    /** 实时工时预览（总工时） */
     val previewHours: Double              = 0.0,
     /** 自动模式下的计薪方式标签（“工作日”/“周末”/“节假日”） */
     val autoModeLabel: String             = "",
+    /** 工时明细 */
+    val detailNormalHours: Double         = 0.0,
+    val detailOvertimeHours: Double       = 0.0,
+    /** 薪资明细 */
+    val detailNormalSalary: Double        = 0.0,
+    val detailOvertimeSalary: Double      = 0.0,
+    val detailTotalSalary: Double         = 0.0,
     val loading: Boolean                  = true
 )
 
@@ -102,6 +109,7 @@ class ScheduleDetailViewModel @Inject constructor(
         val rec = st.record ?: return
         viewModelScope.launch {
             val attendConfig = prefs.attendConfigFlow.first()
+            val salaryConf = prefs.salaryConfigFlow.first()
             val h = CalcUtils.calcDayHours(rec, date, st.shifts, st.globalBreaks, attendConfig)
             val autoMode = CalcUtils.autoSalaryMode(date)
             val label = when (autoMode) {
@@ -109,9 +117,24 @@ class ScheduleDetailViewModel @Inject constructor(
                 SalaryMode.WEEKEND -> "周末"
                 SalaryMode.NORMAL  -> "工作日"
             }
+            // 日历显示：周末/节假日工时统一归类为加班工时
+            val displayOvertime = h.overtime + h.weekend + h.holiday
+            val totalHours = CalcUtils.roundD2(h.normal + displayOvertime)
+            val normalSal = CalcUtils.roundD2(h.normal * salaryConf.normalRate)
+            val overtimeSal = CalcUtils.roundD2(displayOvertime * salaryConf.overtimeRate)
+            // 当日补贴/扣款合计
+            val extrasTotal = rec.extraItemIds.sumOf { id ->
+                st.extraItems.find { it.id == id }?.let { if (it.type == "allowance") it.amount else -it.amount } ?: 0.0
+            }
+            val totalSal = CalcUtils.roundD2(normalSal + overtimeSal + extrasTotal)
             _state.update { it.copy(
-                previewHours = CalcUtils.roundD2(h.normal + h.overtime + h.weekend + h.holiday),
-                autoModeLabel = label
+                previewHours = totalHours,
+                autoModeLabel = label,
+                detailNormalHours = CalcUtils.roundD2(h.normal),
+                detailOvertimeHours = CalcUtils.roundD2(displayOvertime),
+                detailNormalSalary = normalSal,
+                detailOvertimeSalary = overtimeSal,
+                detailTotalSalary = totalSal
             ) }
         }
     }

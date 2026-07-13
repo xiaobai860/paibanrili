@@ -437,17 +437,21 @@ object CalcUtils {
                           else DayHours()
             val salary  = if (record != null) calcDaySalary(dateStr, record, salaryConfig, shifts, breaks, attendConfig) else 0.0
             val extras  = record?.extraItemIds?.mapNotNull { id -> extraItems.find { it.id == id } } ?: emptyList()
+            // 当日补贴/扣款合计
+            val extrasTotal = extras.sumOf { if (it.type == "allowance") it.amount else -it.amount }
+            val salaryWithExtras = roundD2(salary + extrasTotal)
             result.add(DayScheduleDetail(
                 date          = dateStr,
                 record        = record,
                 shift         = shift,
+                // 日历格子显示：周末/节假日工时统一归类为加班工时
                 normalHours   = hours.normal,
-                overtimeHours = hours.overtime,
+                overtimeHours = hours.overtime + hours.weekend + hours.holiday,
                 weekendHours  = hours.weekend,
                 holidayHours  = hours.holiday,
-                salary        = salary,
+                salary        = salaryWithExtras,
                 normalSalary  = roundD2(hours.normal * salaryConfig.normalRate),
-                overtimeSalary = roundD2(hours.overtime * salaryConfig.overtimeRate),
+                overtimeSalary = roundD2((hours.overtime + hours.weekend + hours.holiday) * salaryConfig.overtimeRate),
                 extras        = extras
             ))
         }
@@ -472,11 +476,11 @@ object CalcUtils {
             && effectiveType != ScheduleType.REST
             && effectiveType != ScheduleType.SWAP) return 0.0
         val hours = calcDayHours(record, dateStr, shifts, breaks, attendConfig)
+        // 日历显示：周末/节假日工时统一按加班费率计算薪资
+        val displayOvertime = hours.overtime + hours.weekend + hours.holiday
         return roundD2(
-            hours.normal   * salaryConfig.normalRate +
-            hours.overtime * salaryConfig.overtimeRate +
-            hours.weekend  * salaryConfig.weekendRate +
-            hours.holiday  * salaryConfig.holidayRate
+            hours.normal * salaryConfig.normalRate +
+            displayOvertime * salaryConfig.overtimeRate
         )
     }
 

@@ -550,11 +550,17 @@ class CalendarViewModel @Inject constructor(
     fun batchApplyShift(shiftId: String, statusId: String? = null) = viewModelScope.launch {
         val sel = _state.value.batchSelected
         if (sel.isEmpty()) return@launch
+        // 查找目标班次，获取默认关联项目
+        val shift = _state.value.allShifts.find { it.id == shiftId }
+        val linkedIds = shift?.linkedExtraIds ?: emptyList()
         val records = sel.map { date ->
             val existing = _state.value.schedules[date] ?: ScheduleRecord(date)
+            val merged = if (linkedIds.isEmpty()) existing.extraItemIds
+                         else (existing.extraItemIds + linkedIds).distinct()
             existing.copy(
                 shiftId = shiftId,
-                appliedStatus = statusId?.let { AppliedStatus(it) }
+                appliedStatus = statusId?.let { AppliedStatus(it) },
+                extraItemIds = merged
             )
         }
         scheduleRepo.saveAll(records)

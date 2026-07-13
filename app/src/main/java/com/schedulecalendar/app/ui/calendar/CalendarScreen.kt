@@ -697,13 +697,11 @@ private fun DayCell(
         DisplayItemType.OVERTIME_HOURS -> "${CalcUtils.fmtHours(detail?.overtimeHours ?: 0.0)}h"
         DisplayItemType.DAILY_INCOME -> { val s = detail?.salary ?: 0.0; if (s > 0) "\u00a5${CalcUtils.fmtHours(s)}" else "\u00a50" }
         DisplayItemType.NORMAL_INCOME -> {
-            val ts = detail?.salary ?: 0.0; val nH = detail?.normalHours ?: 0.0; val oH = detail?.overtimeHours ?: 0.0
-            val tH = nH + oH; val ns = if (tH > 0) ts * (nH / tH) else 0.0
+            val ns = detail?.normalSalary ?: 0.0
             if (ns > 0) "\u00a5${CalcUtils.fmtHours(ns)}" else "\u00a50"
         }
         DisplayItemType.OVERTIME_INCOME -> {
-            val ts = detail?.salary ?: 0.0; val nH = detail?.normalHours ?: 0.0; val oH = detail?.overtimeHours ?: 0.0
-            val tH = nH + oH; val os = if (tH > 0) ts * (oH / tH) else 0.0
+            val os = detail?.overtimeSalary ?: 0.0
             if (os > 0) "\u00a5${CalcUtils.fmtHours(os)}" else "\u00a50"
         }
         DisplayItemType.SHIFT -> shift?.name ?: ""

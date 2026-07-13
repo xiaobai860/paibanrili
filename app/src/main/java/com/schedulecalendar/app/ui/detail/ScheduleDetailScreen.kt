@@ -91,6 +91,9 @@ fun ScheduleDetailScreen(
     val isRestShift   = selectedShift?.builtInType == "rest"
     val isSwapShift   = selectedShift?.builtInType == "swap"
     val isRestOrSwap  = isRestShift || isSwapShift
+    // 休息/调休班次选择了带时间段的附加状态
+    val hasStatusTimeSegment = isRestOrSwap &&
+        record?.appliedStatus?.startTime != null && record?.appliedStatus?.endTime != null
 
     // 备注获得焦点或内容变化时，请求将输入框滚动到可见区域
     LaunchedEffect(remarkFocused, remarkText) {
@@ -299,7 +302,7 @@ fun ScheduleDetailScreen(
             }
 
             // ── 计薪方式 ──────────────────────────────────────────────
-            if (selectedShift != null && !isRestOrSwap) {
+            if (selectedShift != null && (!isRestOrSwap || hasStatusTimeSegment)) {
                 item {
                     SectionLabel("计薪方式")
                     if (record?.salaryMode == null) {
@@ -339,6 +342,68 @@ fun ScheduleDetailScreen(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
                             )
+                        }
+                    }
+                }
+            }
+
+            // ── 工时与薪资明细 ──────────────────────────────────────────
+            if (selectedShift != null && state.previewHours > 0) {
+                item {
+                    SectionLabel("工时与薪资明细")
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // 工时行
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("正常工时", style = MaterialTheme.typography.bodyMedium)
+                                Text("${CalcUtils.fmtHours(state.detailNormalHours)}h",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium)
+                            }
+                            if (state.detailOvertimeHours > 0) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("加班工时", style = MaterialTheme.typography.bodyMedium)
+                                    Text("${CalcUtils.fmtHours(state.detailOvertimeHours)}h",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            HorizontalDivider()
+                            // 薪资行
+                            if (state.detailNormalSalary > 0) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("正班收入", style = MaterialTheme.typography.bodyMedium)
+                                    Text("¥${String.format("%.0f", state.detailNormalSalary)}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            if (state.detailOvertimeSalary > 0) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("加班收入", style = MaterialTheme.typography.bodyMedium)
+                                    Text("¥${String.format("%.0f", state.detailOvertimeSalary)}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            if (state.detailTotalSalary > 0) {
+                                HorizontalDivider()
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("总收入", style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold)
+                                    Text("¥${String.format("%.0f", state.detailTotalSalary)}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
                         }
                     }
                 }
