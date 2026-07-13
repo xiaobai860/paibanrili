@@ -484,10 +484,10 @@ private fun ExtraItemRow(item: ExtraItem, checked: Boolean, onToggle: () -> Unit
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val typeColor = if (item.type == "subsidy") Color(0xFF059669) else Color(0xFFDC2626)
+        val typeColor = if (item.type == "allowance") Color(0xFF059669) else Color(0xFFDC2626)
         Surface(shape = RoundedCornerShape(4.dp), color = typeColor.copy(alpha = 0.12f)) {
             Text(
-                text     = if (item.type == "subsidy") "补" else "扣",
+                text     = if (item.type == "allowance") "补" else "扣",
                 style    = MaterialTheme.typography.labelSmall,
                 color    = typeColor,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -496,7 +496,7 @@ private fun ExtraItemRow(item: ExtraItem, checked: Boolean, onToggle: () -> Unit
         Spacer(Modifier.width(10.dp))
         Text(item.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         Text(
-            text  = if (item.type == "subsidy") "+¥${item.amount}" else "-¥${item.amount}",
+            text  = if (item.type == "allowance") "+¥${item.amount}" else "-¥${item.amount}",
             color = typeColor,
             style = MaterialTheme.typography.bodySmall
         )

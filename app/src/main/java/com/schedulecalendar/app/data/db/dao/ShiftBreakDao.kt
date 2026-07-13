@@ -14,8 +14,11 @@ interface ShiftBreakDao {
     @Query("SELECT * FROM shift_breaks ORDER BY startTime ASC")
     fun observeAll(): Flow<List<ShiftBreakEntity>>
 
-    @Query("SELECT * FROM shift_breaks ORDER BY startTime ASC")
+    @Query("SELECT * FROM shift_breaks WHERE archivedAt IS NULL ORDER BY startTime ASC")
     suspend fun getAll(): List<ShiftBreakEntity>
+
+    @Query("SELECT * FROM shift_breaks ORDER BY startTime ASC")
+    suspend fun getAllWithArchived(): List<ShiftBreakEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(item: ShiftBreakEntity)

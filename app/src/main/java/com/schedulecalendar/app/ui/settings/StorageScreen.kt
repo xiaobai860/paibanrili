@@ -254,7 +254,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
             item { SectionHeader("数据清理") }
 
             // 清理废弃数据
-            val totalOrphans = state.orphanShiftsCount + state.orphanStatusesCount + state.orphanExtrasCount
+            val totalOrphans = state.orphanShiftsCount + state.orphanStatusesCount + state.orphanExtrasCount + state.orphanBreaksCount
             if (totalOrphans > 0) {
                 item {
                     Card(
@@ -279,6 +279,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                                 if (state.orphanShiftsCount > 0) parts.add("${state.orphanShiftsCount} 个废弃班次")
                                 if (state.orphanStatusesCount > 0) parts.add("${state.orphanStatusesCount} 个废弃状态")
                                 if (state.orphanExtrasCount > 0) parts.add("${state.orphanExtrasCount} 个废弃项目")
+                                if (state.orphanBreaksCount > 0) parts.add("${state.orphanBreaksCount} 个废弃不计入时段")
                                 Text("可清理 ${parts.joinToString("、")}", fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer)
                             }
@@ -378,7 +379,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
     
     // 清理废弃数据确认弹窗
     if (showCleanupConfirm) {
-        val total = state.orphanShiftsCount + state.orphanStatusesCount + state.orphanExtrasCount
+        val total = state.orphanShiftsCount + state.orphanStatusesCount + state.orphanExtrasCount + state.orphanBreaksCount
         AlertDialog(
             onDismissRequest = { showCleanupConfirm = false },
             icon = { Icon(Icons.Default.CleaningServices, null, tint = MaterialTheme.colorScheme.tertiary) },
@@ -388,6 +389,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                 if (state.orphanShiftsCount > 0) parts.add("${state.orphanShiftsCount} 个废弃班次")
                 if (state.orphanStatusesCount > 0) parts.add("${state.orphanStatusesCount} 个废弃状态")
                 if (state.orphanExtrasCount > 0) parts.add("${state.orphanExtrasCount} 个废弃项目")
+                if (state.orphanBreaksCount > 0) parts.add("${state.orphanBreaksCount} 个废弃不计入时段")
                 Text("将从数据库中永久删除 ${parts.joinToString("、")}，共 $total 条记录。\n\n已归档且无任何排班记录引用的数据才会被清理，不影响历史数据。")
             },
             confirmButton = {

@@ -9,7 +9,7 @@ import androidx.room.PrimaryKey
 data class ExtraItemEntity(
     @PrimaryKey val id: String,
     val name: String,
-    val type: String,       // "subsidy" | "deduction"
+    val type: String,       // "allowance" | "deduction"
     val amount: Double,
     val archivedAt: String? = null  // 归档时间戳，null=有效，非null=已归档
 )

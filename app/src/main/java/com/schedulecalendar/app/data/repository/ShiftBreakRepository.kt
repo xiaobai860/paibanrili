@@ -16,6 +16,7 @@ class ShiftBreakRepository @Inject constructor(
     fun observeActive(): Flow<List<ShiftBreak>> = dao.observeActive().map { it.map { e -> e.toDomain() } }
     fun observeAll(): Flow<List<ShiftBreak>> = dao.observeAll().map { it.map { e -> e.toDomain() } }
     suspend fun getAll(): List<ShiftBreak> = dao.getAll().map { it.toDomain() }
+    suspend fun getAllWithArchived(): List<ShiftBreak> = dao.getAllWithArchived().map { it.toDomain() }
     suspend fun save(item: ShiftBreak) = dao.upsert(item.toEntity())
     suspend fun saveAll(items: List<ShiftBreak>) = dao.upsertAll(items.map { it.toEntity() })
     /** 归档项目（逻辑删除） */

@@ -46,7 +46,8 @@ data class StorageUiState(
     // 废弃数据清理扫描结果
     val orphanShiftsCount:    Int = 0,
     val orphanStatusesCount:  Int = 0,
-    val orphanExtrasCount:    Int = 0
+    val orphanExtrasCount:    Int = 0,
+    val orphanBreaksCount:    Int = 0
 )
 
 sealed class StorageUiEvent {
@@ -266,12 +267,15 @@ class StorageViewModel @Inject constructor(
             val archivedShifts = shiftRepo.getAll().filter { it.archivedAt != null && it.id !in referencedShiftIds }
             val archivedStatuses = statusRepo.getAllWithBuiltin().filter { it.archivedAt != null && it.id !in referencedStatusIds }
             val archivedExtras = extraRepo.getAll().filter { it.archivedAt != null && it.id !in referencedExtraIds }
+            // 不计入时段为全局生效，已归档的即为废弃
+            val archivedBreaks = breakRepo.getAllWithArchived().filter { it.archivedAt != null }
 
             _state.update {
                 it.copy(
                     orphanShiftsCount = archivedShifts.size,
                     orphanStatusesCount = archivedStatuses.size,
-                    orphanExtrasCount = archivedExtras.size
+                    orphanExtrasCount = archivedExtras.size,
+                    orphanBreaksCount = archivedBreaks.size
                 )
             }
         }.onFailure {
@@ -290,11 +294,13 @@ class StorageViewModel @Inject constructor(
             val archivedShifts = shiftRepo.getAll().filter { it.archivedAt != null && it.id !in referencedShiftIds }
             val archivedStatuses = statusRepo.getAllWithBuiltin().filter { it.archivedAt != null && it.id !in referencedStatusIds }
             val archivedExtras = extraRepo.getAll().filter { it.archivedAt != null && it.id !in referencedExtraIds }
+            val archivedBreaks = breakRepo.getAllWithArchived().filter { it.archivedAt != null }
 
             var deletedCount = 0
             archivedShifts.forEach { shiftRepo.delete(it.id); deletedCount++ }
             archivedStatuses.filter { !it.builtIn }.forEach { statusRepo.delete(it.id); deletedCount++ }
             archivedExtras.forEach { extraRepo.delete(it.id); deletedCount++ }
+            archivedBreaks.forEach { breakRepo.delete(it.id); deletedCount++ }
 
             _uiEvent.send(StorageUiEvent.ShowMessage("已清理 $deletedCount 条废弃数据"))
             // 重新扫描

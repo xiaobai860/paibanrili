@@ -124,7 +124,19 @@ class ScheduleDetailViewModel @Inject constructor(
         recalcPreview()
     }
 
-    fun setShift(shiftId: String?) = updateRecord { copy(shiftId = shiftId) }
+    fun setShift(shiftId: String?) {
+        val shift = _state.value.shifts.find { it.id == shiftId }
+        val linkedIds = shift?.linkedExtraIds ?: emptyList()
+        updateRecord {
+            if (linkedIds.isEmpty()) {
+                copy(shiftId = shiftId)
+            } else {
+                // 合并班次默认关联项目到当前已选项目（去重）
+                val merged = (extraItemIds + linkedIds).distinct()
+                copy(shiftId = shiftId, extraItemIds = merged)
+            }
+        }
+    }
     fun setActualStart(t: String)  = updateRecord { copy(actualStartTime = t.ifBlank { null }) }
     fun setActualEnd(t: String)    = updateRecord { copy(actualEndTime = t.ifBlank { null }) }
     fun setRemark(r: String)       = updateRecord { copy(remark = r.ifBlank { null }) }
@@ -329,11 +341,11 @@ class HoursDetailViewModel @Inject constructor(
             }
             HoursDetailType.EXTRA -> {
                 details.filter { it.extras.isNotEmpty() }.map { d ->
-                    val subsidyTotal   = d.extras.filter { it.amount > 0 }.sumOf { it.amount }
-                    val deductionTotal = d.extras.filter { it.amount < 0 }.sumOf { it.amount }
+                    val subsidyTotal   = d.extras.filter { it.type == "allowance" }.sumOf { it.amount }
+                    val deductionTotal = d.extras.filter { it.type == "deduction" }.sumOf { it.amount }
                     val parts = buildList {
                         if (subsidyTotal > 0)   add("补贴 +¥%.2f".format(subsidyTotal))
-                        if (deductionTotal < 0) add("扣款 -¥%.2f".format(-deductionTotal))
+                        if (deductionTotal > 0) add("扣款 -¥%.2f".format(deductionTotal))
                     }
                     HoursDetailItem(
                         date = d.date,
