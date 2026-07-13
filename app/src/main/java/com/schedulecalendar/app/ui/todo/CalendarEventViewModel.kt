@@ -17,9 +17,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.LocalDate
-import java.time.LocalTime
-import java.time.ZoneId
 import javax.inject.Inject
 
 /**
@@ -69,7 +66,7 @@ class CalendarEventViewModel @Inject constructor(
     }
 
     /**
-     * 加载当前月份及前后各15天的日历事件
+     * 加载所有日历事件
      */
     fun loadEvents() {
         if (!_state.value.hasPermission) return
@@ -77,17 +74,9 @@ class CalendarEventViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
 
-            val today = LocalDate.now()
-            val startOfMonth = today.withDayOfMonth(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-            val endOfMonth = today.withDayOfMonth(today.lengthOfMonth()).atTime(LocalTime.MAX)
-                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-
-            // 扩大范围：前后各15天
-            val startTime = startOfMonth - 15L * 24 * 60 * 60 * 1000
-            val endTime = endOfMonth + 15L * 24 * 60 * 60 * 1000
-
             try {
-                val allEvents = calendarRepo.getEvents(startTime, endTime)
+                // 查询所有可见事件（不限制时间范围）
+                val allEvents = calendarRepo.getAllEvents()
                 // 过滤已禁用账户的事件
                 val disabledAccounts = prefs.getDisabledAccountIds()
                 val events = if (disabledAccounts.isEmpty()) allEvents
@@ -161,6 +150,25 @@ class CalendarEventViewModel @Inject constructor(
         _state.update {
             it.copy(selectedEvent = null, showDeleteDialog = false)
         }
+    }
+
+    /**
+     * 创建新的日历事件
+     */
+    fun createEvent(
+        title: String,
+        description: String?,
+        dtStart: Long,
+        dtEnd: Long,
+        allDay: Boolean = false,
+        location: String? = null
+    ): Boolean {
+        val result = calendarRepo.createEvent(title, description, dtStart, dtEnd, allDay, location)
+        if (result > 0) {
+            loadEvents()
+            return true
+        }
+        return false
     }
 
     /**

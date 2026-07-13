@@ -26,3 +26,5 @@ import kotlinx.serialization.Serializable
 @Serializable data class RouteShiftEditor(val shiftId: String? = null)
 @Serializable data class RouteHuangLi(val date: String)
 @Serializable object RouteReminderSettings
+@Serializable object RouteAddCalendarEvent
+@Serializable object RouteAddAnniversary

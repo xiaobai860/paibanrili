@@ -104,6 +104,53 @@ class CalendarEventRepository @Inject constructor(
     }
 
     /**
+     * 获取所有可见日历事件（不限时间范围）
+     */
+    fun getAllEvents(): List<CalendarEventInfo> {
+        val events = mutableListOf<CalendarEventInfo>()
+
+        val projection = arrayOf(
+            CalendarContract.Events._ID,
+            CalendarContract.Events.CALENDAR_ID,
+            CalendarContract.Events.TITLE,
+            CalendarContract.Events.DESCRIPTION,
+            CalendarContract.Events.DTSTART,
+            CalendarContract.Events.DTEND,
+            CalendarContract.Events.ALL_DAY,
+            CalendarContract.Events.EVENT_LOCATION
+        )
+
+        context.contentResolver.query(
+            CalendarContract.Events.CONTENT_URI,
+            projection,
+            null, null,
+            "${CalendarContract.Events.DTSTART} ASC"
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val eventId = cursor.getLong(0)
+                val calendarId = cursor.getLong(1)
+                val title = cursor.getString(2) ?: "无标题"
+                val description = cursor.getString(3)
+                val dtStart = cursor.getLong(4)
+                val dtEnd = cursor.getLong(5)
+                val allDay = cursor.getInt(6) == 1
+                val location = cursor.getString(7)
+                val calInfo = getCalendarInfo(calendarId)
+                events.add(
+                    CalendarEventInfo(
+                        id = eventId, calendarId = calendarId, title = title,
+                        description = description, dtStart = dtStart, dtEnd = dtEnd,
+                        allDay = allDay, eventLocation = location,
+                        accountName = calInfo?.accountName ?: "",
+                        calendarDisplayName = calInfo?.displayName ?: ""
+                    )
+                )
+            }
+        }
+        return events
+    }
+
+    /**
      * 获取指定账户下所有日历事件（指定时间范围内）
      * @param startTime 范围开始时间戳（毫秒）
      * @param endTime 范围结束时间戳（毫秒）
@@ -198,6 +245,60 @@ class CalendarEventRepository @Inject constructor(
                     accountName = cursor.getString(1) ?: ""
                 )
             }
+        }
+        return null
+    }
+
+    /**
+     * 创建新的日历事件
+     * @param title 事件标题
+     * @param description 描述
+     * @param dtStart 开始时间戳（毫秒）
+     * @param dtEnd 结束时间戳（毫秒）
+     * @param allDay 是否全天事件
+     * @param location 地点
+     * @param calendarId 日历ID，null则使用第一个可用日历
+     * @return 创建成功返回事件ID，失败返回-1
+     */
+    fun createEvent(
+        title: String,
+        description: String?,
+        dtStart: Long,
+        dtEnd: Long,
+        allDay: Boolean = false,
+        location: String? = null,
+        calendarId: Long? = null
+    ): Long {
+        return try {
+            val calId = calendarId ?: getFirstWritableCalendarId() ?: return -1L
+            val values = android.content.ContentValues().apply {
+                put(CalendarContract.Events.CALENDAR_ID, calId)
+                put(CalendarContract.Events.TITLE, title)
+                put(CalendarContract.Events.DESCRIPTION, description)
+                put(CalendarContract.Events.DTSTART, dtStart)
+                put(CalendarContract.Events.DTEND, dtEnd)
+                put(CalendarContract.Events.ALL_DAY, if (allDay) 1 else 0)
+                put(CalendarContract.Events.EVENT_LOCATION, location)
+                put(CalendarContract.Events.EVENT_TIMEZONE, java.util.TimeZone.getDefault().id)
+            }
+            val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
+            ContentUris.parseId(uri ?: return -1L)
+        } catch (e: Exception) {
+            -1L
+        }
+    }
+
+    /**
+     * 获取第一个可写日历的ID
+     */
+    private fun getFirstWritableCalendarId(): Long? {
+        context.contentResolver.query(
+            CalendarContract.Calendars.CONTENT_URI,
+            arrayOf(CalendarContract.Calendars._ID),
+            "${CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL} >= ${CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR}",
+            null, null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) return cursor.getLong(0)
         }
         return null
     }

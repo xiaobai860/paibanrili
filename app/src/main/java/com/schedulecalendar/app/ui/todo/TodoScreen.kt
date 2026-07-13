@@ -37,6 +37,8 @@ import com.schedulecalendar.app.ui.calendar.TodoItem
 import com.schedulecalendar.app.ui.calendar.TodoType
 import com.schedulecalendar.app.ui.component.TimePickerField
 import com.schedulecalendar.app.domain.model.HolidayData
+import com.schedulecalendar.app.ui.navigation.RouteAddAnniversary
+import com.schedulecalendar.app.ui.navigation.RouteAddCalendarEvent
 import com.schedulecalendar.app.ui.navigation.RouteScheduleDetail
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import kotlinx.coroutines.launch
@@ -134,7 +136,7 @@ fun TodoScreen(
         ) { page ->
             Box(Modifier.fillMaxSize()) {
                 when (page) {
-                    0 -> CalendarEventTab(vm = eventVm)
+                    0 -> CalendarEventTab(vm = eventVm, navController = navController)
                     1 -> TodoTab(
                         todos = state.todos,
                         year = state.year,
@@ -153,7 +155,7 @@ fun TodoScreen(
                         onOvertimeAction = { date, isEarly -> showOvertimeActionDialog = OvertimeActionTarget(date, isEarly) },
                         vm = vm
                     )
-                    2 -> PlaceholderTab("\u7eaa\u5ff5\u65e5")
+                    2 -> AnniversaryTab(navController = navController)
                     3 -> HolidayTab()
                 }
             }
@@ -737,7 +739,7 @@ private fun OvertimeActionDialog(
 // ════════════════════════════════════════════════════════════════════════════
 
 @Composable
-private fun CalendarEventTab(vm: CalendarEventViewModel) {
+private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavController) {
     val eventState by vm.state.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     val permLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -749,6 +751,7 @@ private fun CalendarEventTab(vm: CalendarEventViewModel) {
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     when {
         !eventState.hasPermission -> {
             // 无权限时显示授权引导
@@ -861,6 +864,18 @@ private fun CalendarEventTab(vm: CalendarEventViewModel) {
         }
     }
 
+    // ── 右下角添加按钮 ─────────────────────────────────
+    FloatingActionButton(
+        onClick = { navController.navigate(RouteAddCalendarEvent) },
+        modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .padding(16.dp),
+        containerColor = MaterialTheme.colorScheme.primaryContainer
+    ) {
+        Icon(Icons.Default.Add, contentDescription = "新建日程")
+    }
+    } // end Box
+
     // ── 详情/编辑弹窗 ─────────────────────────────────────
     eventState.selectedEvent?.let { event ->
         if (eventState.showEditDialog) {
@@ -945,6 +960,51 @@ private fun CalendarEventRow(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)
             )
+        }
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 纪念日标签页
+// ════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun AnniversaryTab(navController: NavController) {
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                Icons.Default.Celebration, null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(48.dp)
+            )
+            Spacer(Modifier.height(12.dp))
+            Text("\u6682\u65e0\u7eaa\u5ff5\u65e5", style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "\u70b9\u51fb\u53f3\u4e0b\u89d2\u6309\u94ae\u6dfb\u52a0\u7eaa\u5ff5\u65e5",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(16.dp))
+            OutlinedButton(onClick = { navController.navigate(RouteAddAnniversary) }) {
+                Icon(Icons.Default.Add, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("\u65b0\u5efa\u7eaa\u5ff5\u65e5")
+            }
+        }
+
+        FloatingActionButton(
+            onClick = { navController.navigate(RouteAddAnniversary) },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "\u65b0\u5efa\u7eaa\u5ff5\u65e5")
         }
     }
 }

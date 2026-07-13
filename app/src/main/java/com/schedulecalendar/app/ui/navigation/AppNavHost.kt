@@ -32,6 +32,8 @@ import com.schedulecalendar.app.ui.shifts.ShiftEditorScreen
 import com.schedulecalendar.app.ui.shifts.ShiftsScreen
 import com.schedulecalendar.app.ui.statistics.StatisticsScreen
 import com.schedulecalendar.app.ui.todo.TodoScreen
+import com.schedulecalendar.app.ui.todo.AddCalendarEventScreen
+import com.schedulecalendar.app.ui.todo.AddAnniversaryScreen
 import com.schedulecalendar.app.ui.settings.ReminderSettingsScreen
 import com.schedulecalendar.app.ui.calendar.HuangLiScreen
 
@@ -110,6 +112,8 @@ fun AppNavHost() {
             composable<RouteShiftEditor>       { ShiftEditorScreen(navController) }
             composable<RouteHuangLi> { HuangLiScreen(navController) }
             composable<RouteReminderSettings> { ReminderSettingsScreen(navController) }
+            composable<RouteAddCalendarEvent> { AddCalendarEventScreen(navController) }
+            composable<RouteAddAnniversary> { AddAnniversaryScreen(navController) }
         }
     }
 }
