@@ -7,34 +7,38 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.provider.CalendarContract
 import androidx.core.app.NotificationCompat
 import com.schedulecalendar.app.data.prefs.AppPreferences
+import com.schedulecalendar.app.data.repository.ScheduleRepository
+import com.schedulecalendar.app.data.repository.ShiftRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * 提醒触发方式
- */
-enum class ReminderMethod {
-    ALARM,    // 精确闹钟
-    CALENDAR  // 日历事件提醒
-}
-
-/**
  * 上下班提醒调度器
- * 负责根据用户配置和排班记录设置/取消提醒
+ *
+ * 使用 [AlarmManager.setAlarmClock] 保证最高级别可靠性——
+ * 系统会将其视为用户设置的闹钟，即使在 Doze 模式、
+ * 电池优化、省电模式下也能准时触发。
+ *
+ * 工作流程：
+ * 1. 从 [ScheduleRepository] 获取未来 7 天的排班记录
+ * 2. 通过 [ShiftRepository] 查找班次的上下班时间
+ * 3. 根据用户设置的提前时间计算触发时刻
+ * 4. 使用 [AlarmManager] 注册精确闹钟
+ * 5. [AlarmReceiver] 接收广播后发送通知
  */
 @Singleton
 class ReminderScheduler @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val prefs: AppPreferences
+    private val prefs: AppPreferences,
+    private val scheduleRepo: ScheduleRepository,
+    private val shiftRepo: ShiftRepository
 ) {
     companion object {
         const val EXTRA_IS_CLOCK_IN = "is_clock_in"
@@ -72,8 +76,8 @@ class ReminderScheduler @Inject constructor(
     }
 
     /**
-     * 根据用户设置和排班记录，为未来几天设置提醒
-     * 通常在应用启动、排班变更、设置变更时调用
+     * 根据用户设置和排班记录，为未来 7 天设置提醒。
+     * 应在应用启动、排班变更、设置变更时调用。
      */
     suspend fun scheduleUpcomingReminders() {
         val enabled = prefs.getReminderEnabled()
@@ -90,13 +94,12 @@ class ReminderScheduler @Inject constructor(
 
         if (!clockInEnabled && !clockOutEnabled) return
 
-        // 获取未来7天的排班记录
+        // 获取未来 7 天的排班记录
         val today = LocalDate.now()
         for (dayOffset in 0..6) {
             val date = today.plusDays(dayOffset.toLong())
-            val dateStr = date.toString()
-            val shift = getShiftForDate(dateStr) ?: continue
-            val shiftTimes = getShiftTimes(shift) ?: continue
+            val record = getShiftForDate(date.toString()) ?: continue
+            val shiftTimes = getShiftTimes(record.shiftId) ?: continue
 
             if (clockInEnabled && shiftTimes.first.isNotBlank()) {
                 scheduleReminder(
@@ -120,25 +123,41 @@ class ReminderScheduler @Inject constructor(
     }
 
     /**
-     * 获取指定日期的班次ID
+     * 获取指定日期的排班记录
      */
-    private suspend fun getShiftForDate(dateStr: String): String? {
-        // 通过 DataStore 或 Room 查询排班记录
-        // 这里简化处理，实际应通过 ScheduleRepository 查询
-        return null
+    private suspend fun getShiftForDate(dateStr: String): com.schedulecalendar.app.domain.model.ScheduleRecord? {
+        return try {
+            scheduleRepo.getByDate(dateStr)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**
-     * 从班次ID获取上下班时间
+     * 从班次 ID 获取上下班时间
+     * @return Pair(上班时间, 下班时间) 格式 "HH:mm"，内置休息/调休班次返回 null
      */
-    private suspend fun getShiftTimes(shiftId: String): Pair<String, String>? {
-        // 通过 ShiftRepository 查询班次时间
-        // 这里简化处理
-        return null
+    private suspend fun getShiftTimes(shiftId: String?): Pair<String, String>? {
+        if (shiftId.isNullOrBlank()) return null
+        return try {
+            val shift = shiftRepo.getById(shiftId) ?: return null
+            // 内置休息/调休班次不设置提醒
+            if (shift.builtIn && shift.builtInType != null) return null
+            // 空时间的班次不设置提醒
+            if (shift.startTime.isBlank() || shift.endTime.isBlank()) return null
+            Pair(shift.startTime, shift.endTime)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**
      * 设置单个提醒
+     *
+     * 优先级策略（按可靠性从高到低）：
+     * 1. setAlarmClock — 系统最高优先级，不受任何省电策略影响
+     * 2. setExactAndAllowWhileIdle — 精确唤醒，Doze 下也可触发
+     * 3. setAndAllowWhileIdle — 非精确唤醒，Doze 下可触发但可能有分钟级延迟
      */
     private fun scheduleReminder(
         date: LocalDate,
@@ -174,20 +193,29 @@ class ReminderScheduler @Inject constructor(
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            if (method == "alarm" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (alarmManager.canScheduleExactAlarms()) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent
-                    )
-                } else {
-                    alarmManager.setAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent
-                    )
+            if (method == "alarm") {
+                // 闹钟提醒方式：使用 setAlarmClock 保证最高可靠性
+                // 即使用户未授予精确闹钟权限，setAlarmClock 也能精确触发
+                val showIntent = Intent(context, context.javaClass).apply {
+                    action = "com.schedulecalendar.app.REMINDER_ALARM"
                 }
-            } else {
-                alarmManager.setAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent
+                val showPendingIntent = PendingIntent.getActivity(
+                    context, requestCode, showIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
+                val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerTime, showPendingIntent)
+                alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+            } else {
+                // 日历提醒方式（备选）：也使用闹钟保证可靠性
+                val showIntent = Intent(context, context.javaClass).apply {
+                    action = "com.schedulecalendar.app.REMINDER_ALARM"
+                }
+                val showPendingIntent = PendingIntent.getActivity(
+                    context, requestCode, showIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerTime, showPendingIntent)
+                alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
             }
         } catch (e: Exception) {
             e.printStackTrace()

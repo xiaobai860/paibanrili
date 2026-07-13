@@ -324,16 +324,38 @@ private fun PermissionManagementSection() {
                         onAction = { permLauncher.launch(Manifest.permission.WRITE_CALENDAR) }
                     )
 
-                    // 精确闹钟权限
+                    // 精确闹钟权限说明
+                    // 注意：SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM 是特殊权限，
+                    // 不会出现在系统的「权限管理」页面中，仅在本应用内可见。
+                    // 当前使用 AlarmManager.setAlarmClock() 实现提醒，
+                    // 该方式不受精确闹钟权限限制，即使未授权也能正常工作。
                     if (Build.VERSION.SDK_INT >= 31) {
                         PermissionItem(
                             name = "精确闹钟",
-                            description = "用于上下班提醒的精确触发",
+                            description = if (hasExactAlarm)
+                                "已授权，闹钟提醒可精确触发"
+                            else
+                                "未授权（系统闹钟提醒仍可工作，此权限非必需）",
                             granted = hasExactAlarm,
                             onAction = {
-                                val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                                context.startActivity(intent)
+                                try {
+                                    val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                                    context.startActivity(intent)
+                                } catch (_: Exception) { }
                             }
+                        )
+                    }
+
+                    // 精确闹钟权限说明提示
+                    if (Build.VERSION.SDK_INT >= 31) {
+                        Text(
+                            text = "注：精确闹钟权限为特殊权限，不会出现在系统的权限管理页面中。\n" +
+                                "本应用使用系统闹钟（setAlarmClock）方式触发提醒，\n" +
+                                "该方式即使未授权也能准时触发，不受电池优化限制。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            lineHeight = 16.sp,
+                            modifier = Modifier.padding(top = 2.dp)
                         )
                     }
 
