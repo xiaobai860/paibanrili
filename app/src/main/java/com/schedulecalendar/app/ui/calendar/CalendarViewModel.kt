@@ -4,6 +4,7 @@ package com.schedulecalendar.app.ui.calendar
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.ExtraItemRepository
 import com.schedulecalendar.app.data.repository.ScheduleRepository
@@ -102,7 +103,8 @@ class CalendarViewModel @Inject constructor(
     private val extraRepo: ExtraItemRepository,
     private val statusRepo: ShiftStatusRepository,
     private val backupManager: com.schedulecalendar.app.ui.settings.BackupManager,
-    private val prefs: AppPreferences
+    private val prefs: AppPreferences,
+    private val calendarEventRepo: CalendarEventRepository
 ) : ViewModel() {
 
     private val _state   = MutableStateFlow(CalendarUiState())
@@ -118,6 +120,8 @@ class CalendarViewModel @Inject constructor(
         loadCurrentMonth()
         // 应用启动时自动备份应用数据（每天最新一条）
         viewModelScope.launch { backupManager.autoBackupAppData() }
+        // 应用启动时确保日历账户已创建（AccountManager 注册 + Calendar Provider 创建）
+        viewModelScope.launch { calendarEventRepo.getOrCreateLocalCalendarId() }
     }
 
     private fun loadCurrentMonth() {

@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.AUTHENTICATE_ACCOUNTS"/>
 
     <application
         android:name=".ScheduleApp"
@@ -78,6 +79,18 @@
         <receiver
             android:name=".reminder.AnniversaryReminderReceiver"
             android:exported="false" />
+
+        <!-- 日历账户认证器服务 -->
+        <service
+            android:name=".data.calendar.CalendarAuthenticatorService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.accounts.AccountAuthenticator" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accounts.AccountAuthenticator"
+                android:resource="@xml/authenticator" />
+        </service>
 
     </application>
 </manifest>
