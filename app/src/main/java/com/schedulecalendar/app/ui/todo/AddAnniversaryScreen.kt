@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.schedulecalendar.app.domain.model.LunarCalendar
 import com.schedulecalendar.app.reminder.AnniversaryReminderReceiver
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
@@ -40,30 +41,63 @@ private enum class AnniversaryReminder(val label: String, val advanceDays: Long)
 }
 
 /**
- * 创建纪念日页面
+ * 创建/编辑纪念日页面
  * 纪念日以全天重复事件写入系统日历（年度重复）
  * 包含：名称、日期（公历/农历）、每年重复、日历提醒、闹钟提醒、描述/备注
+ * @param eventId 非null时为编辑模式，加载已有纪念日数据
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddAnniversaryScreen(
     navController: NavController,
+    eventId: Long? = null,
     vm: CalendarEventViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var repeatYearly by remember { mutableStateOf(true) }
+    val isEditMode = eventId != null
+
+    // ── 编辑模式：加载已有数据 ────────────────────────────────
+    val loadedEvent by vm.singleEvent.collectAsStateWithLifecycle()
+    val isSingleLoading by vm.isSingleLoading.collectAsStateWithLifecycle()
+
+    LaunchedEffect(eventId) {
+        if (eventId != null) {
+            vm.loadEventById(eventId)
+        }
+    }
+
+    // 编辑模式下，等待数据加载完成后再初始化表单
+    if (isEditMode && isSingleLoading) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    val existingEvent = if (isEditMode) loadedEvent else null
+    // 从标题中去掉 "纪念日: " 前缀，得到纯名称
+    val existingName = existingEvent?.title?.removePrefix("纪念日: ") ?: ""
+
+    var title by remember(eventId) { mutableStateOf(existingName) }
+    var description by remember(eventId) { mutableStateOf(existingEvent?.description ?: "") }
+    var repeatYearly by remember(eventId) { mutableStateOf(existingEvent?.rrule?.contains("FREQ=YEARLY") == true) }
 
     // ── 公历日期选择 ──────────────────────────────────────────
-    val calendar = remember { Calendar.getInstance() }
-    var selectedYear by remember { mutableIntStateOf(calendar.get(Calendar.YEAR)) }
-    var selectedMonth by remember { mutableIntStateOf(calendar.get(Calendar.MONTH) + 1) }
-    var selectedDay by remember { mutableIntStateOf(calendar.get(Calendar.DAY_OF_MONTH)) }
+    // 编辑模式下从事件数据中解析日期
+    val initialCalendar = remember(eventId) {
+        if (existingEvent != null) {
+            Calendar.getInstance().apply { timeInMillis = existingEvent.dtStart }
+        } else {
+            Calendar.getInstance()
+        }
+    }
+    var selectedYear by remember(eventId) { mutableIntStateOf(initialCalendar.get(Calendar.YEAR)) }
+    var selectedMonth by remember(eventId) { mutableIntStateOf(initialCalendar.get(Calendar.MONTH) + 1) }
+    var selectedDay by remember(eventId) { mutableIntStateOf(initialCalendar.get(Calendar.DAY_OF_MONTH)) }
 
     // ── 农历支持 ──────────────────────────────────────────────
     var isLunarMode by remember { mutableStateOf(false) }
-    var lunarYear by remember { mutableIntStateOf(calendar.get(Calendar.YEAR)) }
+    var lunarYear by remember { mutableIntStateOf(initialCalendar.get(Calendar.YEAR)) }
     var lunarMonth by remember { mutableIntStateOf(1) }
     var lunarDay by remember { mutableIntStateOf(1) }
 
@@ -96,6 +130,26 @@ fun AddAnniversaryScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     var isCreating by remember { mutableStateOf(false) }
+
+    // 编辑模式下从描述中解析农历信息
+    LaunchedEffect(existingEvent) {
+        if (existingEvent != null) {
+            val desc = existingEvent.description ?: ""
+            val lunarMatch = Regex("农历：(\\d+)年(\\d+)月(\\d+)日").find(desc)
+            if (lunarMatch != null) {
+                isLunarMode = true
+                lunarYear = lunarMatch.groupValues[1].toInt()
+                lunarMonth = lunarMatch.groupValues[2].toInt()
+                lunarDay = lunarMatch.groupValues[3].toInt()
+            }
+            // 去掉农历和每年重复的描述，只保留用户备注
+            val userDesc = desc
+                .replace("每年重复纪念日", "")
+                .replace(Regex("农历：\\d+年\\d+月\\d+日"), "")
+                .trim('\n', ' ')
+            description = userDesc
+        }
+    }
 
     // 当 errorMessage 变化时，通过 Snackbar 显示
     LaunchedEffect(errorMessage) {
@@ -142,7 +196,7 @@ fun AddAnniversaryScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             ScheduleTopBar(
-                title = "新建纪念日",
+                title = if (isEditMode) "编辑纪念日" else "新建纪念日",
                 onBack = { navController.popBackStack() }
             )
         }
@@ -479,29 +533,44 @@ fun AddAnniversaryScreen(
 
                     val fullTitle = "纪念日: ${title.trim()}"
                     isCreating = true
-                    android.util.Log.d("Anniversary", "Creating event: title=$fullTitle, start=$startTime, end=$endTime, allDay=true, rrule=$rrule")
-                    vm.createEventAsync(
-                        title = fullTitle,
-                        description = desc,
-                        dtStart = startTime,
-                        dtEnd = endTime,
-                        allDay = true,
-                        rrule = rrule,
-                        reminderMinutes = reminderMinutes
-                    ) { success ->
-                        isCreating = false
-                        android.util.Log.d("Anniversary", "Create result: success=$success")
-                        if (success) {
-                            // 调度闹钟提醒
-                            if (alarmReminder != AnniversaryReminder.NONE) {
-                                scheduleAnniversaryAlarm(
-                                    solarY, solarM, solarD,
-                                    fullTitle, alarmReminder
-                                )
+                    android.util.Log.d("Anniversary", "Saving event: title=$fullTitle, start=$startTime, end=$endTime, allDay=true, rrule=$rrule, eventId=$eventId")
+
+                    if (isEditMode && eventId != null) {
+                        // 编辑模式：更新现有事件
+                        val updatedEvent = existingEvent!!.copy(
+                            title = fullTitle,
+                            description = desc,
+                            dtStart = startTime,
+                            dtEnd = endTime,
+                            allDay = true
+                        )
+                        vm.updateEvent(updatedEvent)
+                        // 重新调度闹钟
+                        if (alarmReminder != AnniversaryReminder.NONE) {
+                            scheduleAnniversaryAlarm(solarY, solarM, solarD, fullTitle, alarmReminder)
+                        }
+                        navController.popBackStack()
+                    } else {
+                        // 创建模式
+                        vm.createEventAsync(
+                            title = fullTitle,
+                            description = desc,
+                            dtStart = startTime,
+                            dtEnd = endTime,
+                            allDay = true,
+                            rrule = rrule,
+                            reminderMinutes = reminderMinutes
+                        ) { success ->
+                            isCreating = false
+                            android.util.Log.d("Anniversary", "Create result: success=$success")
+                            if (success) {
+                                if (alarmReminder != AnniversaryReminder.NONE) {
+                                    scheduleAnniversaryAlarm(solarY, solarM, solarD, fullTitle, alarmReminder)
+                                }
+                                navController.popBackStack()
+                            } else {
+                                errorMessage = "创建失败，请确认设备有可用的日历账户"
                             }
-                            navController.popBackStack()
-                        } else {
-                            errorMessage = "创建失败，请确认设备有可用的日历账户"
                         }
                     }
                 },
@@ -513,7 +582,7 @@ fun AddAnniversaryScreen(
             ) {
                 Icon(Icons.Default.Check, null)
                 Spacer(Modifier.width(8.dp))
-                Text("创建纪念日", fontWeight = FontWeight.Medium)
+                Text(if (isEditMode) "保存修改" else "创建纪念日", fontWeight = FontWeight.Medium)
             }
 
             Spacer(Modifier.height(16.dp))

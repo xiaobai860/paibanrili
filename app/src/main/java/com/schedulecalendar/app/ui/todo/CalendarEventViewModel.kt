@@ -80,7 +80,13 @@ class CalendarEventViewModel @Inject constructor(
 
     init {
         checkPermission()
-        loadAccounts()
+        viewModelScope.launch {
+            // 异步加载账户列表，避免阻塞主线程
+            val accountsList = withContext(Dispatchers.IO) {
+                calendarRepo.getAllAccounts()
+            }
+            _accounts.value = accountsList
+        }
         if (_state.value.hasPermission) {
             loadEvents()
             startObserving()
@@ -88,10 +94,15 @@ class CalendarEventViewModel @Inject constructor(
     }
 
     /**
-     * 加载可用日历账户
+     * 加载可用日历账户（异步）
      */
     fun loadAccounts() {
-        _accounts.value = calendarRepo.getAllAccounts()
+        viewModelScope.launch {
+            val accountsList = withContext(Dispatchers.IO) {
+                calendarRepo.getAllAccounts()
+            }
+            _accounts.value = accountsList
+        }
     }
 
     /**

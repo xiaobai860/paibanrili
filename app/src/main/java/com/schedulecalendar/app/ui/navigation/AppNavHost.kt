@@ -119,6 +119,10 @@ fun AppNavHost() {
                 EditCalendarEventScreen(eventId = route.eventId, navController = navController)
             }
             composable<RouteAddAnniversary> { AddAnniversaryScreen(navController) }
+            composable<RouteEditAnniversary> { backStackEntry ->
+                val route = backStackEntry.toRoute<RouteEditAnniversary>()
+                AddAnniversaryScreen(navController = navController, eventId = route.eventId)
+            }
         }
     }
 }

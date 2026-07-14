@@ -41,6 +41,7 @@ import com.schedulecalendar.app.domain.model.HolidayData
 import com.schedulecalendar.app.ui.navigation.RouteAddAnniversary
 import com.schedulecalendar.app.ui.navigation.RouteAddCalendarEvent
 import com.schedulecalendar.app.ui.navigation.RouteCalendarAccountSettings
+import com.schedulecalendar.app.ui.navigation.RouteEditAnniversary
 import com.schedulecalendar.app.ui.navigation.RouteEditCalendarEvent
 import com.schedulecalendar.app.ui.navigation.RouteScheduleDetail
 import com.schedulecalendar.app.ui.theme.HolidayRed
@@ -1055,7 +1056,7 @@ private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavControl
                 items(anniversaries, key = { it.id }) { event ->
                     AnniversaryRow(
                         event = event,
-                        onClick = { navController.navigate(RouteEditCalendarEvent(event.id)) },
+                        onClick = { navController.navigate(RouteEditAnniversary(event.id)) },
                         onLongClick = { deleteTarget = event }
                     )
                 }
