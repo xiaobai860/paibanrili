@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -38,6 +40,15 @@ private enum class AnniversaryReminder(val label: String, val advanceDays: Long)
     ONE_DAY("提前 1 天", 1),
     ONE_WEEK("提前 1 周", 7),
     ONE_MONTH("提前 1 个月", 30)
+}
+
+/** 系统日历事件提醒提前时间 */
+private enum class CalendarReminderTime(val label: String, val minutes: Int) {
+    AT_TIME("事件发生时", 0),
+    FIVE_MIN("提前 5 分钟", 5),
+    THIRTY_MIN("提前 30 分钟", 30),
+    ONE_HOUR("提前 1 小时", 60),
+    ONE_DAY("提前 1 天", 1440)
 }
 
 /**
@@ -109,6 +120,7 @@ fun AddAnniversaryScreen(
     // ── 提醒设置 ──────────────────────────────────────────────
     // 选项A：系统日历提醒（日历事件级别的 reminder，由系统日历应用弹出通知）
     var addCalendarReminder by remember { mutableStateOf(true) }
+    var calendarReminderTime by remember { mutableStateOf(CalendarReminderTime.AT_TIME) }
     // 选项B：精确闹钟提醒（AlarmManager.setAlarmClock，应用发送通知）
     var alarmEnabled by remember { mutableStateOf(false) }
     var alarmReminder by remember { mutableStateOf(AnniversaryReminder.DAY_OF) }
@@ -222,12 +234,14 @@ fun AddAnniversaryScreen(
             )
         }
     ) { padding ->
+        val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(scrollState)
+                .imePadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Spacer(Modifier.height(4.dp))
@@ -263,7 +277,28 @@ fun AddAnniversaryScreen(
                         fontWeight = FontWeight.Medium
                     )
                     Spacer(Modifier.width(4.dp))
-                    Switch(checked = isLunarMode, onCheckedChange = { isLunarMode = it })
+                    Switch(checked = isLunarMode, onCheckedChange = { newMode ->
+                        if (newMode != isLunarMode) {
+                            if (newMode) {
+                                // 公历 → 农历
+                                try {
+                                    val l = LunarCalendar.solarToLunar(selectedYear, selectedMonth, selectedDay)
+                                    lunarYear = l.lunarYear
+                                    lunarMonth = l.lunarMonth
+                                    lunarDay = l.lunarDay
+                                } catch (_: Exception) {}
+                            } else {
+                                // 农历 → 公历
+                                try {
+                                    val s = LunarCalendar.lunarToSolar(lunarYear, lunarMonth, lunarDay)
+                                    selectedYear = s.year
+                                    selectedMonth = s.month
+                                    selectedDay = s.day
+                                } catch (_: Exception) {}
+                            }
+                        }
+                        isLunarMode = newMode
+                    })
                 }
             }
 
@@ -382,6 +417,21 @@ fun AddAnniversaryScreen(
                     onCheckedChange = { addCalendarReminder = it }
                 )
             }
+            // 日历提醒提前时间选择
+            if (addCalendarReminder) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CalendarReminderTime.entries.forEach { option ->
+                        FilterChip(
+                            selected = calendarReminderTime == option,
+                            onClick = { calendarReminderTime = option },
+                            label = { Text(option.label, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                }
+            }
 
             // ── 选项B：精确闹钟提醒 ──────────────────────────────
             Column {
@@ -428,15 +478,26 @@ fun AddAnniversaryScreen(
             }
 
             // ── 描述/备注 ─────────────────────────────────────
+            var remarksFocused by remember { mutableStateOf(false) }
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
                 label = { Text("备注（可选）") },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { remarksFocused = it.isFocused }
+                    .focusable(),
                 minLines = 2,
-                maxLines = 4,
+                maxLines = 8,
                 leadingIcon = { Icon(Icons.Default.Notes, null) }
             )
+            // 聚焦时自动滚动到底部，确保备注输入框在键盘上方可见
+            LaunchedEffect(remarksFocused) {
+                if (remarksFocused) {
+                    kotlinx.coroutines.delay(300)
+                    scrollState.animateScrollTo(scrollState.maxValue)
+                }
+            }
 
             // ── 错误提示 ──────────────────────────────────────
             if (errorMessage != null) {
@@ -498,7 +559,7 @@ fun AddAnniversaryScreen(
                     }.ifBlank { null }
 
                     val rrule = if (repeatYearly) "FREQ=YEARLY" else null
-                    val reminderMinutes = if (addCalendarReminder) 0 else null
+                    val reminderMinutes = if (addCalendarReminder) calendarReminderTime.minutes else null
 
                     val fullTitle = "纪念日: ${title.trim()}"
                     isCreating = true
