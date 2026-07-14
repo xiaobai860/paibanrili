@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.focusable
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -29,6 +27,7 @@ import androidx.navigation.NavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.schedulecalendar.app.domain.model.LunarCalendar
 import com.schedulecalendar.app.reminder.AnniversaryReminderReceiver
+import com.schedulecalendar.app.ui.component.ImeAdaptiveOutlinedTextField
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import com.schedulecalendar.app.ui.component.WheelFullDatePickerDialog
 import java.util.Calendar
@@ -478,26 +477,16 @@ fun AddAnniversaryScreen(
             }
 
             // ── 描述/备注 ─────────────────────────────────────
-            var remarksFocused by remember { mutableStateOf(false) }
-            OutlinedTextField(
+            ImeAdaptiveOutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
                 label = { Text("备注（可选）") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { remarksFocused = it.isFocused }
-                    .focusable(),
+                modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
-                maxLines = 8,
-                leadingIcon = { Icon(Icons.Default.Notes, null) }
+                maxLines = Int.MAX_VALUE,
+                leadingIcon = { Icon(Icons.Default.Notes, null) },
+                scrollState = scrollState
             )
-            // 聚焦时自动滚动到底部，确保备注输入框在键盘上方可见
-            LaunchedEffect(remarksFocused) {
-                if (remarksFocused) {
-                    kotlinx.coroutines.delay(300)
-                    scrollState.animateScrollTo(scrollState.maxValue)
-                }
-            }
 
             // ── 错误提示 ──────────────────────────────────────
             if (errorMessage != null) {
@@ -617,6 +606,9 @@ fun AddAnniversaryScreen(
             }
 
             Spacer(Modifier.height(16.dp))
+
+            // IME 适配：底部留白，确保输入框可滚动到键盘上方
+            Spacer(Modifier.height(200.dp))
         }
     }
 

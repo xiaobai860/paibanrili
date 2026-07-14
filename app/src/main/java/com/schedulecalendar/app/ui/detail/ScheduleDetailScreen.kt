@@ -18,11 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,16 +26,16 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.schedulecalendar.app.domain.model.*
+import com.schedulecalendar.app.ui.component.ImeAdaptiveOutlinedTextField
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import com.schedulecalendar.app.ui.component.TimePickerField
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import com.schedulecalendar.app.domain.model.LunarCalendar
 import com.schedulecalendar.app.domain.model.HolidayData
-import kotlinx.coroutines.delay
 import java.time.DayOfWeek
 import java.time.LocalDate
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleDetailScreen(
     navController: NavController,
@@ -61,8 +57,6 @@ fun ScheduleDetailScreen(
     var showShiftPicker  by remember { mutableStateOf(false) }
     var showSalaryPicker by remember { mutableStateOf(false) }
     var showStatusEditor by remember { mutableStateOf<String?>(null) } // statusId being edited
-    var remarkFocused    by remember { mutableStateOf(false) }
-    val remarkBringIntoView = remember { BringIntoViewRequester() }
 
     // ── 时间选择器对话框状态（提升到 LazyColumn 外部渲染） ──
     data class TimeDialogConfig(
@@ -75,7 +69,6 @@ fun ScheduleDetailScreen(
 
     val date    = state.date
     val record  = state.record
-    val remarkText = record?.remark ?: ""
     val parts   = date.split("-")
     val y = parts.getOrNull(0)?.toIntOrNull() ?: 0
     val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
@@ -95,13 +88,14 @@ fun ScheduleDetailScreen(
     val hasStatusTimeSegment = isRestOrSwap &&
         record?.appliedStatus?.startTime != null && record?.appliedStatus?.endTime != null
 
-    // 备注获得焦点或内容变化时，请求将输入框滚动到可见区域
-    LaunchedEffect(remarkFocused, remarkText) {
-        if (remarkFocused) {
-            delay(400) // 等待软键盘动画基本完成
-            remarkBringIntoView.bringIntoView()
-        }
-    }
+    // 计算备注项在 LazyColumn 中的索引
+    val visibleStatuses = if (isRestOrSwap) {
+        state.shiftStatuses.filter { s -> s.id != BUILTIN_STATUS_SWAP && s.id != BUILTIN_STATUS_LEAVE }
+    } else state.shiftStatuses
+    val remarkItemIndex = 2 +
+        (if (selectedShift != null && !isRestOrSwap) 1 else 0) +
+        (if (visibleStatuses.isNotEmpty() && selectedShift != null) 1 else 0) +
+        (if (state.extraItems.isNotEmpty()) 1 else 0)
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -244,12 +238,6 @@ fun ScheduleDetailScreen(
             }
 
             // ── 附加状态 ──────────────────────────────────────────────
-            // 休息/调休班次时，隐藏内置"调休"和"请假"状态
-            val visibleStatuses = if (isRestOrSwap) {
-                state.shiftStatuses.filter { s ->
-                    s.id != BUILTIN_STATUS_SWAP && s.id != BUILTIN_STATUS_LEAVE
-                }
-            } else state.shiftStatuses
             if (visibleStatuses.isNotEmpty() && selectedShift != null) {
                 item {
                     SectionLabel("附加状态")
@@ -286,18 +274,14 @@ fun ScheduleDetailScreen(
             // ── 备注 ──────────────────────────────────────────────────
             item {
                 SectionLabel("备注（可选）")
-                OutlinedTextField(
+                ImeAdaptiveOutlinedTextField(
                     value         = record?.remark ?: "",
                     onValueChange = vm::setRemark,
                     placeholder   = { Text("输入备注信息…") },
-                    modifier      = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { event ->
-                            remarkFocused = event.isFocused
-                        }
-                        .bringIntoViewRequester(remarkBringIntoView),
+                    modifier      = Modifier.fillMaxWidth(),
                     maxLines      = Int.MAX_VALUE,
-                    minLines      = 2
+                    minLines      = 2,
+                    onFocused     = { listState.animateScrollToItem(remarkItemIndex) }
                 )
             }
 
@@ -417,6 +401,11 @@ fun ScheduleDetailScreen(
                     enabled  = record?.shiftId != null,
                     shape    = MaterialTheme.shapes.medium
                 ) { Text("保存排班", style = MaterialTheme.typography.titleSmall) }
+            }
+
+            // IME 适配：底部留白，确保输入框可滚动到键盘上方
+            item {
+                Spacer(Modifier.height(200.dp))
             }
         }
     }

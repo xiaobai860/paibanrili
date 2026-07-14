@@ -1,6 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/ui/todo/EventFormComponents.kt
 package com.schedulecalendar.app.ui.todo
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.schedulecalendar.app.data.calendar.CalendarAccountInfo
+import com.schedulecalendar.app.ui.component.ImeAdaptiveOutlinedTextField
 import java.util.Calendar
 import java.util.Locale
 
@@ -199,16 +201,18 @@ fun EventTimeCards(
 fun EventDescriptionField(
     value: String,
     onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    scrollState: ScrollState? = null
 ) {
-    OutlinedTextField(
+    ImeAdaptiveOutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text("描述（可选）") },
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier,
         minLines = 2,
-        maxLines = 5,
-        leadingIcon = { Icon(Icons.Default.Notes, null) }
+        maxLines = Int.MAX_VALUE,
+        leadingIcon = { Icon(Icons.Default.Notes, null) },
+        scrollState = scrollState
     )
 }
 
@@ -218,15 +222,17 @@ fun EventDescriptionField(
 fun EventLocationField(
     value: String,
     onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    scrollState: ScrollState? = null
 ) {
-    OutlinedTextField(
+    ImeAdaptiveOutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text("地点（可选）") },
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier,
         singleLine = true,
-        leadingIcon = { Icon(Icons.Default.LocationOn, null) }
+        leadingIcon = { Icon(Icons.Default.LocationOn, null) },
+        scrollState = scrollState
     )
 }
 

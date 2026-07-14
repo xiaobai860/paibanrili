@@ -1,6 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/ui/component/CommonComponents.kt
 package com.schedulecalendar.app.ui.component
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,12 +18,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.schedulecalendar.app.ui.theme.ShiftPresetColors
+import kotlinx.coroutines.delay
 
 /** 顶部 AppBar with back button */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -326,5 +330,78 @@ fun ExpandableTimePicker(
                 TextButton(onClick = { showDialog = false }) { Text("取消") }
             }
         )
+    }
+}
+
+/**
+ * IME 自适应输入框 —— 自动处理软键盘遮挡问题。
+ *
+ * 核心机制：
+ * 1. 获得焦点时等待 IME 弹出，然后滚动父容器使输入框可见
+ * 2. 内容增长导致高度变化时再次触发滚动
+ * 3. 对于 Column+verticalScroll：传入 scrollState，自动滚动到底部确保输入框在键盘上方
+ * 4. 对于 LazyColumn：通过 onFocused 回调由调用方处理滚动
+ *
+ * @param scrollState  父级 Column 的 ScrollState，传入后自动处理滚动
+ * @param onFocused    LazyColumn 场景下的回调，获得焦点并等待 IME 后触发
+ */
+@Composable
+fun ImeAdaptiveOutlinedTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: @Composable (() -> Unit)? = null,
+    placeholder: @Composable (() -> Unit)? = null,
+    leadingIcon: @Composable (() -> Unit)? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
+    singleLine: Boolean = false,
+    minLines: Int = 1,
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+    scrollState: ScrollState? = null,
+    onFocused: (suspend () -> Unit)? = null
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    // 字段高度，用于检测内容增长
+    val fieldHeight = remember { mutableStateOf(0) }
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = label,
+        placeholder = placeholder,
+        leadingIcon = leadingIcon,
+        trailingIcon = trailingIcon,
+        singleLine = singleLine,
+        minLines = minLines,
+        maxLines = maxLines,
+        modifier = modifier
+            .onFocusChanged { focusState ->
+                isFocused = focusState.isFocused
+            }
+            .onSizeChanged { size ->
+                fieldHeight.value = size.height
+            }
+    )
+
+    // 触发器 1：获得焦点时 → 等待 IME 完全弹出后滚动
+    LaunchedEffect(isFocused) {
+        if (isFocused) {
+            delay(400)
+            if (scrollState != null) {
+                scrollState.scrollTo(scrollState.maxValue)
+            } else {
+                onFocused?.invoke()
+            }
+        }
+    }
+
+    // 触发器 2：内容增长导致高度变化时 → 快速重新滚动保持可见
+    LaunchedEffect(fieldHeight.value) {
+        if (isFocused && fieldHeight.value > 0) {
+            delay(100)
+            if (scrollState != null) {
+                scrollState.scrollTo(scrollState.maxValue)
+            }
+        }
     }
 }

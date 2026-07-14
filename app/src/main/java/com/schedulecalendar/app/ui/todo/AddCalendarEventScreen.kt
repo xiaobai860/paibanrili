@@ -98,12 +98,14 @@ fun AddCalendarEventScreen(
             )
         }
     ) { padding ->
+        val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(scrollState)
+                .imePadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Spacer(Modifier.height(4.dp))
@@ -158,10 +160,20 @@ fun AddCalendarEventScreen(
             FormSectionHeader("详细信息")
 
             // 描述
-            EventDescriptionField(value = description, onValueChange = { description = it })
+            EventDescriptionField(
+                value = description,
+                onValueChange = { description = it },
+                modifier = Modifier.fillMaxWidth(),
+                scrollState = scrollState
+            )
 
             // 地点
-            EventLocationField(value = location, onValueChange = { location = it })
+            EventLocationField(
+                value = location,
+                onValueChange = { location = it },
+                modifier = Modifier.fillMaxWidth(),
+                scrollState = scrollState
+            )
 
             Spacer(Modifier.height(8.dp))
 
@@ -219,6 +231,9 @@ fun AddCalendarEventScreen(
             }
 
             Spacer(Modifier.height(16.dp))
+
+            // IME 适配：底部留白，确保输入框可滚动到键盘上方
+            Spacer(Modifier.height(200.dp))
         }
     }
 
