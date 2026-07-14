@@ -755,6 +755,7 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
     ) { granted ->
         if (granted) {
             vm.checkPermission()
+            vm.loadAccounts()
             vm.loadEvents()
         }
     }

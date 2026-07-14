@@ -72,10 +72,12 @@ class CalendarEventRepository @Inject constructor(
 
             while (cursor.moveToNext()) {
                 val calId = cursor.getLong(0)
-                val displayName = cursor.getString(1) ?: "未知日历"
-                val accountName = cursor.getString(2) ?: ""
+                val calDisplayName = cursor.getString(1)?.takeIf { it.isNotBlank() } ?: ""
+                val accountName = cursor.getString(2)?.takeIf { it.isNotBlank() } ?: ""
                 val accountType = cursor.getString(3) ?: ""
                 val syncEvents = cursor.getInt(5) == 1
+                // displayName 后备：优先使用日历显示名，其次使用账户名，最后使用"未知日历"
+                val displayName = calDisplayName.ifEmpty { accountName.ifEmpty { "未知日历" } }
 
                 val key = "$accountName|$accountType"
                 val existing = accountMap[key]
@@ -305,8 +307,11 @@ class CalendarEventRepository @Inject constructor(
             projection, null, null, null
         )?.use { cursor ->
             if (cursor.moveToFirst()) {
+                val displayName = cursor.getString(0)?.takeIf { it.isNotBlank() }
+                    ?: cursor.getString(1)?.takeIf { it.isNotBlank() }
+                    ?: "未知日历"
                 return CalendarInfo(
-                    displayName = cursor.getString(0) ?: "",
+                    displayName = displayName,
                     accountName = cursor.getString(1) ?: ""
                 )
             }
@@ -331,8 +336,11 @@ class CalendarEventRepository @Inject constructor(
             )?.use { cursor ->
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(0)
+                    val displayName = cursor.getString(1)?.takeIf { it.isNotBlank() }
+                        ?: cursor.getString(2)?.takeIf { it.isNotBlank() }
+                        ?: "未知日历"
                     map[id] = CalendarInfo(
-                        displayName = cursor.getString(1) ?: "",
+                        displayName = displayName,
                         accountName = cursor.getString(2) ?: ""
                     )
                 }
@@ -449,7 +457,12 @@ class CalendarEventRepository @Inject constructor(
      * @return 本地日历ID，如果无法创建则返回null
      */
     fun getOrCreateLocalCalendarId(): Long? {
-        val appName = context.getString(context.applicationInfo.labelRes)
+        // 获取中文应用名作为日历显示名
+        val appName = try {
+            context.getString(context.applicationInfo.labelRes)
+        } catch (_: Exception) {
+            "排班日历"
+        }
         return try {
             // 查找已存在的应用本地日历
             context.contentResolver.query(

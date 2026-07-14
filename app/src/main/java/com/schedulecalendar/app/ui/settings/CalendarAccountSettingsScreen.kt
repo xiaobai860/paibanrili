@@ -168,17 +168,22 @@ private fun AccountCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
+                val acctDisplayName = account.displayName.ifBlank {
+                    account.accountName.ifBlank { "未知日历" }
+                }
                 Text(
-                    account.displayName,
+                    acctDisplayName,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    account.accountName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (account.accountName.isNotEmpty() && account.accountName != acctDisplayName) {
+                    Text(
+                        account.accountName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Text(
                     "${account.calendarCount} 个日历",
                     style = MaterialTheme.typography.labelSmall,
