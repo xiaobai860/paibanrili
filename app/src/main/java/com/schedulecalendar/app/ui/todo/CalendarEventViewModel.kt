@@ -7,6 +7,7 @@ import android.provider.CalendarContract
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.schedulecalendar.app.data.calendar.CalendarAccountInfo
 import com.schedulecalendar.app.data.calendar.CalendarEventInfo
 import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.data.prefs.AppPreferences
@@ -45,14 +46,25 @@ class CalendarEventViewModel @Inject constructor(
     private val _state = MutableStateFlow(CalendarEventState())
     val state: StateFlow<CalendarEventState> = _state.asStateFlow()
 
+    private val _accounts = MutableStateFlow<List<CalendarAccountInfo>>(emptyList())
+    val accounts: StateFlow<List<CalendarAccountInfo>> = _accounts.asStateFlow()
+
     private var observer: android.database.ContentObserver? = null
 
     init {
         checkPermission()
+        loadAccounts()
         if (_state.value.hasPermission) {
             loadEvents()
             startObserving()
         }
+    }
+
+    /**
+     * 加载可用日历账户
+     */
+    fun loadAccounts() {
+        _accounts.value = calendarRepo.getAllAccounts()
     }
 
     /**
@@ -161,9 +173,16 @@ class CalendarEventViewModel @Inject constructor(
         dtStart: Long,
         dtEnd: Long,
         allDay: Boolean = false,
-        location: String? = null
+        location: String? = null,
+        calendarId: Long? = null,
+        rrule: String? = null,
+        reminderMinutes: Int? = null,
+        colorHex: String? = null
     ): Boolean {
-        val result = calendarRepo.createEvent(title, description, dtStart, dtEnd, allDay, location)
+        val result = calendarRepo.createEvent(
+            title, description, dtStart, dtEnd, allDay, location,
+            calendarId, rrule, reminderMinutes, colorHex
+        )
         if (result > 0) {
             loadEvents()
             return true

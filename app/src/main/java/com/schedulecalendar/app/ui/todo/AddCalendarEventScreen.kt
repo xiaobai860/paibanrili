@@ -6,30 +6,27 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.schedulecalendar.app.data.calendar.CalendarAccountInfo
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
-import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Locale
 
 /**
  * 创建日程页面
  * 参考 Google Calendar / Apple Calendar 的事件创建界面设计
- * 包含：标题、日期、开始/结束时间、全天事件开关、描述、地点
+ * 包含：标题、日期时间、全天事件、重复规则、提醒、颜色、描述、地点、日历账户
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +35,8 @@ fun AddCalendarEventScreen(
     vm: CalendarEventViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+
+    // ── 表单状态 ──────────────────────────────────────────────
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
@@ -50,15 +49,24 @@ fun AddCalendarEventScreen(
     var selectedDay by remember { mutableIntStateOf(calendar.get(Calendar.DAY_OF_MONTH)) }
 
     // 时间选择：默认当前时间+1小时
-    var startHour by remember { mutableIntStateOf(calendar.get(Calendar.HOUR_OF_DAY) + 1) }
+    var startHour by remember { mutableIntStateOf((calendar.get(Calendar.HOUR_OF_DAY) + 1).coerceAtMost(23)) }
     var startMinute by remember { mutableIntStateOf(0) }
-    var endHour by remember { mutableIntStateOf(calendar.get(Calendar.HOUR_OF_DAY) + 2) }
+    var endHour by remember { mutableIntStateOf((calendar.get(Calendar.HOUR_OF_DAY) + 2).coerceAtMost(23)) }
     var endMinute by remember { mutableIntStateOf(0) }
+
+    // 新增字段
+    var repeatRule by remember { mutableStateOf(RepeatRule.NONE) }
+    var reminderTime by remember { mutableStateOf(ReminderTime.FIFTEEN_MIN) }
+    var selectedColor by remember { mutableStateOf(EventPresetColors.first()) }
+    var selectedAccountId by remember { mutableStateOf<Long?>(null) }
 
     // 日期/时间选择弹窗
     var showDatePicker by remember { mutableStateOf(false) }
     var showStartTimePicker by remember { mutableStateOf(false) }
     var showEndTimePicker by remember { mutableStateOf(false) }
+
+    // 获取可用日历账户
+    val accounts by vm.accounts.collectAsStateWithLifecycle()
 
     // 权限
     var hasWritePermission by remember {
@@ -87,109 +95,64 @@ fun AddCalendarEventScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Spacer(Modifier.height(4.dp))
 
+            // ── 基本信息 ──────────────────────────────────────
+            FormSectionHeader("基本信息")
+
             // 标题
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text("标题") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Title, null) }
-            )
+            EventTitleField(value = title, onValueChange = { title = it })
 
             // 全天事件开关
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("全天事件", style = MaterialTheme.typography.bodyLarge)
-                Switch(checked = isAllDay, onCheckedChange = { isAllDay = it })
-            }
+            EventAllDaySwitch(checked = isAllDay, onCheckedChange = { isAllDay = it })
 
             // 日期
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+            EventDateCard(
+                year = selectedYear, month = selectedMonth, day = selectedDay,
                 onClick = { showDatePicker = true }
-            ) {
-                Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.CalendarToday, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text("日期", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(
-                            "${selectedYear}年${selectedMonth}月${selectedDay}日",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
+            )
 
             // 时间选择（非全天事件时显示）
             if (!isAllDay) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // 开始时间
-                    OutlinedCard(
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        onClick = { showStartTimePicker = true }
-                    ) {
-                        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                            Text("开始时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(
-                                String.format(Locale.getDefault(), "%02d:%02d", startHour, startMinute),
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                    // 结束时间
-                    OutlinedCard(
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        onClick = { showEndTimePicker = true }
-                    ) {
-                        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                            Text("结束时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(
-                                String.format(Locale.getDefault(), "%02d:%02d", endHour, endMinute),
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
+                EventTimeCards(
+                    startHour = startHour, startMinute = startMinute,
+                    endHour = endHour, endMinute = endMinute,
+                    onStartClick = { showStartTimePicker = true },
+                    onEndClick = { showEndTimePicker = true }
+                )
             }
 
+            // ── 事件设置 ──────────────────────────────────────
+            FormSectionHeader("事件设置")
+
+            // 重复规则
+            EventRepeatSelector(selected = repeatRule, onSelected = { repeatRule = it })
+
+            // 提醒时间
+            EventReminderSelector(selected = reminderTime, onSelected = { reminderTime = it })
+
+            // 颜色
+            EventColorSelector(selectedColor = selectedColor, onColorSelected = { selectedColor = it })
+
+            // 日历账户
+            if (accounts.isNotEmpty()) {
+                EventAccountSelector(
+                    accounts = accounts,
+                    selectedId = selectedAccountId,
+                    onSelected = { selectedAccountId = it }
+                )
+            }
+
+            // ── 详细信息 ──────────────────────────────────────
+            FormSectionHeader("详细信息")
+
             // 描述
-            OutlinedTextField(
-                value = description,
-                onValueChange = { description = it },
-                label = { Text("描述（可选）") },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 2,
-                maxLines = 5,
-                leadingIcon = { Icon(Icons.Default.Notes, null) }
-            )
+            EventDescriptionField(value = description, onValueChange = { description = it })
 
             // 地点
-            OutlinedTextField(
-                value = location,
-                onValueChange = { location = it },
-                label = { Text("地点（可选）") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.LocationOn, null) }
-            )
+            EventLocationField(value = location, onValueChange = { location = it })
 
             Spacer(Modifier.height(8.dp))
 
@@ -208,7 +171,6 @@ fun AddCalendarEventScreen(
                     }
                     val startTime = cal.timeInMillis
                     val endTime = if (isAllDay) {
-                        // 全天事件：结束时间 = 开始时间 + 1天
                         cal.add(Calendar.DAY_OF_MONTH, 1)
                         cal.timeInMillis
                     } else {
@@ -225,7 +187,11 @@ fun AddCalendarEventScreen(
                         dtStart = startTime,
                         dtEnd = endTime,
                         allDay = isAllDay,
-                        location = location.ifBlank { null }
+                        location = location.ifBlank { null },
+                        calendarId = selectedAccountId,
+                        rrule = repeatRule.rrule,
+                        reminderMinutes = if (reminderTime.minutes >= 0) reminderTime.minutes else null,
+                        colorHex = selectedColor
                     )
                     if (success) navController.popBackStack()
                 },

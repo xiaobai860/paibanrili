@@ -249,12 +249,14 @@ private fun TodoTab(
 
     val hasAnyTodo = missedTodos.isNotEmpty() || pendingOTTodos.isNotEmpty()
 
-    // 月份切换控件
+    // 月份切换控件 + 滚动内容
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+        Modifier
+            .fillMaxSize()
     ) {
+        // 月份选择器（固定不滚动）
         Row(
-            Modifier.fillMaxWidth(),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -280,15 +282,16 @@ private fun TodoTab(
                 Icon(Icons.Default.ChevronRight, null, Modifier.size(18.dp))
             }
         }
-    }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(horizontal = 4.dp, vertical = 4.dp)
-            .padding(bottom = 8.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
+        // 可滚动的待办列表区域
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 4.dp)
+                .padding(bottom = 8.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
 
             // ── 有待办数据时才显示子区块 ──────────────────────────
             if (hasAnyTodo) {
@@ -438,7 +441,8 @@ private fun TodoTab(
                     }
                 }
             }
-    }
+        } // end scrollable Column
+    } // end outer Column
 }
 
 // ── 待办子区块（可展开列表） ────────────────────────────────────────────
@@ -937,15 +941,20 @@ private fun CalendarEventRow(
                 )
             }
             Spacer(Modifier.width(8.dp))
-            // 中间：标题 + 账户信息
+            // 中间：标题 + 地点 + 账户信息（支持多行显示）
             Column(Modifier.weight(1f)) {
                 Text(
                     event.title,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    fontWeight = FontWeight.Medium
                 )
+                if (!event.eventLocation.isNullOrEmpty()) {
+                    Text(
+                        event.eventLocation,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 if (event.accountName.isNotEmpty()) {
                     Text(
                         event.accountName,
@@ -1010,8 +1019,9 @@ private fun AnniversaryTab(navController: NavController) {
 }
 
 /**
- * 日历事件详情/编辑弹窗
+ * 日历事件详情/编辑弹窗 - 全屏对话框，复用新建日程的表单组件
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CalendarEventDetailDialog(
     event: com.schedulecalendar.app.data.calendar.CalendarEventInfo,
@@ -1019,61 +1029,195 @@ private fun CalendarEventDetailDialog(
     onEdit: (com.schedulecalendar.app.data.calendar.CalendarEventInfo) -> Unit,
     onDelete: () -> Unit
 ) {
+    val timeFormat = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+    val startStr = remember(event.dtStart) { timeFormat.format(java.util.Date(event.dtStart)) }
+    val endStr = remember(event.dtEnd) { timeFormat.format(java.util.Date(event.dtEnd)) }
+    val dateStr = remember(event.dtStart) {
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = event.dtStart }
+        "${cal.get(java.util.Calendar.YEAR)}年${cal.get(java.util.Calendar.MONTH) + 1}月${cal.get(java.util.Calendar.DAY_OF_MONTH)}日"
+    }
+
     var title by remember(event.id) { mutableStateOf(event.title) }
     var description by remember(event.id) { mutableStateOf(event.description ?: "") }
     var location by remember(event.id) { mutableStateOf(event.eventLocation ?: "") }
+    var isEditing by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("日程详情") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("标题") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            // ── 顶部：标题 + 操作按钮 ──────────────────────────
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    if (isEditing) "编辑日程" else "日程详情",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
                 )
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("描述") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2, maxLines = 4
-                )
-                OutlinedTextField(
-                    value = location,
-                    onValueChange = { location = it },
-                    label = { Text("地点") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                if (!isEditing) {
+                    IconButton(onClick = { isEditing = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = "编辑",
+                            tint = MaterialTheme.colorScheme.primary)
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, contentDescription = "删除",
+                            tint = MaterialTheme.colorScheme.error)
+                    }
+                }
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    onEdit(
-                        event.copy(
-                            title = title,
-                            description = description.ifBlank { null },
-                            eventLocation = location.ifBlank { null }
-                        )
+
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+
+            // ── 时间信息（始终显示） ──────────────────────────
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Schedule, null,
+                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(dateStr, style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium)
+                    Text(
+                        if (event.allDay) "全天" else "$startStr - $endStr",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            ) { Text("保存") }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onDelete) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // ── 账户信息 ────────────────────────────────────
+            if (event.accountName.isNotEmpty() || event.calendarDisplayName.isNotEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AccountCircle, null,
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(event.calendarDisplayName.ifEmpty { "日历" },
+                            style = MaterialTheme.typography.bodyMedium)
+                        if (event.accountName.isNotEmpty()) {
+                            Text(event.accountName, style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
-                Spacer(Modifier.width(8.dp))
-                TextButton(onClick = onDismiss) { Text("取消") }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            // ── 地点信息 ────────────────────────────────────
+            if (!event.eventLocation.isNullOrEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.LocationOn, null,
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text(event.eventLocation, style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            // ── 描述信息 ────────────────────────────────────
+            if (!event.description.isNullOrEmpty()) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(Icons.Default.Notes, null,
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp).padding(top = 2.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text(event.description, style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            // ── 编辑模式：显示表单字段 ────────────────────────
+            if (isEditing) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Spacer(Modifier.height(8.dp))
+
+                Text("编辑信息", style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(8.dp))
+
+                EventTitleField(value = title, onValueChange = { title = it })
+                Spacer(Modifier.height(12.dp))
+                EventLocationField(value = location, onValueChange = { location = it })
+                Spacer(Modifier.height(12.dp))
+                EventDescriptionField(value = description, onValueChange = { description = it })
+
+                Spacer(Modifier.height(16.dp))
+
+                // 保存/取消按钮
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { isEditing = false },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("取消")
+                    }
+                    Button(
+                        onClick = {
+                            onEdit(
+                                event.copy(
+                                    title = title,
+                                    description = description.ifBlank { null },
+                                    eventLocation = location.ifBlank { null }
+                                )
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = title.isNotBlank()
+                    ) {
+                        Icon(Icons.Default.Check, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("保存")
+                    }
+                }
+            }
+
+            // ── 非编辑模式：底部操作按钮 ────────────────────────
+            if (!isEditing) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDelete,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.Default.Delete, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("删除")
+                    }
+                    Button(
+                        onClick = { isEditing = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Edit, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("编辑")
+                    }
+                }
             }
         }
-    )
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════

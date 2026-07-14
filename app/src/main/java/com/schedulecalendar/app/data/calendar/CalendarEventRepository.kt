@@ -258,6 +258,9 @@ class CalendarEventRepository @Inject constructor(
      * @param allDay 是否全天事件
      * @param location 地点
      * @param calendarId 日历ID，null则使用第一个可用日历
+     * @param rrule 重复规则 (RRULE)，null表示不重复
+     * @param reminderMinutes 提前提醒分钟数，null表示不提醒
+     * @param colorHex 事件颜色 (hex格式如 #FF0000)
      * @return 创建成功返回事件ID，失败返回-1
      */
     fun createEvent(
@@ -267,7 +270,10 @@ class CalendarEventRepository @Inject constructor(
         dtEnd: Long,
         allDay: Boolean = false,
         location: String? = null,
-        calendarId: Long? = null
+        calendarId: Long? = null,
+        rrule: String? = null,
+        reminderMinutes: Int? = null,
+        colorHex: String? = null
     ): Long {
         return try {
             val calId = calendarId ?: getFirstWritableCalendarId() ?: return -1L
@@ -280,11 +286,44 @@ class CalendarEventRepository @Inject constructor(
                 put(CalendarContract.Events.ALL_DAY, if (allDay) 1 else 0)
                 put(CalendarContract.Events.EVENT_LOCATION, location)
                 put(CalendarContract.Events.EVENT_TIMEZONE, java.util.TimeZone.getDefault().id)
+                if (rrule != null) {
+                    put(CalendarContract.Events.RRULE, rrule)
+                }
+                if (colorHex != null) {
+                    try {
+                        val colorInt = android.graphics.Color.parseColor(colorHex)
+                        put(CalendarContract.Events.EVENT_COLOR, colorInt)
+                    } catch (_: Exception) {}
+                }
             }
             val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
-            ContentUris.parseId(uri ?: return -1L)
+            val eventId = ContentUris.parseId(uri ?: return -1L)
+
+            // 添加提醒
+            if (reminderMinutes != null && reminderMinutes >= 0) {
+                addReminder(eventId, reminderMinutes)
+            }
+
+            eventId
         } catch (e: Exception) {
             -1L
+        }
+    }
+
+    /**
+     * 为事件添加提醒
+     */
+    private fun addReminder(eventId: Long, minutesBefore: Int): Long? {
+        return try {
+            val values = android.content.ContentValues().apply {
+                put(CalendarContract.Reminders.EVENT_ID, eventId)
+                put(CalendarContract.Reminders.MINUTES, minutesBefore)
+                put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
+            }
+            val uri = context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, values)
+            uri?.let { ContentUris.parseId(it) }
+        } catch (e: Exception) {
+            null
         }
     }
 
