@@ -64,17 +64,17 @@ class CalendarAccountViewModel @Inject constructor(
     fun toggleAccount(account: CalendarAccountInfo) {
         viewModelScope.launch {
             val currentDisabled = _state.value.disabledAccountIds.toMutableSet()
-            val isCurrentlyDisabled = account.id in currentDisabled
+            val isCurrentlyDisabled = account.calendarIds.any { it in currentDisabled }
             val newDisabledState = !isCurrentlyDisabled
 
-            // 尝试同步系统日历
+            // 尝试同步系统日历（使用第一个日历ID）
             calendarRepo.setAccountSync(account.id, !newDisabledState)
 
-            // 更新本地禁用状态
+            // 更新本地禁用状态：添加/移除该账户的所有日历ID
             if (newDisabledState) {
-                currentDisabled.add(account.id)
+                currentDisabled.addAll(account.calendarIds)
             } else {
-                currentDisabled.remove(account.id)
+                currentDisabled.removeAll(account.calendarIds)
             }
             val newDisabled = currentDisabled.toSet()
             _state.update {

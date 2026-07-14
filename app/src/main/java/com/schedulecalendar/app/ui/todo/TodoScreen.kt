@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -1022,6 +1023,7 @@ private fun CalendarEventRow(
 @Composable
 private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavController) {
     val anniversaries by vm.anniversaries.collectAsStateWithLifecycle()
+    var deleteTarget by remember { mutableStateOf<com.schedulecalendar.app.data.calendar.CalendarEventInfo?>(null) }
 
     Box(Modifier.fillMaxSize()) {
         if (anniversaries.isEmpty()) {
@@ -1051,7 +1053,11 @@ private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavControl
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(anniversaries, key = { it.id }) { event ->
-                    AnniversaryRow(event = event)
+                    AnniversaryRow(
+                        event = event,
+                        onClick = { navController.navigate(RouteEditCalendarEvent(event.id)) },
+                        onLongClick = { deleteTarget = event }
+                    )
                 }
             }
         }
@@ -1066,24 +1072,51 @@ private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavControl
             Icon(Icons.Default.Add, contentDescription = "\u65b0\u5efa\u7eaa\u5ff5\u65e5")
         }
     }
+
+    // 删除确认弹窗
+    deleteTarget?.let { event ->
+        val displayName = event.title.removePrefix("\u7eaa\u5ff5\u65e5: ")
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("\u5220\u9664\u7eaa\u5ff5\u65e5") },
+            text = { Text("\u786e\u8ba4\u5220\u9664\u300c${displayName}\u300d\uff1f\u6b64\u64cd\u4f5c\u5c06\u540c\u6b65\u5230\u7cfb\u7edf\u65e5\u5386\u3002") },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteEvent(event.id)
+                    deleteTarget = null
+                }) {
+                    Text("\u5220\u9664", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) { Text("\u53d6\u6d88") }
+            }
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AnniversaryRow(event: com.schedulecalendar.app.data.calendar.CalendarEventInfo) {
+private fun AnniversaryRow(
+    event: com.schedulecalendar.app.data.calendar.CalendarEventInfo,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
     val dateText = try {
         val sdf = SimpleDateFormat("MM\u6708dd\u65e5", Locale.getDefault())
         sdf.format(Date(event.dtStart))
     } catch (_: Exception) { "\u672a\u77e5\u65e5\u671f" }
-    // 去掉标题中的 "纪念日: " 前缀显示
     val displayName = event.title.removePrefix("\u7eaa\u5ff5\u65e5: ")
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        onClick = {
-            // 点击可查看详情（复用编辑流程）
-        }
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
