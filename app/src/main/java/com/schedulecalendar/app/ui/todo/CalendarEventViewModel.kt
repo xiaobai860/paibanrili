@@ -52,13 +52,16 @@ class CalendarEventViewModel @Inject constructor(
     private val _accounts = MutableStateFlow<List<CalendarAccountInfo>>(emptyList())
     val accounts: StateFlow<List<CalendarAccountInfo>> = _accounts.asStateFlow()
 
+    /** 原始事件列表（账户过滤后、纪念日过滤前，供纪念日标签页使用） */
+    private val _rawEvents = MutableStateFlow<List<CalendarEventInfo>>(emptyList())
+
     /** 纪念日列表（FREQ=YEARLY 的循环事件） */
-    val anniversaries: StateFlow<List<CalendarEventInfo>> = _state
-        .let { stateFlow ->
+    val anniversaries: StateFlow<List<CalendarEventInfo>> = _rawEvents
+        .let { src ->
             MutableStateFlow<List<CalendarEventInfo>>(emptyList()).also { flow ->
                 viewModelScope.launch {
-                    stateFlow.collect { state ->
-                        flow.value = state.events.filter {
+                    src.collect { events ->
+                        flow.value = events.filter {
                             it.rrule?.contains("FREQ=YEARLY") == true
                         }
                     }
@@ -120,8 +123,15 @@ class CalendarEventViewModel @Inject constructor(
                         // 通过日历ID查找对应的账户，判断是否被禁用
                         !isAccountDisabled(event.calendarId, disabledAccounts)
                     }
+                // 保存原始事件（供纪念日标签页使用）
+                _rawEvents.value = events
+                // 过滤掉纪念日事件（标题以"纪念日: "开头且FREQ=YEARLY）
+                val filteredEvents = events.filter { event ->
+                    !(event.title.startsWith("\u7eaa\u5ff5\u65e5: ") &&
+                      event.rrule?.contains("FREQ=YEARLY") == true)
+                }
                 _state.update {
-                    it.copy(events = events, isLoading = false)
+                    it.copy(events = filteredEvents, isLoading = false)
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false) }

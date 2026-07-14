@@ -17,7 +17,8 @@ data class CalendarAccountInfo(
     val accountName: String,
     val accountType: String,
     val calendarCount: Int,
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+    val calendarIds: Set<Long> = setOf(id)
 )
 
 /**
@@ -64,11 +65,10 @@ class CalendarEventRepository @Inject constructor(
             CalendarContract.Calendars.CONTENT_URI,
             projection,
             "${CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL} >= ${CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR}",
-            null,
-            null
+            null, null
         )?.use { cursor ->
-            // 按账户分组统计
-            val accountMap = mutableMapOf<String, MutableList<CalendarAccountInfo>>()
+            // 按账户分组统计，收集所有日历ID
+            val accountMap = mutableMapOf<String, Pair<MutableList<Long>, MutableList<CalendarAccountInfo>>>()
 
             while (cursor.moveToNext()) {
                 val calId = cursor.getLong(0)
@@ -80,25 +80,32 @@ class CalendarEventRepository @Inject constructor(
                 val key = "$accountName|$accountType"
                 val existing = accountMap[key]
                 if (existing != null) {
-                    // 同账户的另一个日历，合并计数
-                    val first = existing[0]
-                    existing[0] = first.copy(calendarCount = first.calendarCount + 1)
+                    // 同账户的另一个日历，追加日历ID并更新计数
+                    existing.first.add(calId)
+                    val first = existing.second[0]
+                    existing.second[0] = first.copy(calendarCount = first.calendarCount + 1)
                 } else {
-                    accountMap[key] = mutableListOf(
-                        CalendarAccountInfo(
-                            id = calId,
-                            name = displayName,
-                            displayName = displayName,
-                            accountName = accountName,
-                            accountType = accountType,
-                            calendarCount = 1,
-                            isEnabled = syncEvents
-                        )
+                    val calIds = mutableListOf(calId)
+                    val info = CalendarAccountInfo(
+                        id = calId,
+                        name = displayName,
+                        displayName = displayName,
+                        accountName = accountName,
+                        accountType = accountType,
+                        calendarCount = 1,
+                        isEnabled = syncEvents,
+                        calendarIds = calIds.toSet()
                     )
+                    accountMap[key] = Pair(calIds, mutableListOf(info))
                 }
             }
 
-            accountMap.values.flatten().let { accounts.addAll(it) }
+            // 用最终的 calendarIds 更新每个账户
+            accountMap.forEach { (_, pair) ->
+                val calIds = pair.first.toSet()
+                pair.second[0] = pair.second[0].copy(calendarIds = calIds)
+            }
+            accounts.addAll(accountMap.values.flatMap { it.second })
         }
 
         return accounts

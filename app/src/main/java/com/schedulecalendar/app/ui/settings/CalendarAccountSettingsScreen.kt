@@ -132,7 +132,7 @@ fun CalendarAccountSettingsScreen(
                 items(state.accounts, key = { it.id }) { account ->
                     AccountCard(
                         account = account,
-                        isDisabled = account.id in state.disabledAccountIds,
+                        isDisabled = account.calendarIds.any { it in state.disabledAccountIds },
                         onToggle = { vm.toggleAccount(account) }
                     )
                 }
