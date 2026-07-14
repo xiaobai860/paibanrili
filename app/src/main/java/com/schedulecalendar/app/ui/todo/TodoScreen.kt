@@ -157,7 +157,7 @@ fun TodoScreen(
                         onOvertimeAction = { date, isEarly -> showOvertimeActionDialog = OvertimeActionTarget(date, isEarly) },
                         vm = vm
                     )
-                    2 -> AnniversaryTab(navController = navController)
+                    2 -> AnniversaryTab(vm = eventVm, navController = navController)
                     3 -> HolidayTab()
                 }
             }
@@ -863,7 +863,11 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
                     }
 
                     items(dayEvents, key = { it.id }) { event ->
-                        CalendarEventRow(event = event, onClick = { vm.selectEvent(event) })
+                        CalendarEventRow(event = event, onClick = {
+                            android.util.Log.d("NavDebug", "CalendarEventRow clicked: eventId=${event.id}, title=${event.title}")
+                            vm.selectEvent(event)
+                            android.util.Log.d("NavDebug", "selectEvent completed, showEditDialog=${vm.state.value.showEditDialog}")
+                        })
                     }
                 }
             }
@@ -882,25 +886,49 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
     }
     } // end Box
 
-    // ── 编辑导航：使用 LaunchedEffect 确保弹窗关闭后再导航 ──
+    // ── 导航 pending 状态（放在 let 块外部，避免 dismiss 时被取消）──
     var pendingEditEventId by remember { mutableStateOf<Long?>(null) }
-    LaunchedEffect(pendingEditEventId) {
-        val id = pendingEditEventId ?: return@LaunchedEffect
-        pendingEditEventId = null
-        navController.navigate(RouteEditCalendarEvent(id))
+    var pendingAccountSettings by remember { mutableStateOf(false) }
+
+    // ── 编辑导航：使用 Unit key 避免协程被取消 ──
+    LaunchedEffect(Unit) {
+        while (true) {
+            val id = pendingEditEventId
+            if (id != null) {
+                android.util.Log.d("NavDebug", "pendingEditEventId changed, id=$id, will navigate after 200ms")
+                kotlinx.coroutines.delay(200)
+                android.util.Log.d("NavDebug", "Navigating to EditCalendarEvent($id) now")
+                pendingEditEventId = null
+                navController.navigate(RouteEditCalendarEvent(id))
+                android.util.Log.d("NavDebug", "navigate() called, currentBackStack=${navController.currentBackStackEntry?.destination?.route}")
+            }
+            kotlinx.coroutines.delay(100)
+        }
+    }
+
+    // ── 账户设置导航：同样使用 Unit key ──
+    LaunchedEffect(Unit) {
+        while (true) {
+            if (pendingAccountSettings) {
+                pendingAccountSettings = false
+                kotlinx.coroutines.delay(200)
+                navController.navigate(RouteCalendarAccountSettings)
+            }
+            kotlinx.coroutines.delay(100)
+        }
     }
 
     // ── 详情/编辑弹窗 ─────────────────────────────────────
     eventState.selectedEvent?.let { event ->
+        android.util.Log.d("NavDebug", "selectedEvent exists: id=${event.id}, showEditDialog=${eventState.showEditDialog}, showDeleteDialog=${eventState.showDeleteDialog}")
         if (eventState.showEditDialog) {
+            android.util.Log.d("NavDebug", "Rendering CalendarEventDetailDialog for event ${event.id}")
             CalendarEventDetailDialog(
                 event = event,
                 navController = navController,
                 onDismiss = { vm.dismissDetailDialog() },
-                onNavigateToEdit = {
-                    pendingEditEventId = event.id
-                    vm.dismissDetailDialog()
-                },
+                onNavigateToEdit = { pendingEditEventId = event.id },
+                onNavigateToAccountSettings = { pendingAccountSettings = true },
                 onDelete = { vm.showDeleteConfirm(event) }
             )
         }
@@ -992,31 +1020,39 @@ private fun CalendarEventRow(
 // ════════════════════════════════════════════════════════════════════════════
 
 @Composable
-private fun AnniversaryTab(navController: NavController) {
+private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavController) {
+    val anniversaries by vm.anniversaries.collectAsStateWithLifecycle()
+
     Box(Modifier.fillMaxSize()) {
-        Column(
-            Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                Icons.Default.Celebration, null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(48.dp)
-            )
-            Spacer(Modifier.height(12.dp))
-            Text("\u6682\u65e0\u7eaa\u5ff5\u65e5", style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "\u70b9\u51fb\u53f3\u4e0b\u89d2\u6309\u94ae\u6dfb\u52a0\u7eaa\u5ff5\u65e5",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(16.dp))
-            OutlinedButton(onClick = { navController.navigate(RouteAddAnniversary) }) {
-                Icon(Icons.Default.Add, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("\u65b0\u5efa\u7eaa\u5ff5\u65e5")
+        if (anniversaries.isEmpty()) {
+            Column(
+                Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Default.Celebration, null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(48.dp)
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("\u6682\u65e0\u7eaa\u5ff5\u65e5", style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "\u70b9\u51fb\u53f3\u4e0b\u89d2\u6309\u94ae\u6dfb\u52a0\u7eaa\u5ff5\u65e5",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(anniversaries, key = { it.id }) { event ->
+                    AnniversaryRow(event = event)
+                }
             }
         }
 
@@ -1032,6 +1068,57 @@ private fun AnniversaryTab(navController: NavController) {
     }
 }
 
+@Composable
+private fun AnniversaryRow(event: com.schedulecalendar.app.data.calendar.CalendarEventInfo) {
+    val dateText = try {
+        val sdf = SimpleDateFormat("MM\u6708dd\u65e5", Locale.getDefault())
+        sdf.format(Date(event.dtStart))
+    } catch (_: Exception) { "\u672a\u77e5\u65e5\u671f" }
+    // 去掉标题中的 "纪念日: " 前缀显示
+    val displayName = event.title.removePrefix("\u7eaa\u5ff5\u65e5: ")
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        onClick = {
+            // 点击可查看详情（复用编辑流程）
+        }
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.width(60.dp)) {
+                Text(
+                    dateText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    "\u6bcf\u5e74",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    displayName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            Icon(
+                Icons.Default.ChevronRight, null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
 /**
  * 日历事件详情弹窗 - 显示事件详情，支持跳转编辑/删除/账户管理
  */
@@ -1042,8 +1129,10 @@ private fun CalendarEventDetailDialog(
     navController: NavController,
     onDismiss: () -> Unit,
     onNavigateToEdit: () -> Unit,
+    onNavigateToAccountSettings: () -> Unit,
     onDelete: () -> Unit
 ) {
+    android.util.Log.d("NavDebug", "CalendarEventDetailDialog composed for event ${event.id}")
     val timeFormat = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
     val startStr = remember(event.dtStart) { timeFormat.format(java.util.Date(event.dtStart)) }
     val endStr = remember(event.dtEnd) { timeFormat.format(java.util.Date(event.dtEnd)) }
@@ -1097,7 +1186,7 @@ private fun CalendarEventDetailDialog(
                     modifier = Modifier
                         .clickable {
                             onDismiss()
-                            navController.navigate(RouteCalendarAccountSettings)
+                            onNavigateToAccountSettings()
                         }
                 ) {
                     Icon(Icons.Default.AccountCircle, null,
@@ -1164,8 +1253,11 @@ private fun CalendarEventDetailDialog(
                 }
                 Button(
                     onClick = {
+                        android.util.Log.d("NavDebug", "Edit button clicked for event ${event.id}")
                         onDismiss()
+                        android.util.Log.d("NavDebug", "onDismiss() completed")
                         onNavigateToEdit()
+                        android.util.Log.d("NavDebug", "onNavigateToEdit() completed")
                     },
                     modifier = Modifier.weight(1f)
                 ) {

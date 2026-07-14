@@ -33,7 +33,8 @@ data class CalendarEventInfo(
     val allDay: Boolean,
     val eventLocation: String?,
     val accountName: String,
-    val calendarDisplayName: String
+    val calendarDisplayName: String,
+    val rrule: String? = null
 )
 
 /**
@@ -104,6 +105,50 @@ class CalendarEventRepository @Inject constructor(
     }
 
     /**
+     * 根据事件 ID 查询单个日历事件
+     */
+    fun getEventById(eventId: Long): CalendarEventInfo? {
+        val projection = arrayOf(
+            CalendarContract.Events._ID,
+            CalendarContract.Events.CALENDAR_ID,
+            CalendarContract.Events.TITLE,
+            CalendarContract.Events.DESCRIPTION,
+            CalendarContract.Events.DTSTART,
+            CalendarContract.Events.DTEND,
+            CalendarContract.Events.ALL_DAY,
+            CalendarContract.Events.EVENT_LOCATION,
+            CalendarContract.Events.RRULE
+        )
+        return try {
+            context.contentResolver.query(
+                ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, eventId),
+                projection, null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val calId = cursor.getLong(1)
+                    val calInfo = getCalendarInfo(calId)
+                    CalendarEventInfo(
+                        id = cursor.getLong(0),
+                        calendarId = calId,
+                        title = cursor.getString(2) ?: "无标题",
+                        description = cursor.getString(3),
+                        dtStart = cursor.getLong(4),
+                        dtEnd = cursor.getLong(5),
+                        allDay = cursor.getInt(6) == 1,
+                        eventLocation = cursor.getString(7),
+                        accountName = calInfo?.accountName ?: "",
+                        calendarDisplayName = calInfo?.displayName ?: "",
+                        rrule = cursor.getString(8)
+                    )
+                } else null
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("CalendarEventRepo", "getEventById($eventId) failed", e)
+            null
+        }
+    }
+
+    /**
      * 获取所有可见日历事件（不限时间范围）
      */
     fun getAllEvents(): List<CalendarEventInfo> {
@@ -117,7 +162,8 @@ class CalendarEventRepository @Inject constructor(
             CalendarContract.Events.DTSTART,
             CalendarContract.Events.DTEND,
             CalendarContract.Events.ALL_DAY,
-            CalendarContract.Events.EVENT_LOCATION
+            CalendarContract.Events.EVENT_LOCATION,
+            CalendarContract.Events.RRULE
         )
 
         context.contentResolver.query(
@@ -135,6 +181,7 @@ class CalendarEventRepository @Inject constructor(
                 val dtEnd = cursor.getLong(5)
                 val allDay = cursor.getInt(6) == 1
                 val location = cursor.getString(7)
+                val rrule = cursor.getString(8)
                 val calInfo = getCalendarInfo(calendarId)
                 events.add(
                     CalendarEventInfo(
@@ -142,7 +189,8 @@ class CalendarEventRepository @Inject constructor(
                         description = description, dtStart = dtStart, dtEnd = dtEnd,
                         allDay = allDay, eventLocation = location,
                         accountName = calInfo?.accountName ?: "",
-                        calendarDisplayName = calInfo?.displayName ?: ""
+                        calendarDisplayName = calInfo?.displayName ?: "",
+                        rrule = rrule
                     )
                 )
             }
@@ -171,7 +219,8 @@ class CalendarEventRepository @Inject constructor(
             CalendarContract.Events.DTSTART,
             CalendarContract.Events.DTEND,
             CalendarContract.Events.ALL_DAY,
-            CalendarContract.Events.EVENT_LOCATION
+            CalendarContract.Events.EVENT_LOCATION,
+            CalendarContract.Events.RRULE
         )
 
         val selection = buildString {
@@ -202,6 +251,7 @@ class CalendarEventRepository @Inject constructor(
                 val dtEnd = cursor.getLong(5)
                 val allDay = cursor.getInt(6) == 1
                 val location = cursor.getString(7)
+                val rrule = cursor.getString(8)
 
                 // 获取日历显示名和账户名
                 val calInfo = getCalendarInfo(calendarId)
@@ -217,7 +267,8 @@ class CalendarEventRepository @Inject constructor(
                         allDay = allDay,
                         eventLocation = location,
                         accountName = calInfo?.accountName ?: "",
-                        calendarDisplayName = calInfo?.displayName ?: ""
+                        calendarDisplayName = calInfo?.displayName ?: "",
+                        rrule = rrule
                     )
                 )
             }
@@ -285,7 +336,7 @@ class CalendarEventRepository @Inject constructor(
                 put(CalendarContract.Events.DTEND, dtEnd)
                 put(CalendarContract.Events.ALL_DAY, if (allDay) 1 else 0)
                 put(CalendarContract.Events.EVENT_LOCATION, location)
-                put(CalendarContract.Events.EVENT_TIMEZONE, java.util.TimeZone.getDefault().id)
+                put(CalendarContract.Events.EVENT_TIMEZONE, if (allDay) "UTC" else java.util.TimeZone.getDefault().id)
                 if (rrule != null) {
                     put(CalendarContract.Events.RRULE, rrule)
                 }
@@ -331,15 +382,19 @@ class CalendarEventRepository @Inject constructor(
      * 获取第一个可写日历的ID
      */
     private fun getFirstWritableCalendarId(): Long? {
-        context.contentResolver.query(
-            CalendarContract.Calendars.CONTENT_URI,
-            arrayOf(CalendarContract.Calendars._ID),
-            "${CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL} >= ${CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR}",
-            null, null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) return cursor.getLong(0)
+        return try {
+            context.contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI,
+                arrayOf(CalendarContract.Calendars._ID),
+                "${CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL} >= ${CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR}",
+                null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) return cursor.getLong(0)
+            }
+            null
+        } catch (e: Exception) {
+            null
         }
-        return null
     }
 
     /**
