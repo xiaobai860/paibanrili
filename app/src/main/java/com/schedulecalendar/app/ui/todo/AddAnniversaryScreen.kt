@@ -1,10 +1,14 @@
 package com.schedulecalendar.app.ui.todo
 
 import android.Manifest
-import androidx.core.content.ContextCompat
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,15 +22,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.schedulecalendar.app.domain.model.LunarCalendar
+import com.schedulecalendar.app.reminder.AnniversaryReminderReceiver
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import java.util.Calendar
+
+/** 纪念日闹钟提醒提前时间 */
+private enum class AnniversaryReminder(val label: String, val advanceDays: Long) {
+    NONE("不提醒", 0),
+    DAY_OF("当天", 0),
+    ONE_DAY("提前 1 天", 1),
+    ONE_WEEK("提前 1 周", 7),
+    ONE_MONTH("提前 1 个月", 30)
+}
 
 /**
  * 创建纪念日页面
  * 纪念日以全天重复事件写入系统日历（年度重复）
- * 包含：名称、日期、是否每年重复、描述/备注
+ * 包含：名称、日期（公历/农历）、每年重复、日历提醒、闹钟提醒、描述/备注
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,15 +55,31 @@ fun AddAnniversaryScreen(
     var description by remember { mutableStateOf("") }
     var repeatYearly by remember { mutableStateOf(true) }
 
-    // 日期选择：默认今天
+    // ── 公历日期选择 ──────────────────────────────────────────
     val calendar = remember { Calendar.getInstance() }
     var selectedYear by remember { mutableIntStateOf(calendar.get(Calendar.YEAR)) }
     var selectedMonth by remember { mutableIntStateOf(calendar.get(Calendar.MONTH) + 1) }
     var selectedDay by remember { mutableIntStateOf(calendar.get(Calendar.DAY_OF_MONTH)) }
 
+    // ── 农历支持 ──────────────────────────────────────────────
+    var isLunarMode by remember { mutableStateOf(false) }
+    var lunarYear by remember { mutableIntStateOf(calendar.get(Calendar.YEAR)) }
+    var lunarMonth by remember { mutableIntStateOf(1) }
+    var lunarDay by remember { mutableIntStateOf(1) }
+
+    // 当前选中日期的农历信息（公历模式下显示）
+    val currentLunar = remember(selectedYear, selectedMonth, selectedDay) {
+        try { LunarCalendar.solarToLunar(selectedYear, selectedMonth, selectedDay) } catch (_: Exception) { null }
+    }
+
+    // ── 提醒设置 ──────────────────────────────────────────────
+    var addCalendarReminder by remember { mutableStateOf(true) }
+    var alarmReminder by remember { mutableStateOf(AnniversaryReminder.DAY_OF) }
+
+    // ── 日期选择弹窗 ──────────────────────────────────────────
     var showDatePicker by remember { mutableStateOf(false) }
 
-    // 权限
+    // ── 权限 ──────────────────────────────────────────────────
     var hasWritePermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) ==
@@ -58,6 +90,43 @@ fun AddAnniversaryScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasWritePermission = granted
+    }
+
+    // ── 错误提示 ──────────────────────────────────────────────
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // AlarmManager
+    val alarmManager = remember { context.getSystemService(Context.ALARM_SERVICE) as AlarmManager }
+
+    /** 调度纪念日闹钟提醒 */
+    fun scheduleAnniversaryAlarm(
+        annivYear: Int, annivMonth: Int, annivDay: Int,
+        annivTitle: String, reminder: AnniversaryReminder
+    ) {
+        if (reminder == AnniversaryReminder.NONE) return
+        val triggerCal = Calendar.getInstance().apply {
+            set(annivYear, annivMonth - 1, annivDay, 9, 0, 0)
+            set(Calendar.MILLISECOND, 0)
+            add(Calendar.DAY_OF_MONTH, -reminder.advanceDays.toInt())
+        }
+        if (triggerCal.timeInMillis <= System.currentTimeMillis()) return
+
+        val intent = Intent(context, AnniversaryReminderReceiver::class.java).apply {
+            putExtra(AnniversaryReminderReceiver.EXTRA_TITLE, annivTitle)
+            putExtra(AnniversaryReminderReceiver.EXTRA_DATE, "$annivYear-%02d-%02d".format(annivMonth, annivDay))
+            action = "ANNIVERSARY_REMINDER_$annivTitle"
+        }
+        val requestCode = annivTitle.hashCode()
+        val pi = PendingIntent.getBroadcast(
+            context, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        try {
+            alarmManager.setAlarmClock(
+                AlarmManager.AlarmClockInfo(triggerCal.timeInMillis, pi),
+                pi
+            )
+        } catch (_: Exception) { }
     }
 
     Scaffold(
@@ -78,7 +147,7 @@ fun AddAnniversaryScreen(
         ) {
             Spacer(Modifier.height(4.dp))
 
-            // 名称
+            // ── 名称 ──────────────────────────────────────────
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
@@ -89,30 +158,136 @@ fun AddAnniversaryScreen(
                 placeholder = { Text("如：结婚纪念日、生日等") }
             )
 
-            // 日期
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                onClick = { showDatePicker = true }
+            // ── 公历/农历切换 ─────────────────────────────────
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.DateRange, null,
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("日期类型", style = MaterialTheme.typography.bodyLarge)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (isLunarMode) "农历" else "公历",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Switch(checked = isLunarMode, onCheckedChange = { isLunarMode = it })
+                }
+            }
+
+            // ── 日期选择 ──────────────────────────────────────
+            if (isLunarMode) {
+                // 农历日期选择
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.CalendarToday, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text("纪念日日期", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(
-                            "${selectedYear}年${selectedMonth}月${selectedDay}日",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium
-                        )
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CalendarToday, null,
+                                tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text("农历日期", style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    "农历${lunarYear}年${lunarMonth}月${lunarDay}日",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // 年
+                            OutlinedTextField(
+                                value = lunarYear.toString(),
+                                onValueChange = { v ->
+                                    v.toIntOrNull()?.let { lunarYear = it.coerceIn(1900, 2100) }
+                                },
+                                label = { Text("年") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                            // 月
+                            OutlinedTextField(
+                                value = lunarMonth.toString(),
+                                onValueChange = { v ->
+                                    v.toIntOrNull()?.let { lunarMonth = it.coerceIn(1, 12) }
+                                },
+                                label = { Text("月") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                            // 日
+                            OutlinedTextField(
+                                value = lunarDay.toString(),
+                                onValueChange = { v ->
+                                    v.toIntOrNull()?.let { lunarDay = it.coerceIn(1, 30) }
+                                },
+                                label = { Text("日") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                        }
+                        // 显示转换后的公历日期
+                        val solar = try {
+                            LunarCalendar.lunarToSolar(lunarYear, lunarMonth, lunarDay)
+                        } catch (_: Exception) { null }
+                        if (solar != null) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "对应公历：${solar.year}年${solar.month}月${solar.day}日",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            } else {
+                // 公历日期选择（使用 DatePicker）
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    onClick = { showDatePicker = true }
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.CalendarToday, null,
+                            tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("纪念日日期", style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "${selectedYear}年${selectedMonth}月${selectedDay}日",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            // 显示对应农历
+                            if (currentLunar != null) {
+                                val l = currentLunar!!
+                                Text(
+                                    "农历${l.yearGanZhi}年 ${l.monthText}${l.dayText}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            // 每年重复
+            // ── 每年重复 ──────────────────────────────────────
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -129,7 +304,97 @@ fun AddAnniversaryScreen(
                 Switch(checked = repeatYearly, onCheckedChange = { repeatYearly = it })
             }
 
-            // 描述/备注
+            // ── 系统日历提醒 ──────────────────────────────────
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Event, null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("系统日历提醒", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Text(
+                        "在系统日历事件中设置提醒",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = addCalendarReminder,
+                    onCheckedChange = { addCalendarReminder = it }
+                )
+            }
+
+            // ── 闹钟提醒 ──────────────────────────────────────
+            var alarmExpanded by remember { mutableStateOf(false) }
+            Column {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Alarm, null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("闹钟提醒", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { alarmExpanded = !alarmExpanded }
+                    ) {
+                        Text(
+                            alarmReminder.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Icon(
+                            if (alarmExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Text(
+                    "到时间后通过本地通知提醒",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (alarmExpanded) {
+                    Spacer(Modifier.height(4.dp))
+                    AnniversaryReminder.entries.forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    alarmReminder = option
+                                    alarmExpanded = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = alarmReminder == option,
+                                onClick = {
+                                    alarmReminder = option
+                                    alarmExpanded = false
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(option.label)
+                        }
+                    }
+                }
+            }
+
+            // ── 描述/备注 ─────────────────────────────────────
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
@@ -140,9 +405,18 @@ fun AddAnniversaryScreen(
                 leadingIcon = { Icon(Icons.Default.Notes, null) }
             )
 
+            // ── 错误提示 ──────────────────────────────────────
+            if (errorMessage != null) {
+                Text(
+                    text = errorMessage!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
             Spacer(Modifier.height(8.dp))
 
-            // 创建按钮
+            // ── 创建按钮 ──────────────────────────────────────
             Button(
                 onClick = {
                     if (!hasWritePermission) {
@@ -151,34 +425,68 @@ fun AddAnniversaryScreen(
                     }
                     if (title.isBlank()) return@Button
 
-                    // 作为全天事件写入系统日历
+                    // 计算实际公历日期
+                    val (solarY, solarM, solarD) = if (isLunarMode) {
+                        try {
+                            val s = LunarCalendar.lunarToSolar(lunarYear, lunarMonth, lunarDay)
+                            Triple(s.year, s.month, s.day)
+                        } catch (_: Exception) {
+                            errorMessage = "农历日期转换失败，请检查输入"
+                            return@Button
+                        }
+                    } else {
+                        Triple(selectedYear, selectedMonth, selectedDay)
+                    }
+
                     val startCal = Calendar.getInstance().apply {
-                        set(selectedYear, selectedMonth - 1, selectedDay, 0, 0, 0)
+                        set(solarY, solarM - 1, solarD, 0, 0, 0)
                         set(Calendar.MILLISECOND, 0)
                     }
                     val startTime = startCal.timeInMillis
                     val endCal = Calendar.getInstance().apply {
-                        set(selectedYear, selectedMonth - 1, selectedDay, 23, 59, 59)
+                        set(solarY, solarM - 1, solarD, 23, 59, 59)
                         set(Calendar.MILLISECOND, 999)
                     }
                     val endTime = endCal.timeInMillis
 
                     val desc = buildString {
                         if (repeatYearly) append("每年重复纪念日")
+                        if (isLunarMode) {
+                            if (isNotEmpty()) append("\n")
+                            append("农历：${lunarYear}年${lunarMonth}月${lunarDay}日")
+                        }
                         if (description.isNotBlank()) {
                             if (isNotEmpty()) append("\n")
                             append(description)
                         }
                     }.ifBlank { null }
 
+                    val rrule = if (repeatYearly) "FREQ=YEARLY" else null
+                    val reminderMinutes = if (addCalendarReminder) 0 else null
+
+                    val fullTitle = "纪念日: ${title.trim()}"
                     val success = vm.createEvent(
-                        title = "纪念日: ${title.trim()}",
+                        title = fullTitle,
                         description = desc,
                         dtStart = startTime,
                         dtEnd = endTime,
-                        allDay = true
+                        allDay = true,
+                        rrule = rrule,
+                        reminderMinutes = reminderMinutes
                     )
-                    if (success) navController.popBackStack()
+
+                    if (success) {
+                        // 调度闹钟提醒
+                        if (alarmReminder != AnniversaryReminder.NONE) {
+                            scheduleAnniversaryAlarm(
+                                solarY, solarM, solarD,
+                                fullTitle, alarmReminder
+                            )
+                        }
+                        navController.popBackStack()
+                    } else {
+                        errorMessage = "创建失败，请确认设备有可用的日历账户"
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = title.isNotBlank(),
@@ -195,7 +503,7 @@ fun AddAnniversaryScreen(
         }
     }
 
-    // 日期选择弹窗
+    // ── 公历日期选择弹窗 ──────────────────────────────────────
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = Calendar.getInstance().apply {

@@ -2,6 +2,8 @@
 package com.schedulecalendar.app.domain.model
 
 import com.tyme.solar.SolarDay
+import com.tyme.lunar.LunarDay as TymeLunarDay
+import com.tyme.lunar.LunarMonth as TymeLunarMonth
 
 /**
  * 公历转农历工具
@@ -77,6 +79,28 @@ object LunarCalendar {
     fun getDayGanZhi(year: Int, month: Int, day: Int): String {
         val lunarDay = SolarDay.fromYmd(year, month, day).getLunarDay()
         return lunarDay.getSixtyCycle().getName()
+    }
+
+    /**
+     * 农历转公历
+     * @param lunarYear 农历年
+     * @param lunarMonth 农历月（1-12）
+     * @param lunarDay 农历日（1-30）
+     * @param isLeapMonth 是否闰月
+     * @return 公历日期数据类
+     */
+    data class SolarDate(val year: Int, val month: Int, val day: Int)
+
+    fun lunarToSolar(lunarYear: Int, lunarMonth: Int, lunarDay: Int, isLeapMonth: Boolean = false): SolarDate {
+        return try {
+            val monthIndex = if (isLeapMonth) -lunarMonth else lunarMonth
+            val ld = TymeLunarDay.fromYmd(lunarYear, monthIndex, lunarDay)
+            val sd = ld.getSolarDay()
+            val sm = sd.getSolarMonth()
+            SolarDate(sm.getSolarYear().getYear(), sm.getIndexInYear() + 1, sd.getDay())
+        } catch (e: Exception) {
+            SolarDate(lunarYear, lunarMonth, lunarDay)
+        }
     }
 
     // ── 黄历宜忌 ──────────────────────────────────────────────────

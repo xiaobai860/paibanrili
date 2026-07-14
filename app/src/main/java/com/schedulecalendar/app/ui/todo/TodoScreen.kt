@@ -882,6 +882,14 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
     }
     } // end Box
 
+    // ── 编辑导航：使用 LaunchedEffect 确保弹窗关闭后再导航 ──
+    var pendingEditEventId by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(pendingEditEventId) {
+        val id = pendingEditEventId ?: return@LaunchedEffect
+        pendingEditEventId = null
+        navController.navigate(RouteEditCalendarEvent(id))
+    }
+
     // ── 详情/编辑弹窗 ─────────────────────────────────────
     eventState.selectedEvent?.let { event ->
         if (eventState.showEditDialog) {
@@ -889,7 +897,10 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
                 event = event,
                 navController = navController,
                 onDismiss = { vm.dismissDetailDialog() },
-                onNavigateToEdit = { navController.navigate(RouteEditCalendarEvent(event.id)) },
+                onNavigateToEdit = {
+                    pendingEditEventId = event.id
+                    vm.dismissDetailDialog()
+                },
                 onDelete = { vm.showDeleteConfirm(event) }
             )
         }

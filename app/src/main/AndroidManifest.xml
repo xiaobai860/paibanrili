@@ -74,5 +74,10 @@
             android:name=".reminder.AlarmReceiver"
             android:exported="false" />
 
+        <!-- 纪念日提醒接收器 -->
+        <receiver
+            android:name=".reminder.AnniversaryReminderReceiver"
+            android:exported="false" />
+
     </application>
 </manifest>
