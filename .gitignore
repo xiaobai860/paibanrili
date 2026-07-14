@@ -1,0 +1,16 @@
+.gradle/
+build/
+app/build/
+.kotlin/
+.idea/
+*.iml
+.fastRequest/
+local.properties
+.DS_Store
+Thumbs.db
+.rikki/
+*.ps1
+*.py
+crash_log.txt
+logcat_full.txt
+.qoderignore
