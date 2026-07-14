@@ -80,14 +80,19 @@ class CalendarEventViewModel @Inject constructor(
 
     init {
         checkPermission()
-        viewModelScope.launch {
-            // 异步加载账户列表，避免阻塞主线程
-            val accountsList = withContext(Dispatchers.IO) {
-                calendarRepo.getAllAccounts()
-            }
-            _accounts.value = accountsList
-        }
+        // 只在有权限时加载账户列表和事件
         if (_state.value.hasPermission) {
+            viewModelScope.launch {
+                val accountsList = try {
+                    withContext(Dispatchers.IO) {
+                        calendarRepo.getAllAccounts()
+                    }
+                } catch (e: SecurityException) {
+                    Log.e("CalendarEventVM", "init loadAccounts SecurityException", e)
+                    emptyList()
+                }
+                _accounts.value = accountsList
+            }
             loadEvents()
             startObserving()
         }
@@ -95,11 +100,21 @@ class CalendarEventViewModel @Inject constructor(
 
     /**
      * 加载可用日历账户（异步）
+     * 添加权限检查，避免无权限时查询崩溃
      */
     fun loadAccounts() {
+        if (!_state.value.hasPermission) {
+            checkPermission()
+            if (!_state.value.hasPermission) return
+        }
         viewModelScope.launch {
-            val accountsList = withContext(Dispatchers.IO) {
-                calendarRepo.getAllAccounts()
+            val accountsList = try {
+                withContext(Dispatchers.IO) {
+                    calendarRepo.getAllAccounts()
+                }
+            } catch (e: SecurityException) {
+                Log.e("CalendarEventVM", "loadAccounts SecurityException", e)
+                emptyList()
             }
             _accounts.value = accountsList
         }
@@ -117,16 +132,22 @@ class CalendarEventViewModel @Inject constructor(
 
     /**
      * 加载所有日历事件
+     * 添加权限检查和异常捕获，避免 SecurityException 导致闪退
      */
     fun loadEvents() {
-        if (!_state.value.hasPermission) return
+        if (!_state.value.hasPermission) {
+            checkPermission()
+            if (!_state.value.hasPermission) return
+        }
 
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
 
             try {
                 // 查询所有可见事件（不限制时间范围）
-                val allEvents = calendarRepo.getAllEvents()
+                val allEvents = withContext(Dispatchers.IO) {
+                    calendarRepo.getAllEvents()
+                }
                 // 过滤已禁用账户的事件
                 val disabledAccounts = prefs.getDisabledAccountIds()
                 val events = if (disabledAccounts.isEmpty()) allEvents
@@ -144,7 +165,11 @@ class CalendarEventViewModel @Inject constructor(
                 _state.update {
                     it.copy(events = filteredEvents, isLoading = false)
                 }
+            } catch (e: SecurityException) {
+                Log.e("CalendarEventVM", "loadEvents SecurityException", e)
+                _state.update { it.copy(isLoading = false, events = emptyList()) }
             } catch (e: Exception) {
+                Log.e("CalendarEventVM", "loadEvents failed", e)
                 _state.update { it.copy(isLoading = false) }
             }
         }
@@ -175,8 +200,17 @@ class CalendarEventViewModel @Inject constructor(
 
     /**
      * 选择一个事件查看详情
+     * 添加权限检查，避免无权限时操作
      */
     fun selectEvent(event: CalendarEventInfo) {
+        // 检查权限，无权限时不显示详情弹窗
+        if (!_state.value.hasPermission) {
+            checkPermission()
+            if (!_state.value.hasPermission) {
+                Log.w("CalendarEventVM", "selectEvent skipped: no permission")
+                return
+            }
+        }
         _state.update {
             it.copy(selectedEvent = event, showEditDialog = true)
         }
@@ -211,12 +245,30 @@ class CalendarEventViewModel @Inject constructor(
 
     /**
      * 根据 ID 直接加载单个日历事件（不依赖全部事件列表）
+     * 添加权限检查，避免 SecurityException 导致闪退
      */
     fun loadEventById(eventId: Long) {
+        // 先检查权限，无权限时不执行查询
+        if (!_state.value.hasPermission) {
+            checkPermission()
+            if (!_state.value.hasPermission) {
+                Log.w("CalendarEventVM", "loadEventById($eventId) skipped: no permission")
+                _isSingleLoading.value = false
+                return
+            }
+        }
         _isSingleLoading.value = true
         viewModelScope.launch {
-            val event = withContext(Dispatchers.IO) {
-                calendarRepo.getEventById(eventId)
+            val event = try {
+                withContext(Dispatchers.IO) {
+                    calendarRepo.getEventById(eventId)
+                }
+            } catch (e: SecurityException) {
+                Log.e("CalendarEventVM", "loadEventById($eventId) SecurityException", e)
+                null
+            } catch (e: Exception) {
+                Log.e("CalendarEventVM", "loadEventById($eventId) failed", e)
+                null
             }
             Log.d("CalendarEventVM", "loadEventById($eventId) -> ${event?.title ?: "null"}")
             _singleEvent.value = event

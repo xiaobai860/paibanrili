@@ -422,6 +422,10 @@ fun EventAccountSelector(
     if (accounts.isEmpty()) return
     var expanded by remember { mutableStateOf(false) }
     val selectedAccount = accounts.find { it.id == selectedId } ?: accounts.firstOrNull()
+    // 显示名后备：displayName -> accountName -> "选择日历"
+    val selectedDisplayName = selectedAccount?.let {
+        it.displayName.ifBlank { it.accountName.ifBlank { "选择日历" } }
+    } ?: "选择日历"
 
     OutlinedCard(
         modifier = modifier.fillMaxWidth(),
@@ -437,11 +441,11 @@ fun EventAccountSelector(
             Column(Modifier.weight(1f)) {
                 Text("日历", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    selectedAccount?.displayName ?: "选择日历",
+                    selectedDisplayName,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
-                if (selectedAccount != null && selectedAccount.accountName.isNotEmpty()) {
+                if (selectedAccount != null && selectedAccount.accountName.isNotEmpty() && selectedAccount.accountName != selectedAccount.displayName) {
                     Text(
                         selectedAccount.accountName,
                         style = MaterialTheme.typography.labelSmall,
@@ -479,8 +483,11 @@ fun EventAccountSelector(
                             )
                             Spacer(Modifier.width(8.dp))
                             Column {
-                                Text(account.displayName, style = MaterialTheme.typography.bodyLarge)
-                                if (account.accountName.isNotEmpty()) {
+                                val acctDisplayName = account.displayName.ifBlank {
+                                    account.accountName.ifBlank { "未知日历" }
+                                }
+                                Text(acctDisplayName, style = MaterialTheme.typography.bodyLarge)
+                                if (account.accountName.isNotEmpty() && account.accountName != acctDisplayName) {
                                     Text(account.accountName, style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
