@@ -67,6 +67,7 @@ fun AddCalendarEventScreen(
 
     // 获取可用日历账户
     val accounts by vm.accounts.collectAsStateWithLifecycle()
+    var isCreating by remember { mutableStateOf(false) }
 
     // 权限
     var hasWritePermission by remember {
@@ -181,7 +182,8 @@ fun AddCalendarEventScreen(
                         endCal.timeInMillis
                     }
 
-                    val success = vm.createEvent(
+                    isCreating = true
+                    vm.createEventAsync(
                         title = title.trim(),
                         description = description.ifBlank { null },
                         dtStart = startTime,
@@ -192,11 +194,13 @@ fun AddCalendarEventScreen(
                         rrule = repeatRule.rrule,
                         reminderMinutes = if (reminderTime.minutes >= 0) reminderTime.minutes else null,
                         colorHex = selectedColor
-                    )
-                    if (success) navController.popBackStack()
+                    ) { success ->
+                        isCreating = false
+                        if (success) navController.popBackStack()
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = title.isNotBlank(),
+                enabled = title.isNotBlank() && !isCreating,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
                 )

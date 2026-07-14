@@ -157,6 +157,7 @@ class CalendarEventRepository @Inject constructor(
 
     /**
      * 获取所有可见日历事件（不限时间范围）
+     * 优化：批量加载日历信息，避免 N+1 查询
      */
     fun getAllEvents(): List<CalendarEventInfo> {
         val events = mutableListOf<CalendarEventInfo>()
@@ -172,6 +173,9 @@ class CalendarEventRepository @Inject constructor(
             CalendarContract.Events.EVENT_LOCATION,
             CalendarContract.Events.RRULE
         )
+
+        // 先批量加载所有日历信息
+        val calendarInfoMap = loadAllCalendarInfo()
 
         context.contentResolver.query(
             CalendarContract.Events.CONTENT_URI,
@@ -189,7 +193,7 @@ class CalendarEventRepository @Inject constructor(
                 val allDay = cursor.getInt(6) == 1
                 val location = cursor.getString(7)
                 val rrule = cursor.getString(8)
-                val calInfo = getCalendarInfo(calendarId)
+                val calInfo = calendarInfoMap[calendarId]
                 events.add(
                     CalendarEventInfo(
                         id = eventId, calendarId = calendarId, title = title,
@@ -242,6 +246,9 @@ class CalendarEventRepository @Inject constructor(
             arrayOf(startTime.toString(), endTime.toString())
         }
 
+        // 批量加载日历信息
+        val calendarInfoMap = loadAllCalendarInfo()
+
         context.contentResolver.query(
             CalendarContract.Events.CONTENT_URI,
             projection,
@@ -260,8 +267,8 @@ class CalendarEventRepository @Inject constructor(
                 val location = cursor.getString(7)
                 val rrule = cursor.getString(8)
 
-                // 获取日历显示名和账户名
-                val calInfo = getCalendarInfo(calendarId)
+                // 从缓存中获取日历信息
+                val calInfo = calendarInfoMap[calendarId]
 
                 events.add(
                     CalendarEventInfo(
@@ -305,6 +312,33 @@ class CalendarEventRepository @Inject constructor(
             }
         }
         return null
+    }
+
+    /**
+     * 批量加载所有可见日历的信息（避免 N+1 查询）
+     */
+    private fun loadAllCalendarInfo(): Map<Long, CalendarInfo> {
+        val map = mutableMapOf<Long, CalendarInfo>()
+        val projection = arrayOf(
+            CalendarContract.Calendars._ID,
+            CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Calendars.ACCOUNT_NAME
+        )
+        try {
+            context.contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI,
+                projection, null, null, null
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    map[id] = CalendarInfo(
+                        displayName = cursor.getString(1) ?: "",
+                        accountName = cursor.getString(2) ?: ""
+                    )
+                }
+            }
+        } catch (_: Exception) {}
+        return map
     }
 
     /**
@@ -387,8 +421,13 @@ class CalendarEventRepository @Inject constructor(
 
     /**
      * 获取第一个可写日历的ID
+     * 优先使用应用本地日历（显示名称为应用名），其次使用其他可写日历
      */
     private fun getFirstWritableCalendarId(): Long? {
+        // 优先查找应用本地日历
+        val localCalId = getOrCreateLocalCalendarId()
+        if (localCalId != null) return localCalId
+
         return try {
             context.contentResolver.query(
                 CalendarContract.Calendars.CONTENT_URI,
@@ -400,6 +439,54 @@ class CalendarEventRepository @Inject constructor(
             }
             null
         } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 获取或创建应用本地日历
+     * 使用应用名称作为日历显示名，方便用户在系统日历中识别
+     * @return 本地日历ID，如果无法创建则返回null
+     */
+    fun getOrCreateLocalCalendarId(): Long? {
+        val appName = context.getString(context.applicationInfo.labelRes)
+        return try {
+            // 查找已存在的应用本地日历
+            context.contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI,
+                arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME),
+                "${CalendarContract.Calendars.ACCOUNT_TYPE} = ? AND ${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} = ?",
+                arrayOf("LOCAL", appName),
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    return cursor.getLong(0)
+                }
+            }
+
+            // 不存在则创建
+            val values = android.content.ContentValues().apply {
+                put(CalendarContract.Calendars.ACCOUNT_NAME, "LOCAL")
+                put(CalendarContract.Calendars.ACCOUNT_TYPE, "LOCAL")
+                put(CalendarContract.Calendars.NAME, appName)
+                put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, appName)
+                put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.CAL_ACCESS_OWNER)
+                put(CalendarContract.Calendars.OWNER_ACCOUNT, "LOCAL")
+                put(CalendarContract.Calendars.SYNC_EVENTS, 1)
+                put(CalendarContract.Calendars.VISIBLE, 1)
+                put(CalendarContract.Calendars.CALENDAR_COLOR, 0xFF4285F4.toInt())
+            }
+            val uri = context.contentResolver.insert(
+                CalendarContract.Calendars.CONTENT_URI.buildUpon()
+                    .appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER, "true")
+                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME, "LOCAL")
+                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE, "LOCAL")
+                    .build(),
+                values
+            )
+            uri?.let { ContentUris.parseId(it) }
+        } catch (e: Exception) {
+            android.util.Log.e("CalendarEventRepo", "getOrCreateLocalCalendar failed", e)
             null
         }
     }

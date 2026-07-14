@@ -29,3 +29,4 @@ import kotlinx.serialization.Serializable
 @Serializable object RouteAddCalendarEvent
 @Serializable data class RouteEditCalendarEvent(val eventId: Long)
 @Serializable object RouteAddAnniversary
+@Serializable data class RouteEditAnniversary(val eventId: Long)
