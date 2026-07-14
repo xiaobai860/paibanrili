@@ -39,6 +39,8 @@ import com.schedulecalendar.app.ui.component.TimePickerField
 import com.schedulecalendar.app.domain.model.HolidayData
 import com.schedulecalendar.app.ui.navigation.RouteAddAnniversary
 import com.schedulecalendar.app.ui.navigation.RouteAddCalendarEvent
+import com.schedulecalendar.app.ui.navigation.RouteCalendarAccountSettings
+import com.schedulecalendar.app.ui.navigation.RouteEditCalendarEvent
 import com.schedulecalendar.app.ui.navigation.RouteScheduleDetail
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import kotlinx.coroutines.launch
@@ -885,8 +887,9 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
         if (eventState.showEditDialog) {
             CalendarEventDetailDialog(
                 event = event,
+                navController = navController,
                 onDismiss = { vm.dismissDetailDialog() },
-                onEdit = { updated -> vm.updateEvent(updated) },
+                onNavigateToEdit = { navController.navigate(RouteEditCalendarEvent(event.id)) },
                 onDelete = { vm.showDeleteConfirm(event) }
             )
         }
@@ -1019,14 +1022,15 @@ private fun AnniversaryTab(navController: NavController) {
 }
 
 /**
- * 日历事件详情/编辑弹窗 - 全屏对话框，复用新建日程的表单组件
+ * 日历事件详情弹窗 - 显示事件详情，支持跳转编辑/删除/账户管理
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CalendarEventDetailDialog(
     event: com.schedulecalendar.app.data.calendar.CalendarEventInfo,
+    navController: NavController,
     onDismiss: () -> Unit,
-    onEdit: (com.schedulecalendar.app.data.calendar.CalendarEventInfo) -> Unit,
+    onNavigateToEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     val timeFormat = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
@@ -1037,13 +1041,10 @@ private fun CalendarEventDetailDialog(
         "${cal.get(java.util.Calendar.YEAR)}年${cal.get(java.util.Calendar.MONTH) + 1}月${cal.get(java.util.Calendar.DAY_OF_MONTH)}日"
     }
 
-    var title by remember(event.id) { mutableStateOf(event.title) }
-    var description by remember(event.id) { mutableStateOf(event.description ?: "") }
-    var location by remember(event.id) { mutableStateOf(event.eventLocation ?: "") }
-    var isEditing by remember { mutableStateOf(false) }
-
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(
@@ -1052,35 +1053,16 @@ private fun CalendarEventDetailDialog(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp)
         ) {
-            // ── 顶部：标题 + 操作按钮 ──────────────────────────
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    if (isEditing) "编辑日程" else "日程详情",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
-                if (!isEditing) {
-                    IconButton(onClick = { isEditing = true }) {
-                        Icon(Icons.Default.Edit, contentDescription = "编辑",
-                            tint = MaterialTheme.colorScheme.primary)
-                    }
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "删除",
-                            tint = MaterialTheme.colorScheme.error)
-                    }
-                }
-            }
+            Text(
+                event.title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
 
             Spacer(Modifier.height(16.dp))
             HorizontalDivider()
             Spacer(Modifier.height(16.dp))
 
-            // ── 时间信息（始终显示） ──────────────────────────
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Schedule, null,
                     tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
@@ -1098,25 +1080,39 @@ private fun CalendarEventDetailDialog(
 
             Spacer(Modifier.height(12.dp))
 
-            // ── 账户信息 ────────────────────────────────────
             if (event.accountName.isNotEmpty() || event.calendarDisplayName.isNotEmpty()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clickable {
+                            onDismiss()
+                            navController.navigate(RouteCalendarAccountSettings)
+                        }
+                ) {
                     Icon(Icons.Default.AccountCircle, null,
                         tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(event.calendarDisplayName.ifEmpty { "日历" },
-                            style = MaterialTheme.typography.bodyMedium)
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            event.calendarDisplayName.ifEmpty { "日历" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                         if (event.accountName.isNotEmpty()) {
-                            Text(event.accountName, style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                event.accountName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                            )
                         }
                     }
+                    Icon(Icons.Default.ChevronRight, null,
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        modifier = Modifier.size(16.dp))
                 }
                 Spacer(Modifier.height(12.dp))
             }
 
-            // ── 地点信息 ────────────────────────────────────
             if (!event.eventLocation.isNullOrEmpty()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.LocationOn, null,
@@ -1128,7 +1124,6 @@ private fun CalendarEventDetailDialog(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // ── 描述信息 ────────────────────────────────────
             if (!event.description.isNullOrEmpty()) {
                 Row(verticalAlignment = Alignment.Top) {
                     Icon(Icons.Default.Notes, null,
@@ -1140,80 +1135,32 @@ private fun CalendarEventDetailDialog(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // ── 编辑模式：显示表单字段 ────────────────────────
-            if (isEditing) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                Spacer(Modifier.height(8.dp))
-
-                Text("编辑信息", style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(8.dp))
-
-                EventTitleField(value = title, onValueChange = { title = it })
-                Spacer(Modifier.height(12.dp))
-                EventLocationField(value = location, onValueChange = { location = it })
-                Spacer(Modifier.height(12.dp))
-                EventDescriptionField(value = description, onValueChange = { description = it })
-
-                Spacer(Modifier.height(16.dp))
-
-                // 保存/取消按钮
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDelete,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
                 ) {
-                    OutlinedButton(
-                        onClick = { isEditing = false },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("取消")
-                    }
-                    Button(
-                        onClick = {
-                            onEdit(
-                                event.copy(
-                                    title = title,
-                                    description = description.ifBlank { null },
-                                    eventLocation = location.ifBlank { null }
-                                )
-                            )
-                        },
-                        modifier = Modifier.weight(1f),
-                        enabled = title.isNotBlank()
-                    ) {
-                        Icon(Icons.Default.Check, null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("保存")
-                    }
+                    Icon(Icons.Default.Delete, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("删除")
                 }
-            }
-
-            // ── 非编辑模式：底部操作按钮 ────────────────────────
-            if (!isEditing) {
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                Button(
+                    onClick = {
+                        onDismiss()
+                        onNavigateToEdit()
+                    },
+                    modifier = Modifier.weight(1f)
                 ) {
-                    OutlinedButton(
-                        onClick = onDelete,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Icon(Icons.Default.Delete, null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("删除")
-                    }
-                    Button(
-                        onClick = { isEditing = true },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Edit, null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("编辑")
-                    }
+                    Icon(Icons.Default.Edit, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("编辑")
                 }
             }
         }
