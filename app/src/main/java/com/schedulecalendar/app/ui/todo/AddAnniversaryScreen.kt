@@ -124,6 +124,14 @@ fun AddAnniversaryScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasWritePermission = granted
+        if (granted) vm.loadAccounts()
+    }
+
+    // 进入页面时即请求权限，而非等到点击保存
+    LaunchedEffect(Unit) {
+        if (!hasWritePermission) {
+            permLauncher.launch(Manifest.permission.WRITE_CALENDAR)
+        }
     }
 
     // ── 错误提示 ──────────────────────────────────────────────

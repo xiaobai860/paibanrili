@@ -85,6 +85,8 @@ class CalendarEventViewModel @Inject constructor(
             viewModelScope.launch {
                 val accountsList = try {
                     withContext(Dispatchers.IO) {
+                        // 先确保应用日历账户已创建，避免竞态导致账户列表为空
+                        calendarRepo.getOrCreateLocalCalendarId()
                         calendarRepo.getAllAccounts()
                     }
                 } catch (e: SecurityException) {
@@ -110,6 +112,7 @@ class CalendarEventViewModel @Inject constructor(
         viewModelScope.launch {
             val accountsList = try {
                 withContext(Dispatchers.IO) {
+                    calendarRepo.getOrCreateLocalCalendarId()
                     calendarRepo.getAllAccounts()
                 }
             } catch (e: SecurityException) {

@@ -120,6 +120,14 @@ fun EditCalendarEventScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasWritePermission = granted
+        if (granted) vm.loadAccounts()
+    }
+
+    // 进入页面时即确保权限已授予
+    LaunchedEffect(Unit) {
+        if (!hasWritePermission) {
+            permLauncher.launch(Manifest.permission.WRITE_CALENDAR)
+        }
     }
 
     Scaffold(
