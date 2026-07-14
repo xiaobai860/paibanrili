@@ -11,13 +11,16 @@ import com.schedulecalendar.app.data.calendar.CalendarAccountInfo
 import com.schedulecalendar.app.data.calendar.CalendarEventInfo
 import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.data.prefs.AppPreferences
+import android.util.Log
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -48,6 +51,27 @@ class CalendarEventViewModel @Inject constructor(
 
     private val _accounts = MutableStateFlow<List<CalendarAccountInfo>>(emptyList())
     val accounts: StateFlow<List<CalendarAccountInfo>> = _accounts.asStateFlow()
+
+    /** 纪念日列表（FREQ=YEARLY 的循环事件） */
+    val anniversaries: StateFlow<List<CalendarEventInfo>> = _state
+        .let { stateFlow ->
+            MutableStateFlow<List<CalendarEventInfo>>(emptyList()).also { flow ->
+                viewModelScope.launch {
+                    stateFlow.collect { state ->
+                        flow.value = state.events.filter {
+                            it.rrule?.contains("FREQ=YEARLY") == true
+                        }
+                    }
+                }
+            }
+        }
+
+    /** 按 ID 加载的单个事件（供编辑页面使用） */
+    private val _singleEvent = MutableStateFlow<CalendarEventInfo?>(null)
+    val singleEvent: StateFlow<CalendarEventInfo?> = _singleEvent.asStateFlow()
+
+    private val _isSingleLoading = MutableStateFlow(true)
+    val isSingleLoading: StateFlow<Boolean> = _isSingleLoading.asStateFlow()
 
     private var observer: android.database.ContentObserver? = null
 
@@ -165,7 +189,52 @@ class CalendarEventViewModel @Inject constructor(
     }
 
     /**
-     * 创建新的日历事件
+     * 根据 ID 直接加载单个日历事件（不依赖全部事件列表）
+     */
+    fun loadEventById(eventId: Long) {
+        _isSingleLoading.value = true
+        viewModelScope.launch {
+            val event = withContext(Dispatchers.IO) {
+                calendarRepo.getEventById(eventId)
+            }
+            Log.d("CalendarEventVM", "loadEventById($eventId) -> ${event?.title ?: "null"}")
+            _singleEvent.value = event
+            _isSingleLoading.value = false
+        }
+    }
+
+    /**
+     * 创建新的日历事件（异步执行，避免主线程阻塞）
+     */
+    fun createEventAsync(
+        title: String,
+        description: String?,
+        dtStart: Long,
+        dtEnd: Long,
+        allDay: Boolean = false,
+        location: String? = null,
+        calendarId: Long? = null,
+        rrule: String? = null,
+        reminderMinutes: Int? = null,
+        colorHex: String? = null,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                calendarRepo.createEvent(
+                    title, description, dtStart, dtEnd, allDay, location,
+                    calendarId, rrule, reminderMinutes, colorHex
+                )
+            }
+            Log.d("CalendarEventVM", "createEvent result=$result")
+            val success = result > 0
+            if (success) loadEvents()
+            onResult(success)
+        }
+    }
+
+    /**
+     * 创建新的日历事件（同步，保留兼容）
      */
     fun createEvent(
         title: String,

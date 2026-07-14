@@ -94,6 +94,15 @@ fun AddAnniversaryScreen(
 
     // ── 错误提示 ──────────────────────────────────────────────
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    var isCreating by remember { mutableStateOf(false) }
+
+    // 当 errorMessage 变化时，通过 Snackbar 显示
+    LaunchedEffect(errorMessage) {
+        val msg = errorMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Long)
+        errorMessage = null
+    }
 
     // AlarmManager
     val alarmManager = remember { context.getSystemService(Context.ALARM_SERVICE) as AlarmManager }
@@ -130,6 +139,7 @@ fun AddAnniversaryScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             ScheduleTopBar(
                 title = "新建纪念日",
@@ -438,14 +448,17 @@ fun AddAnniversaryScreen(
                         Triple(selectedYear, selectedMonth, selectedDay)
                     }
 
-                    val startCal = Calendar.getInstance().apply {
+                    // 全天事件必须使用 UTC 时区，dtEnd 为次日 00:00 UTC
+                    val utc = java.util.TimeZone.getTimeZone("UTC")
+                    val startCal = java.util.Calendar.getInstance(utc).apply {
                         set(solarY, solarM - 1, solarD, 0, 0, 0)
-                        set(Calendar.MILLISECOND, 0)
+                        set(java.util.Calendar.MILLISECOND, 0)
                     }
                     val startTime = startCal.timeInMillis
-                    val endCal = Calendar.getInstance().apply {
-                        set(solarY, solarM - 1, solarD, 23, 59, 59)
-                        set(Calendar.MILLISECOND, 999)
+                    val endCal = java.util.Calendar.getInstance(utc).apply {
+                        set(solarY, solarM - 1, solarD, 0, 0, 0)
+                        set(java.util.Calendar.MILLISECOND, 0)
+                        add(java.util.Calendar.DAY_OF_MONTH, 1)
                     }
                     val endTime = endCal.timeInMillis
 
@@ -465,7 +478,9 @@ fun AddAnniversaryScreen(
                     val reminderMinutes = if (addCalendarReminder) 0 else null
 
                     val fullTitle = "纪念日: ${title.trim()}"
-                    val success = vm.createEvent(
+                    isCreating = true
+                    android.util.Log.d("Anniversary", "Creating event: title=$fullTitle, start=$startTime, end=$endTime, allDay=true, rrule=$rrule")
+                    vm.createEventAsync(
                         title = fullTitle,
                         description = desc,
                         dtStart = startTime,
@@ -473,23 +488,25 @@ fun AddAnniversaryScreen(
                         allDay = true,
                         rrule = rrule,
                         reminderMinutes = reminderMinutes
-                    )
-
-                    if (success) {
-                        // 调度闹钟提醒
-                        if (alarmReminder != AnniversaryReminder.NONE) {
-                            scheduleAnniversaryAlarm(
-                                solarY, solarM, solarD,
-                                fullTitle, alarmReminder
-                            )
+                    ) { success ->
+                        isCreating = false
+                        android.util.Log.d("Anniversary", "Create result: success=$success")
+                        if (success) {
+                            // 调度闹钟提醒
+                            if (alarmReminder != AnniversaryReminder.NONE) {
+                                scheduleAnniversaryAlarm(
+                                    solarY, solarM, solarD,
+                                    fullTitle, alarmReminder
+                                )
+                            }
+                            navController.popBackStack()
+                        } else {
+                            errorMessage = "创建失败，请确认设备有可用的日历账户"
                         }
-                        navController.popBackStack()
-                    } else {
-                        errorMessage = "创建失败，请确认设备有可用的日历账户"
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = title.isNotBlank(),
+                enabled = title.isNotBlank() && !isCreating,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
                 )

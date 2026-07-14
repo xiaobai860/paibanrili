@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -36,18 +37,41 @@ fun EditCalendarEventScreen(
     vm: CalendarEventViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    android.util.Log.d("NavDebug", "EditCalendarEventScreen created with eventId=$eventId")
 
-    // 从 ViewModel 的事件列表中查找要编辑的事件
-    val events by vm.state.collectAsStateWithLifecycle()
-    val event = events.events.find { it.id == eventId }
+    // 直接按 ID 加载事件（不依赖全部事件列表）
+    LaunchedEffect(eventId) {
+        android.util.Log.d("NavDebug", "LaunchedEffect: calling loadEventById($eventId)")
+        vm.loadEventById(eventId)
+    }
+    val loadedEvent by vm.singleEvent.collectAsStateWithLifecycle()
+    val isSingleLoading by vm.isSingleLoading.collectAsStateWithLifecycle()
 
-    // 如果找不到事件，显示提示并返回
-    if (event == null) {
+    android.util.Log.d("NavDebug", "EditScreen state: isSingleLoading=$isSingleLoading, loadedEvent=${loadedEvent?.title ?: "null"}")
+
+    // 加载中显示指示器
+    if (isSingleLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    // 加载完成后如果找不到事件，返回
+    if (loadedEvent == null) {
+        android.util.Log.e("NavDebug", "loadedEvent is null! popping back")
         LaunchedEffect(Unit) {
             navController.popBackStack()
         }
         return
     }
+
+    android.util.Log.d("NavDebug", "Event loaded successfully: ${loadedEvent!!.title}")
+
+    val event = loadedEvent!! // 此时一定非空
 
     // ── 预填充表单状态 ──────────────────────────────────────────
     val eventCalendar = remember(event.dtStart) {
@@ -77,13 +101,13 @@ fun EditCalendarEventScreen(
     var selectedColor by remember { mutableStateOf(EventPresetColors.first()) }
     var selectedAccountId by remember(event.id) { mutableStateOf<Long?>(event.calendarId) }
 
+    // 获取可用日历账户
+    val accounts by vm.accounts.collectAsStateWithLifecycle()
+
     // 日期/时间选择弹窗
     var showDatePicker by remember { mutableStateOf(false) }
     var showStartTimePicker by remember { mutableStateOf(false) }
     var showEndTimePicker by remember { mutableStateOf(false) }
-
-    // 获取可用日历账户
-    val accounts by vm.accounts.collectAsStateWithLifecycle()
 
     // 权限
     var hasWritePermission by remember {
