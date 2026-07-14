@@ -450,8 +450,15 @@ class CalendarEventRepository @Inject constructor(
                 put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
             }
             val uri = context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, values)
-            uri?.let { ContentUris.parseId(it) }
+            val reminderId = uri?.let { ContentUris.parseId(it) }
+            if (reminderId != null) {
+                android.util.Log.i("CalendarEventRepo", "Added reminder: eventId=$eventId, minutes=$minutesBefore, reminderId=$reminderId")
+            } else {
+                android.util.Log.w("CalendarEventRepo", "addReminder returned null uri: eventId=$eventId, minutes=$minutesBefore")
+            }
+            reminderId
         } catch (e: Exception) {
+            android.util.Log.e("CalendarEventRepo", "addReminder failed: eventId=$eventId, minutes=$minutesBefore", e)
             null
         }
     }
@@ -492,6 +499,32 @@ class CalendarEventRepository @Inject constructor(
             ACCOUNT_NAME
         }
         return try {
+            // 0. 先确保 AccountManager 账户存在（清除应用数据后账户可能被删除，但日历数据库中的日历可能还在）
+            val accountManager = AccountManager.get(context)
+            val account = Account(ACCOUNT_NAME, ACCOUNT_TYPE)
+            val existingAccounts = accountManager.getAccountsByType(ACCOUNT_TYPE)
+            val accountExists = existingAccounts.isNotEmpty()
+
+            if (!accountExists) {
+                // 检查 WRITE_CALENDAR 权限
+                val hasWritePermission = android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                    ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_CALENDAR)
+                if (!hasWritePermission) {
+                    android.util.Log.w("CalendarEventRepo", "Cannot create calendar: WRITE_CALENDAR permission not granted")
+                    return null
+                }
+                val added = accountManager.addAccountExplicitly(account, null, null)
+                if (added) {
+                    android.content.ContentResolver.setIsSyncable(account, CalendarContract.AUTHORITY, 1)
+                    android.content.ContentResolver.setSyncAutomatically(account, CalendarContract.AUTHORITY, true)
+                    android.content.ContentResolver.setMasterSyncAutomatically(true)
+                    android.util.Log.i("CalendarEventRepo", "Re-registered AccountManager account: $account")
+                } else {
+                    android.util.Log.e("CalendarEventRepo", "addAccountExplicitly failed for account=$account")
+                    return null
+                }
+            }
+
             // 1. 查找已存在的自定义类型日历
             var existingCalId: Long? = null
             var needsUpdate = false
@@ -527,33 +560,12 @@ class CalendarEventRepository @Inject constructor(
                 )
             }
             
-            if (existingCalId != null) return existingCalId
-
-            // 2. 检查 WRITE_CALENDAR 权限（清除应用数据后权限被撤销，但 AccountManager 账户可能仍存在）
-            val hasWritePermission = android.content.pm.PackageManager.PERMISSION_GRANTED ==
-                ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_CALENDAR)
-            if (!hasWritePermission) {
-                android.util.Log.w("CalendarEventRepo", "Cannot create calendar: WRITE_CALENDAR permission not granted")
-                return null
+            if (existingCalId != null) {
+                android.util.Log.d("CalendarEventRepo", "Found existing calendar calId=$existingCalId, accountExists=$accountExists")
+                return existingCalId
             }
 
-            // 3. 确保 AccountManager 中已注册该账户
-            val accountManager = AccountManager.get(context)
-            val account = Account(ACCOUNT_NAME, ACCOUNT_TYPE)
-            val existingAccounts = accountManager.getAccountsByType(ACCOUNT_TYPE)
-            if (existingAccounts.isEmpty()) {
-                val added = accountManager.addAccountExplicitly(account, null, null)
-                if (added) {
-                    android.content.ContentResolver.setIsSyncable(account, CalendarContract.AUTHORITY, 1)
-                    android.content.ContentResolver.setSyncAutomatically(account, CalendarContract.AUTHORITY, true)
-                    android.content.ContentResolver.setMasterSyncAutomatically(true)
-                } else {
-                    android.util.Log.e("CalendarEventRepo", "addAccountExplicitly failed for account=$account")
-                    return null
-                }
-            }
-
-            // 4. 创建新的自定义类型日历
+            // 2. 创建新的自定义类型日历
             val values = android.content.ContentValues().apply {
                 put(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT_NAME)
                 put(CalendarContract.Calendars.ACCOUNT_TYPE, ACCOUNT_TYPE)
