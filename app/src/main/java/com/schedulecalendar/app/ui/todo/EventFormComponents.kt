@@ -5,8 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -462,8 +464,12 @@ fun EventAccountSelector(
             onDismissRequest = { expanded = false },
             title = { Text("选择日历") },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     accounts.forEach { account ->
+                        // 严格计算显示名，确保不为空
+                        val acctDisplayName = account.displayName.trim().ifBlank {
+                            account.accountName.trim().ifBlank { "未知日历" }
+                        }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -483,12 +489,11 @@ fun EventAccountSelector(
                             )
                             Spacer(Modifier.width(8.dp))
                             Column {
-                                val acctDisplayName = account.displayName.ifBlank {
-                                    account.accountName.ifBlank { "未知日历" }
-                                }
                                 Text(acctDisplayName, style = MaterialTheme.typography.bodyLarge)
-                                if (account.accountName.isNotEmpty() && account.accountName != acctDisplayName) {
-                                    Text(account.accountName, style = MaterialTheme.typography.labelSmall,
+                                // 仅当accountName与displayName不同且非空时显示副标题
+                                val trimmedAccountName = account.accountName.trim()
+                                if (trimmedAccountName.isNotEmpty() && trimmedAccountName != acctDisplayName) {
+                                    Text(trimmedAccountName, style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }

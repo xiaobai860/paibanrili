@@ -1,5 +1,7 @@
 package com.schedulecalendar.app.data.calendar
 
+import android.accounts.Account
+import android.accounts.AccountManager
 import android.content.ContentUris
 import android.content.Context
 import android.provider.CalendarContract
@@ -46,6 +48,13 @@ data class CalendarEventInfo(
 class CalendarEventRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    companion object {
+        /** 自定义账户类型，与应用包名一致，对应 authenticator.xml 中的 accountType */
+        const val ACCOUNT_TYPE = "com.schedulecalendar.app"
+        /** 账户名，使用中文应用名 */
+        private const val ACCOUNT_NAME = "排班日历"
+    }
+
     /**
      * 获取设备上所有已同步的日历账户
      */
@@ -72,10 +81,29 @@ class CalendarEventRepository @Inject constructor(
 
             while (cursor.moveToNext()) {
                 val calId = cursor.getLong(0)
-                val calDisplayName = cursor.getString(1)?.takeIf { it.isNotBlank() } ?: ""
-                val accountName = cursor.getString(2)?.takeIf { it.isNotBlank() } ?: ""
+                val rawDisplayName = cursor.getString(1)
+                val rawAccountName = cursor.getString(2)
                 val accountType = cursor.getString(3) ?: ""
                 val syncEvents = cursor.getInt(5) == 1
+                
+                // 对于本应用创建的日历账户（自定义类型或旧的LOCAL类型），强制使用中文应用名
+                val trimmedRawAccountName = rawAccountName?.trim() ?: ""
+                val isAppCalendarAccount = (accountType == ACCOUNT_TYPE) ||
+                    (accountType == "LOCAL" && (trimmedRawAccountName == "LOCAL" || trimmedRawAccountName == "local account" || trimmedRawAccountName == ACCOUNT_NAME))
+                val calDisplayName = if (isAppCalendarAccount) {
+                    val appName = try {
+                        context.getString(context.applicationInfo.labelRes)
+                    } catch (_: Exception) {
+                        ACCOUNT_NAME
+                    }
+                    appName
+                } else {
+                    rawDisplayName?.trim()?.takeIf { it.isNotBlank() } ?: ""
+                }
+                val accountName = rawAccountName?.trim()?.takeIf { it.isNotBlank() } ?: ""
+                
+                android.util.Log.d("CalendarEventRepo", "getAllAccounts: calId=$calId, displayName='$calDisplayName', accountName='$accountName', accountType='$accountType'")
+                
                 // displayName 后备：优先使用日历显示名，其次使用账户名，最后使用"未知日历"
                 val displayName = calDisplayName.ifEmpty { accountName.ifEmpty { "未知日历" } }
 
@@ -110,6 +138,7 @@ class CalendarEventRepository @Inject constructor(
             accounts.addAll(accountMap.values.flatMap { it.second })
         }
 
+        android.util.Log.d("CalendarEventRepo", "getAllAccounts total: ${accounts.size}, accounts=${accounts.map { "${it.displayName}(${it.accountName})" }}")
         return accounts
     }
 
@@ -307,8 +336,8 @@ class CalendarEventRepository @Inject constructor(
             projection, null, null, null
         )?.use { cursor ->
             if (cursor.moveToFirst()) {
-                val displayName = cursor.getString(0)?.takeIf { it.isNotBlank() }
-                    ?: cursor.getString(1)?.takeIf { it.isNotBlank() }
+                val displayName = cursor.getString(0)?.trim()?.takeIf { it.isNotBlank() }
+                    ?: cursor.getString(1)?.trim()?.takeIf { it.isNotBlank() }
                     ?: "未知日历"
                 return CalendarInfo(
                     displayName = displayName,
@@ -336,8 +365,8 @@ class CalendarEventRepository @Inject constructor(
             )?.use { cursor ->
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(0)
-                    val displayName = cursor.getString(1)?.takeIf { it.isNotBlank() }
-                        ?: cursor.getString(2)?.takeIf { it.isNotBlank() }
+                    val displayName = cursor.getString(1)?.trim()?.takeIf { it.isNotBlank() }
+                        ?: cursor.getString(2)?.trim()?.takeIf { it.isNotBlank() }
                         ?: "未知日历"
                     map[id] = CalendarInfo(
                         displayName = displayName,
@@ -452,55 +481,171 @@ class CalendarEventRepository @Inject constructor(
     }
 
     /**
-     * 获取或创建应用本地日历
-     * 使用应用名称作为日历显示名，方便用户在系统日历中识别
-     * @return 本地日历ID，如果无法创建则返回null
+     * 获取或创建应用日历
+     * 使用自定义账户类型（应用包名），通过 AccountAuthenticator 注册到系统，
+     * 使日历账户在系统日历账户管理中可见。
+     * 同时兼容旧的 LOCAL 类型日历（自动迁移）。
+     * @return 日历ID，如果无法创建则返回null
      */
     fun getOrCreateLocalCalendarId(): Long? {
         // 获取中文应用名作为日历显示名
         val appName = try {
             context.getString(context.applicationInfo.labelRes)
         } catch (_: Exception) {
-            "排班日历"
+            ACCOUNT_NAME
         }
         return try {
-            // 查找已存在的应用本地日历
+            // 1. 优先查找已存在的自定义类型日历
+            var existingCalId: Long? = null
+            var needsUpdate = false
+            
             context.contentResolver.query(
                 CalendarContract.Calendars.CONTENT_URI,
                 arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME),
-                "${CalendarContract.Calendars.ACCOUNT_TYPE} = ? AND ${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} = ?",
-                arrayOf("LOCAL", appName),
+                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ?",
+                arrayOf(ACCOUNT_NAME, ACCOUNT_TYPE),
                 null
             )?.use { cursor ->
                 if (cursor.moveToFirst()) {
-                    return cursor.getLong(0)
+                    existingCalId = cursor.getLong(0)
+                    val currentDisplayName = cursor.getString(1) ?: ""
+                    needsUpdate = currentDisplayName != appName
+                }
+            }
+            
+            // 如果找到了但显示名不对，更新它
+            if (existingCalId != null && needsUpdate) {
+                val values = android.content.ContentValues().apply {
+                    put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, appName)
+                    put(CalendarContract.Calendars.NAME, appName)
+                }
+                val updateUri = CalendarContract.Calendars.CONTENT_URI.buildUpon()
+                    .appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER, "true")
+                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT_NAME)
+                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE, ACCOUNT_TYPE)
+                    .build()
+                context.contentResolver.update(
+                    updateUri, values,
+                    "${CalendarContract.Calendars._ID} = ?",
+                    arrayOf(existingCalId.toString())
+                )
+                android.util.Log.i("CalendarEventRepo", "Updated calendar calId=$existingCalId, newName='$appName'")
+            }
+            
+            if (existingCalId != null) {
+                return existingCalId
+            }
+
+            // 2. 兼容旧版：查找旧的 LOCAL 类型日历，迁移事件到新账户
+            var oldCalId: Long? = null
+            context.contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI,
+                arrayOf(CalendarContract.Calendars._ID),
+                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ?",
+                arrayOf("LOCAL", "LOCAL"),
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    oldCalId = cursor.getLong(0)
+                }
+            }
+            // 也检查 "local account" 类型
+            if (oldCalId == null) {
+                context.contentResolver.query(
+                    CalendarContract.Calendars.CONTENT_URI,
+                    arrayOf(CalendarContract.Calendars._ID),
+                    "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ?",
+                    arrayOf("local account", "LOCAL"),
+                    null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        oldCalId = cursor.getLong(0)
+                    }
                 }
             }
 
-            // 不存在则创建
+            // 3. 确保 AccountManager 中已注册该账户（系统日历账户管理可见性的关键）
+            val accountManager = AccountManager.get(context)
+            val account = Account(ACCOUNT_NAME, ACCOUNT_TYPE)
+            val existingAccounts = accountManager.getAccountsByType(ACCOUNT_TYPE)
+            if (existingAccounts.isEmpty()) {
+                val added = accountManager.addAccountExplicitly(account, null, null)
+                android.util.Log.i("CalendarEventRepo", "addAccountExplicitly result=$added, account=$account")
+                if (added) {
+                    // 设置日历同步
+                    android.content.ContentResolver.setIsSyncable(account, CalendarContract.AUTHORITY, 1)
+                    android.content.ContentResolver.setSyncAutomatically(account, CalendarContract.AUTHORITY, true)
+                    android.content.ContentResolver.setMasterSyncAutomatically(true)
+                }
+            }
+
+            // 4. 创建新的自定义类型日历
             val values = android.content.ContentValues().apply {
-                put(CalendarContract.Calendars.ACCOUNT_NAME, "LOCAL")
-                put(CalendarContract.Calendars.ACCOUNT_TYPE, "LOCAL")
+                put(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT_NAME)
+                put(CalendarContract.Calendars.ACCOUNT_TYPE, ACCOUNT_TYPE)
                 put(CalendarContract.Calendars.NAME, appName)
                 put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, appName)
                 put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.CAL_ACCESS_OWNER)
-                put(CalendarContract.Calendars.OWNER_ACCOUNT, "LOCAL")
+                put(CalendarContract.Calendars.OWNER_ACCOUNT, ACCOUNT_NAME)
                 put(CalendarContract.Calendars.SYNC_EVENTS, 1)
                 put(CalendarContract.Calendars.VISIBLE, 1)
                 put(CalendarContract.Calendars.CALENDAR_COLOR, 0xFF4285F4.toInt())
+                put(CalendarContract.Calendars.CALENDAR_TIME_ZONE, java.util.TimeZone.getDefault().id)
+                put(CalendarContract.Calendars.CAN_ORGANIZER_RESPOND, 0)
+                put(CalendarContract.Calendars.ALLOWED_REMINDERS, "0,1,2,3")
+                put(CalendarContract.Calendars.ALLOWED_AVAILABILITY, "0,1,2")
+                put(CalendarContract.Calendars.ALLOWED_ATTENDEE_TYPES, "0,1,2")
             }
             val uri = context.contentResolver.insert(
                 CalendarContract.Calendars.CONTENT_URI.buildUpon()
                     .appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER, "true")
-                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME, "LOCAL")
-                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE, "LOCAL")
+                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT_NAME)
+                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE, ACCOUNT_TYPE)
                     .build(),
                 values
             )
-            uri?.let { ContentUris.parseId(it) }
+            val newCalId = uri?.let { ContentUris.parseId(it) }
+            
+            // 5. 迁移旧日历中的事件到新日历
+            if (newCalId != null && oldCalId != null) {
+                migrateEvents(oldCalId!!, newCalId)
+                // 删除旧日历
+                try {
+                    context.contentResolver.delete(
+                        ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI, oldCalId!!),
+                        null, null
+                    )
+                    android.util.Log.i("CalendarEventRepo", "Migrated events from old calId=$oldCalId to new calId=$newCalId, deleted old calendar")
+                } catch (e: Exception) {
+                    android.util.Log.w("CalendarEventRepo", "Failed to delete old calendar calId=$oldCalId", e)
+                }
+            }
+            
+            android.util.Log.i("CalendarEventRepo", "Created new calendar calId=$newCalId, accountType=$ACCOUNT_TYPE, accountName=$ACCOUNT_NAME")
+            newCalId
         } catch (e: Exception) {
             android.util.Log.e("CalendarEventRepo", "getOrCreateLocalCalendar failed", e)
             null
+        }
+    }
+
+    /**
+     * 将事件从旧日历迁移到新日历
+     */
+    private fun migrateEvents(oldCalendarId: Long, newCalendarId: Long) {
+        try {
+            val values = android.content.ContentValues().apply {
+                put(CalendarContract.Events.CALENDAR_ID, newCalendarId)
+            }
+            val rows = context.contentResolver.update(
+                CalendarContract.Events.CONTENT_URI,
+                values,
+                "${CalendarContract.Events.CALENDAR_ID} = ?",
+                arrayOf(oldCalendarId.toString())
+            )
+            android.util.Log.i("CalendarEventRepo", "Migrated $rows events from calId=$oldCalendarId to calId=$newCalendarId")
+        } catch (e: Exception) {
+            android.util.Log.e("CalendarEventRepo", "migrateEvents failed", e)
         }
     }
 

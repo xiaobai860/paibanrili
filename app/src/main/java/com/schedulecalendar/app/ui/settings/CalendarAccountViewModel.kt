@@ -41,11 +41,14 @@ class CalendarAccountViewModel @Inject constructor(
 
     /**
      * 加载所有系统日历账户
+     * 先确保应用日历账户已创建，再加载所有账户列表
      */
     fun loadAccounts() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
             try {
+                // 确保应用日历账户已创建（AccountManager 注册 + Calendar Provider 创建）
+                calendarRepo.getOrCreateLocalCalendarId()
                 val accounts = calendarRepo.getAllAccounts()
                 val disabledIds = prefs.getDisabledAccountIds()
                 _state.update {
