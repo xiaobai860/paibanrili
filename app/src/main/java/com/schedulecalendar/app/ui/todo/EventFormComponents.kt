@@ -477,7 +477,7 @@ fun EventAccountSelector(
                                     onSelected(account.id)
                                     expanded = false
                                 }
-                                .padding(horizontal = 8.dp, vertical = 12.dp),
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
