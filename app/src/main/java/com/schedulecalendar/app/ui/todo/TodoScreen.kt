@@ -55,7 +55,7 @@ import java.util.Locale
 // ── 数据类 ────────────────────────────────────────────────────────────────
 
 /** 漏打卡补录目标：记录日期与是上班还是下班 */
-private data class MissedFillTarget(val date: String, val isClockIn: Boolean)
+private data class MissedFillTarget(val date: String, val isClockIn: Boolean, val defaultTime: String = "")
 
 /** 加班处理目标：记录日期与是早到还是晚退 */
 private data class OvertimeActionTarget(val date: String, val isEarly: Boolean)
@@ -155,7 +155,7 @@ fun TodoScreen(
                         onOtConfirmedToggle = { otConfirmedExpanded = !otConfirmedExpanded },
                         otIgnoredExpanded = otIgnoredExpanded,
                         onOtIgnoredToggle = { otIgnoredExpanded = !otIgnoredExpanded },
-                        onFillMissedClock = { date, isClockIn -> showMissedFillDialog = MissedFillTarget(date, isClockIn) },
+                        onFillMissedClock = { date, isClockIn, shiftTime -> showMissedFillDialog = MissedFillTarget(date, isClockIn, shiftTime) },
                         onOvertimeAction = { date, isEarly -> showOvertimeActionDialog = OvertimeActionTarget(date, isEarly) },
                         vm = vm
                     )
@@ -171,6 +171,7 @@ fun TodoScreen(
         MissedClockFillDialog(
             date = target.date,
             isClockIn = target.isClockIn,
+            defaultTime = target.defaultTime,
             onConfirm = { start, end ->
                 vm.fillMissedClock(target.date, start, end)
                 showMissedFillDialog = null
@@ -229,7 +230,7 @@ private fun TodoTab(
     onOtConfirmedToggle: () -> Unit,
     otIgnoredExpanded: Boolean,
     onOtIgnoredToggle: () -> Unit,
-    onFillMissedClock: (String, Boolean) -> Unit,
+    onFillMissedClock: (String, Boolean, String) -> Unit,
     onOvertimeAction: (String, Boolean) -> Unit,
     vm: CalendarViewModel
 ) {
@@ -329,7 +330,7 @@ private fun TodoTab(
                         UnifiedTodoRow(
                             todo = todo,
                             isClockIn = isClockIn,
-                            onAction = { onFillMissedClock(todo.date, isClockIn) },
+                            onAction = { onFillMissedClock(todo.date, isClockIn, todo.shiftTime) },
                             actionLabel = "补录"
                         )
                     }
@@ -693,13 +694,18 @@ private fun UnifiedTodoRow(
 private fun MissedClockFillDialog(
     date: String,
     isClockIn: Boolean,
+    defaultTime: String = "",
     onConfirm: (startTime: String?, endTime: String?) -> Unit,
     onDismiss: () -> Unit
 ) {
     val now = java.time.LocalTime.now()
+    // 解析班次时间作为默认值
+    val defParts = defaultTime.split(":")
+    val defHour = if (defParts.size == 2) defParts[0].toIntOrNull() ?: now.hour else now.hour
+    val defMinute = if (defParts.size == 2) defParts[1].toIntOrNull() ?: now.minute else now.minute
     val timePickerState = rememberTimePickerState(
-        initialHour = now.hour,
-        initialMinute = now.minute,
+        initialHour = defHour,
+        initialMinute = defMinute,
         is24Hour = true
     )
 
