@@ -131,7 +131,7 @@ class StorageViewModel @Inject constructor(
 
     fun restoreBackup(file: BackupFile) = viewModelScope.launch {
         runCatching {
-            val json = File(file.path).readText()
+            val json = backupManager.readBackupContent(file.path)
             when (file.type) {
                 BackupType.APP_DATA -> backupManager.restoreFromJson(json)
                 BackupType.SHIFT_CONFIG -> backupManager.restoreFromJson(json)
@@ -144,7 +144,7 @@ class StorageViewModel @Inject constructor(
 
     fun deleteBackup(file: BackupFile) = viewModelScope.launch {
         runCatching {
-            File(file.path).delete()
+            backupManager.deleteBackupFile(file.path)
             _uiEvent.send(StorageUiEvent.ShowMessage("已删除 ${file.name}"))
             reload()
         }.onFailure {
@@ -218,7 +218,7 @@ class StorageViewModel @Inject constructor(
     fun prepareExportJson(file: BackupFile, onReady: (json: String, suggestedName: String) -> Unit) =
         viewModelScope.launch {
             runCatching {
-                val json = File(file.path).readText()
+                val json = backupManager.readBackupContent(file.path)
                 onReady(json, file.name)
             }.onFailure {
                 _uiEvent.send(StorageUiEvent.ShowError("读取失败：${it.message}"))

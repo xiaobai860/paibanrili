@@ -64,26 +64,38 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
+        // 持久化 URI 读写权限，确保重启后仍可访问
+        runCatching {
+            val activity = context as? android.app.Activity
+            activity?.contentResolver?.takePersistableUriPermission(
+                uri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
         // 保存完整 URI 字符串，以便 BackupManager 解析为真实文件系统路径
         vm.updateCustomPath(uri.toString())
     }
 
-    // 分享文件（FileProvider 适配 Android 7.0+）
+    // 分享文件（兼容 SAF URI 和 FileProvider）
     fun shareFile(file: BackupFile) {
         runCatching {
-            val f = java.io.File(file.path)
-            if (!f.exists()) {
-                vm.shareBackup(file)
-                return
+            val shareUri = if (file.path.startsWith("content://")) {
+                android.net.Uri.parse(file.path)
+            } else {
+                val f = java.io.File(file.path)
+                if (!f.exists()) {
+                    vm.shareBackup(file)
+                    return
+                }
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    f
+                )
             }
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                f
-            )
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "application/json"
-                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_STREAM, shareUri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(Intent.createChooser(shareIntent, "分享备份文件"))

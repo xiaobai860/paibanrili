@@ -2,7 +2,9 @@
 package com.schedulecalendar.app.ui.settings
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import com.google.gson.Gson
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.*
@@ -41,15 +43,69 @@ class BackupManager @Inject constructor(
     private val privateBackupDir: File
         get() = File(context.filesDir, "backups").also { it.mkdirs() }
 
-    /** 当前写入目录（优先外部自定义路径，否则私有目录） */
-    private suspend fun currentBackupDir(): File {
-        val customPath = prefs.getBackupCustomPath()
-        return if (customPath.isNotBlank()) {
-            val realPath = resolveSafPath(customPath)
-            File(realPath).also { it.mkdirs() }
-        } else {
-            privateBackupDir
+    /** 判断路径是否为 SAF content URI */
+    private fun isSafPath(path: String): Boolean = path.startsWith("content://")
+
+    /** 持久化 SAF URI 的读写权限（选择目录后必须调用） */
+    fun persistUriPermission(rawPath: String) {
+        if (!isSafPath(rawPath)) return
+        runCatching {
+            val uri = Uri.parse(rawPath)
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
         }
+    }
+
+    /** 通过 SAF DocumentFile 列出目录中的备份文件 */
+    private fun listSafBackupFiles(treeUri: Uri, type: BackupType): List<BackupFile> {
+        val docDir = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
+        val prefixes = if (type == BackupType.APP_DATA) {
+            listOf("应用数据_", "appdata_")
+        } else {
+            listOf("班次配置_", "shiftcfg_")
+        }
+        return docDir.listFiles()
+            .filter { doc -> doc.isFile && doc.name?.endsWith(".json") == true && prefixes.any { doc.name?.startsWith(it) == true } }
+            .mapNotNull { doc ->
+                val uri = doc.uri
+                val name = doc.name ?: return@mapNotNull null
+                BackupFile(
+                    name = name,
+                    path = uri.toString(),
+                    type = type,
+                    sizeBytes = doc.length(),
+                    createdAt = doc.lastModified(),
+                    isManual = name.contains("_manual")
+                )
+            }
+    }
+
+    /** 读取备份文件内容（兼容 SAF URI 和普通文件路径） */
+    fun readBackupContent(path: String): String {
+        return if (isSafPath(path)) {
+            val uri = Uri.parse(path)
+            context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
+                ?: throw IllegalStateException("无法读取备份文件")
+        } else {
+            File(path).readText()
+        }
+    }
+
+    /** 通过 SAF 写入备份文件 */
+    private fun writeSafBackupFile(treeUri: Uri, fileName: String, content: String): Uri {
+        val docDir = DocumentFile.fromTreeUri(context, treeUri)
+            ?: throw IllegalStateException("无法访问备份目录")
+        val mimeType = "application/json"
+        val existing = docDir.findFile(fileName)
+        val doc = existing?.takeIf { it.delete() }?.let { docDir.createFile(mimeType, fileName) }
+            ?: docDir.createFile(mimeType, fileName)
+            ?: throw IllegalStateException("无法创建备份文件：$fileName")
+        context.contentResolver.openOutputStream(doc.uri, "wt")?.use { os ->
+            os.write(content.toByteArray(Charsets.UTF_8))
+        } ?: throw IllegalStateException("无法写入备份文件")
+        return doc.uri
     }
 
     /**
@@ -114,17 +170,35 @@ class BackupManager @Inject constructor(
         runCatching {
             val json = buildAppDataJson()
             val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"))
-            val targetDir = currentBackupDir()
-            // 查找今天已有的自动备份，替换之
-            val existingToday = targetDir.listFiles { f ->
-                f.name.startsWith("应用数据_") && f.name.contains(today)
-                    && !f.name.contains("_manual") && f.name.endsWith(".json")
-            }
+            val customPath = prefs.getBackupCustomPath()
             val fileName = "应用数据_${today}_${LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss"))}.json"
-            val file = File(targetDir, fileName)
-            file.writeText(json)
-            // 删除今天旧的自动备份（如果有）
-            existingToday?.filter { it.absolutePath != file.absolutePath }?.forEach { it.delete() }
+
+            if (customPath.isNotBlank() && isSafPath(customPath)) {
+                // SAF 目录写入
+                val treeUri = Uri.parse(customPath)
+                // 删除今天旧的自动备份
+                val docDir = DocumentFile.fromTreeUri(context, treeUri)
+                docDir?.listFiles()?.filter { doc ->
+                    val n = doc.name ?: ""
+                    n.startsWith("应用数据_") && n.contains(today) && !n.contains("_manual") && n.endsWith(".json")
+                }?.forEach { it.delete() }
+                writeSafBackupFile(treeUri, fileName, json)
+            } else {
+                val targetDir = if (customPath.isNotBlank()) {
+                    File(resolveSafPath(customPath)).also { it.mkdirs() }
+                } else {
+                    privateBackupDir
+                }
+                // 查找今天已有的自动备份，替换之
+                val existingToday = targetDir.listFiles { f ->
+                    f.name.startsWith("应用数据_") && f.name.contains(today)
+                            && !f.name.contains("_manual") && f.name.endsWith(".json")
+                }
+                val file = File(targetDir, fileName)
+                file.writeText(json)
+                // 删除今天旧的自动备份（如果有）
+                existingToday?.filter { it.absolutePath != file.absolutePath }?.forEach { it.delete() }
+            }
             // 裁剪保留天数
             pruneAppDataBackups(keepCount)
         }
@@ -143,9 +217,19 @@ class BackupManager @Inject constructor(
         runCatching {
             val json = buildShiftConfigJson()
             val ts = LocalDateTime.now().format(tsFormatter)
-            val targetDir = currentBackupDir()
-            val file = File(targetDir, "班次配置_${ts}.json")
-            file.writeText(json)
+            val fileName = "班次配置_${ts}.json"
+            val customPath = prefs.getBackupCustomPath()
+            if (customPath.isNotBlank() && isSafPath(customPath)) {
+                writeSafBackupFile(Uri.parse(customPath), fileName, json)
+            } else {
+                val targetDir = if (customPath.isNotBlank()) {
+                    File(resolveSafPath(customPath)).also { it.mkdirs() }
+                } else {
+                    privateBackupDir
+                }
+                val file = File(targetDir, fileName)
+                file.writeText(json)
+            }
             pruneShiftConfigBackups(keepCount)
         }
     }
@@ -155,19 +239,41 @@ class BackupManager @Inject constructor(
     suspend fun createAppDataBackup(): Result<File> = runCatching {
         val json = buildAppDataJson()
         val ts = LocalDateTime.now().format(tsFormatter)
-        val targetDir = currentBackupDir()
-        val file = File(targetDir, "应用数据_${ts}_manual.json")
-        file.writeText(json)
-        file
+        val fileName = "应用数据_${ts}_manual.json"
+        val customPath = prefs.getBackupCustomPath()
+        if (customPath.isNotBlank() && isSafPath(customPath)) {
+            writeSafBackupFile(Uri.parse(customPath), fileName, json)
+            File(customPath, fileName)  // 伪路径，仅用于显示
+        } else {
+            val targetDir = if (customPath.isNotBlank()) {
+                File(resolveSafPath(customPath)).also { it.mkdirs() }
+            } else {
+                privateBackupDir
+            }
+            val file = File(targetDir, fileName)
+            file.writeText(json)
+            file
+        }
     }
 
     suspend fun createShiftConfigBackup(): Result<File> = runCatching {
         val json = buildShiftConfigJson()
         val ts = LocalDateTime.now().format(tsFormatter)
-        val targetDir = currentBackupDir()
-        val file = File(targetDir, "班次配置_${ts}_manual.json")
-        file.writeText(json)
-        file
+        val fileName = "班次配置_${ts}_manual.json"
+        val customPath = prefs.getBackupCustomPath()
+        if (customPath.isNotBlank() && isSafPath(customPath)) {
+            writeSafBackupFile(Uri.parse(customPath), fileName, json)
+            File(customPath, fileName)  // 伪路径，仅用于显示
+        } else {
+            val targetDir = if (customPath.isNotBlank()) {
+                File(resolveSafPath(customPath)).also { it.mkdirs() }
+            } else {
+                privateBackupDir
+            }
+            val file = File(targetDir, fileName)
+            file.writeText(json)
+            file
+        }
     }
 
     // ── 恢复（始终从私有目录读取） ─────────────────────
@@ -175,27 +281,33 @@ class BackupManager @Inject constructor(
     // ── 备份列表（合并私有目录 + 自定义路径） ─────────
 
     suspend fun listAppDataBackups(): List<BackupFile> {
-        val dirs = allBackupDirs()
-        return dirs.flatMap { listBackupFiles(BackupType.APP_DATA, it) }
-            .distinctBy { it.path }
+        val customPath = prefs.getBackupCustomPath()
+        val result = listBackupFiles(BackupType.APP_DATA, privateBackupDir).toMutableList()
+        if (customPath.isNotBlank()) {
+            if (isSafPath(customPath)) {
+                result += listSafBackupFiles(Uri.parse(customPath), BackupType.APP_DATA)
+            } else {
+                val realPath = resolveSafPath(customPath)
+                val dir = File(realPath)
+                if (dir.exists()) result += listBackupFiles(BackupType.APP_DATA, dir)
+            }
+        }
+        return result.distinctBy { it.path }
     }
 
     suspend fun listShiftConfigBackups(): List<BackupFile> {
-        val dirs = allBackupDirs()
-        return dirs.flatMap { listBackupFiles(BackupType.SHIFT_CONFIG, it) }
-            .distinctBy { it.path }
-    }
-
-    /** 返回所有需要扫描的备份目录（私有目录 + 自定义路径） */
-    private suspend fun allBackupDirs(): List<File> {
-        val dirs = mutableListOf(privateBackupDir)
         val customPath = prefs.getBackupCustomPath()
+        val result = listBackupFiles(BackupType.SHIFT_CONFIG, privateBackupDir).toMutableList()
         if (customPath.isNotBlank()) {
-            val realPath = resolveSafPath(customPath)
-            val dir = File(realPath)
-            if (dir.exists()) dirs.add(dir)
+            if (isSafPath(customPath)) {
+                result += listSafBackupFiles(Uri.parse(customPath), BackupType.SHIFT_CONFIG)
+            } else {
+                val realPath = resolveSafPath(customPath)
+                val dir = File(realPath)
+                if (dir.exists()) result += listBackupFiles(BackupType.SHIFT_CONFIG, dir)
+            }
         }
-        return dirs
+        return result.distinctBy { it.path }
     }
 
     /** 从私有目录恢复应用数据 */
@@ -222,6 +334,19 @@ class BackupManager @Inject constructor(
             "班次配置恢复成功"
         } else {
             throw IllegalArgumentException("无法识别的备份格式")
+        }
+    }
+
+    /** 删除备份文件（兼容 SAF URI 和普通文件路径） */
+    fun deleteBackupFile(path: String): Boolean {
+        return if (isSafPath(path)) {
+            runCatching {
+                val uri = Uri.parse(path)
+                val doc = DocumentFile.fromSingleUri(context, uri)
+                doc?.delete() == true
+            }.getOrDefault(false)
+        } else {
+            File(path).delete()
         }
     }
 
@@ -310,21 +435,19 @@ class BackupManager @Inject constructor(
     /** 裁剪自动备份（仅自动备份，手动备份不删除），跨目录全局合并后按时间裁剪 */
     private suspend fun pruneAppDataBackups(keepCount: Int) {
         if (keepCount <= 0) return
-        val allFiles = allBackupDirs().flatMap { listBackupFiles(BackupType.APP_DATA, it) }
-            .distinctBy { it.path }
+        val allFiles = listAppDataBackups()
             .filter { !it.isManual }
             .sortedByDescending { it.createdAt }
-        if (allFiles.size > keepCount) allFiles.drop(keepCount).forEach { File(it.path).delete() }
+        if (allFiles.size > keepCount) allFiles.drop(keepCount).forEach { deleteBackupFile(it.path) }
     }
 
     /** 裁剪自动备份（仅自动备份，手动备份不删除），跨目录全局合并后按时间裁剪 */
     private suspend fun pruneShiftConfigBackups(keepCount: Int) {
         if (keepCount <= 0) return
-        val allFiles = allBackupDirs().flatMap { listBackupFiles(BackupType.SHIFT_CONFIG, it) }
-            .distinctBy { it.path }
+        val allFiles = listShiftConfigBackups()
             .filter { !it.isManual }
             .sortedByDescending { it.createdAt }
-        if (allFiles.size > keepCount) allFiles.drop(keepCount).forEach { File(it.path).delete() }
+        if (allFiles.size > keepCount) allFiles.drop(keepCount).forEach { deleteBackupFile(it.path) }
     }
 }
 
