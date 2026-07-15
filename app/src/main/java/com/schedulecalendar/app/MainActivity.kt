@@ -20,10 +20,15 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val ACTION_CLOCK_IN = "com.schedulecalendar.app.ACTION_CLOCK_IN"
         const val ACTION_CLOCK_OUT = "com.schedulecalendar.app.ACTION_CLOCK_OUT"
+        const val EXTRA_NAVIGATE_DATE = "navigate_date"
     }
 
     // 存储待处理的快捷方式动作
     var pendingShortcutAction: String? = null
+        private set
+
+    // 存储小组件点击跳转的日期
+    var pendingNavigateDate: String? = null
         private set
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,6 +56,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleShortcutIntent(intent: Intent?) {
+        // 处理小组件日期导航
+        intent?.getStringExtra(EXTRA_NAVIGATE_DATE)?.let { date ->
+            pendingNavigateDate = date
+            intent.removeExtra(EXTRA_NAVIGATE_DATE)
+        }
         when (intent?.action) {
             ACTION_CLOCK_IN -> {
                 pendingShortcutAction = ACTION_CLOCK_IN
@@ -69,5 +79,12 @@ class MainActivity : ComponentActivity() {
         val action = pendingShortcutAction
         pendingShortcutAction = null
         return action
+    }
+
+    /** 清除并返回待处理的导航日期（小组件点击） */
+    fun consumeNavigateDate(): String? {
+        val date = pendingNavigateDate
+        pendingNavigateDate = null
+        return date
     }
 }

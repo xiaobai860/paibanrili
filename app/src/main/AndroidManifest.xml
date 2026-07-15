@@ -71,6 +71,19 @@
                 android:resource="@xml/schedule_widget_info"/>
         </receiver>
 
+        <!-- 日历网格小组件（3x3 日期 + 班次 + 状态） -->
+        <receiver
+            android:name=".widget.CalendarGlanceReceiver"
+            android:label="@string/calendar_widget_label"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/calendar_widget_info"/>
+        </receiver>
+
         <!-- 上下班提醒闹钟接收器 -->
         <receiver
             android:name=".reminder.AlarmReceiver"
