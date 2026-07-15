@@ -280,13 +280,13 @@ private fun TodoTab(
             )
             if (isNotCurrentMonth) {
                 Spacer(Modifier.weight(1f))
-                TextButton(
+                IconButton(
                     onClick = { vm.goToToday() },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                    modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Default.CalendarToday, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("返回当月", fontSize = 13.sp)
+                    Icon(Icons.Default.CalendarToday, contentDescription = "\u8fd4\u56de\u5f53\u6708",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp))
                 }
             }
             Spacer(Modifier.weight(1f))
@@ -314,202 +314,144 @@ private fun TodoTab(
             val sortedMissed = sortTodosByDateDesc(missedTodos)
             val missedByDate = sortedMissed.groupBy { it.date }
                 .toSortedMap(compareByDescending { it })
-            // 区块标题行
-            Row(
-                Modifier.fillMaxWidth()
-                    .clickable { onMissedToggle() }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
+            TodoCardSection(
+                icon = Icons.Default.Warning, title = "\u6f0f\u6253\u5361\u5f85\u8865\u5f55",
+                count = missedTodos.size, expanded = missedExpanded,
+                onToggle = onMissedToggle,
+                iconTint = MaterialTheme.colorScheme.error
             ) {
-                Icon(Icons.Default.Update, contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "\u6f0f\u6253\u5361\u5f85\u8865\u5f55(${missedTodos.size})",
-                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
-                    modifier = Modifier.weight(1f)
-                )
-                if (missedTodos.isEmpty()) {
-                    Text("\u65e0", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    Icon(
-                        if (missedExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
+                missedByDate.forEach { (date, items) ->
+                    MergedClockRow(
+                        date = date, items = items,
+                        onAction = { todo, isClockIn ->
+                            onFillMissedClock(todo.date, isClockIn, todo.shiftTime)
+                        },
+                        actionLabel = "\u8865\u5f55"
                     )
-                }
-            }
-            AnimatedVisibility(visible = missedExpanded && missedByDate.isNotEmpty()) {
-                Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    missedByDate.forEach { (date, items) ->
-                        MergedClockRow(
-                            date = date,
-                            items = items,
-                            onAction = { todo, isClockIn ->
-                                onFillMissedClock(todo.date, isClockIn, todo.shiftTime)
-                            },
-                            actionLabel = "补录"
-                        )
-                    }
                 }
             }
 
             // ── 已补录（同一天上班/下班合并显示） ────────────────────────────────
-            CollapsibleCountRow(
-                icon = Icons.Default.Update, iconTint = MaterialTheme.colorScheme.primary,
-                title = "\u5df2\u8865\u5f55", count = filledTodos.size,
-                expanded = filledExpanded, onToggle = onFilledToggle
-            )
-            AnimatedVisibility(visible = filledExpanded && filledTodos.isNotEmpty()) {
-                val sortedFilled = sortTodosByDateDesc(filledTodos)
-                val filledByDate = sortedFilled.groupBy { it.date }
-                    .toSortedMap(compareByDescending { it })
-                Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    filledByDate.forEach { (date, items) ->
-                        MergedClockRow(
-                            date = date,
-                            items = items,
-                            onAction = { todo, isClockIn ->
-                                if (isClockIn) vm.unfillMissedClockIn(todo.date)
-                                else vm.unfillMissedClockOut(todo.date)
-                            },
-                            actionIcon = Icons.Default.Undo
-                        )
-                    }
+            val sortedFilled = sortTodosByDateDesc(filledTodos)
+            val filledByDate = sortedFilled.groupBy { it.date }
+                .toSortedMap(compareByDescending { it })
+            TodoCardSection(
+                icon = Icons.Default.CheckCircle, title = "\u5df2\u8865\u5f55",
+                count = filledTodos.size, expanded = filledExpanded,
+                onToggle = onFilledToggle,
+                iconTint = MaterialTheme.colorScheme.primary
+            ) {
+                filledByDate.forEach { (date, items) ->
+                    MergedClockRow(
+                        date = date, items = items,
+                        onAction = { todo, isClockIn ->
+                            if (isClockIn) vm.unfillMissedClockIn(todo.date)
+                            else vm.unfillMissedClockOut(todo.date)
+                        },
+                        actionIcon = Icons.Default.Undo
+                    )
                 }
             }
-            AnimatedVisibility(visible = filledExpanded && filledTodos.isEmpty()) {
-                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center) {
-                    Text("\u6682\u65e0\u5df2\u8865\u5f55\u8bb0\u5f55", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-
-            HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
 
             // ── 疑似加班待确认（合并早到+晚退） ────────────────────────
-            TodoSection(
-                icon = Icons.Default.Schedule, iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                title = "\u7591\u4f3c\u52a0\u73ed\u5f85\u786e\u8ba4", count = pendingOTTodos.size,
-                expanded = otPendingExpanded, onToggle = onOtPendingToggle, emptyText = "\u65e0",
-                items = sortTodosByDateDesc(pendingOTTodos), onItemClick = null,
-                itemContent = { todo ->
+            TodoCardSection(
+                icon = Icons.Default.Schedule, title = "\u7591\u4f3c\u52a0\u73ed\u5f85\u786e\u8ba4",
+                count = pendingOTTodos.size, expanded = otPendingExpanded,
+                onToggle = onOtPendingToggle,
+                iconTint = MaterialTheme.colorScheme.tertiary
+            ) {
+                sortTodosByDateDesc(pendingOTTodos).forEach { todo ->
                     val isEarly = todo.type == TodoType.PENDING_EARLY_OT
                     UnifiedTodoRow(
-                        todo = todo,
-                        isClockIn = isEarly,
+                        todo = todo, isClockIn = isEarly,
                         onAction = { onOvertimeAction(todo.date, isEarly) },
                         actionLabel = "\u786e\u8ba4"
                     )
                 }
-            )
+            }
 
             // ── 是加班（内联展开列表） ──────────────────────────────
-            CollapsibleCountRow(
-                icon = Icons.Default.CheckCircle, iconTint = Color(0xFF059669),
-                title = "\u662f\u52a0\u73ed", count = confirmedOTTodos.size,
-                expanded = otConfirmedExpanded, onToggle = onOtConfirmedToggle
-            )
-            AnimatedVisibility(visible = otConfirmedExpanded && confirmedOTTodos.isNotEmpty()) {
-                val sortedConfirmed = sortTodosByDateDesc(confirmedOTTodos)
-                Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    sortedConfirmed.forEach { todo ->
-                        val isEarly = todo.type == TodoType.CONFIRMED_EARLY_OT
-                        UnifiedTodoRow(
-                            todo = todo,
-                            isClockIn = isEarly,
-                            onAction = {
-                                if (isEarly) vm.unconfirmEarlyOvertime(todo.date)
-                                else vm.unconfirmLateOvertime(todo.date)
-                            },
-                            actionIcon = Icons.Default.Undo
-                        )
-                    }
-                }
-            }
-            AnimatedVisibility(visible = otConfirmedExpanded && confirmedOTTodos.isEmpty()) {
-                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center) {
-                    Text("\u6682\u65e0\u5df2\u786e\u8ba4\u52a0\u73ed\u8bb0\u5f55", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val sortedConfirmed = sortTodosByDateDesc(confirmedOTTodos)
+            TodoCardSection(
+                icon = Icons.Default.CheckCircle, title = "\u662f\u52a0\u73ed",
+                count = confirmedOTTodos.size, expanded = otConfirmedExpanded,
+                onToggle = onOtConfirmedToggle,
+                iconTint = Color(0xFF059669)
+            ) {
+                sortedConfirmed.forEach { todo ->
+                    val isEarly = todo.type == TodoType.CONFIRMED_EARLY_OT
+                    UnifiedTodoRow(
+                        todo = todo, isClockIn = isEarly,
+                        onAction = {
+                            if (isEarly) vm.unconfirmEarlyOvertime(todo.date)
+                            else vm.unconfirmLateOvertime(todo.date)
+                        },
+                        actionIcon = Icons.Default.Undo
+                    )
                 }
             }
 
             // ── 不是加班（内联展开列表） ──────────────────────────────
-            CollapsibleCountRow(
-                icon = Icons.Default.Cancel, iconTint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                title = "\u4e0d\u662f\u52a0\u73ed", count = ignoredOTTodos.size,
-                expanded = otIgnoredExpanded, onToggle = onOtIgnoredToggle
-            )
-            AnimatedVisibility(visible = otIgnoredExpanded && ignoredOTTodos.isNotEmpty()) {
-                val sortedIgnored = sortTodosByDateDesc(ignoredOTTodos)
-                Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    sortedIgnored.forEach { todo ->
-                        val isEarly = todo.type == TodoType.IGNORED_EARLY_OT
-                        UnifiedTodoRow(
-                            todo = todo,
-                            isClockIn = isEarly,
-                            onAction = {
-                                if (isEarly) vm.unignoreEarlyArrival(todo.date)
-                                else vm.unignoreLateLeave(todo.date)
-                            },
-                            actionIcon = Icons.Default.Undo
-                        )
-                    }
-                }
-            }
-            AnimatedVisibility(visible = otIgnoredExpanded && ignoredOTTodos.isEmpty()) {
-                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center) {
-                    Text("\u6682\u65e0\u5df2\u5ffd\u7565\u52a0\u73ed\u8bb0\u5f55", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val sortedIgnored = sortTodosByDateDesc(ignoredOTTodos)
+            TodoCardSection(
+                icon = Icons.Default.Cancel, title = "\u4e0d\u662f\u52a0\u73ed",
+                count = ignoredOTTodos.size, expanded = otIgnoredExpanded,
+                onToggle = onOtIgnoredToggle,
+                iconTint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+            ) {
+                sortedIgnored.forEach { todo ->
+                    val isEarly = todo.type == TodoType.IGNORED_EARLY_OT
+                    UnifiedTodoRow(
+                        todo = todo, isClockIn = isEarly,
+                        onAction = {
+                            if (isEarly) vm.unignoreEarlyArrival(todo.date)
+                            else vm.unignoreLateLeave(todo.date)
+                        },
+                        actionIcon = Icons.Default.Undo
+                    )
                 }
             }
         } // end scrollable Column
     } // end outer Column
 }
 
-// ── 待办子区块（可展开列表） ────────────────────────────────────────────
+// ── 待办卡片区块（可展开/折叠） ────────────────────────────────────────────
 
 @Composable
-private fun TodoSection(
+private fun TodoCardSection(
     icon: ImageVector,
     iconTint: Color,
     title: String,
     count: Int,
     expanded: Boolean,
     onToggle: () -> Unit,
-    emptyText: String,
-    items: List<TodoItem>,
-    onItemClick: ((String) -> Unit)? = null,
-    itemContent: @Composable (TodoItem) -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
-    Column {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
         // 区块标题行
         Row(
             Modifier.fillMaxWidth()
                 .clickable { onToggle() }
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
+            Icon(icon, contentDescription = null, tint = iconTint,
+                modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
             Text(
                 "$title($count)",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
             if (count == 0) {
-                Text(emptyText, style = MaterialTheme.typography.bodySmall,
+                Text("\u65e0", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Icon(
@@ -520,60 +462,15 @@ private fun TodoSection(
                 )
             }
         }
-
-        // 展开的列表
-        AnimatedVisibility(visible = expanded && items.isNotEmpty()) {
-            Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items.forEach { todo ->
-                    Box(
-                        modifier = Modifier.fillMaxWidth().then(
-                            if (onItemClick != null) Modifier.clickable { onItemClick(todo.date) } else Modifier
-                        )
-                    ) {
-                        itemContent(todo)
-                    }
-                }
+        // 展开的内容
+        AnimatedVisibility(visible = expanded && count > 0) {
+            Column(
+                Modifier.padding(horizontal = 10.dp, vertical = 0.dp)
+                    .padding(bottom = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                content()
             }
-        }
-    }
-}
-
-// ── 折叠计数行 ────────────────────────────────────────────────────────
-
-@Composable
-private fun CollapsibleCountRow(
-    icon: ImageVector,
-    iconTint: Color,
-    title: String,
-    count: Int,
-    expanded: Boolean,
-    onToggle: () -> Unit
-) {
-    Row(
-        Modifier.fillMaxWidth()
-            .clickable { onToggle() }
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(
-            "$title($count)",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.weight(1f)
-        )
-        if (count == 0) {
-            Text("\u65e0", style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else {
-            Icon(
-                if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp)
-            )
         }
     }
 }
