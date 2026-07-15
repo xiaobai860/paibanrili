@@ -262,16 +262,18 @@ class CalendarViewModel @Inject constructor(
 
             val sn = shift.name
             val st = if (shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) "${shift.startTime}-${shift.endTime}" else ""
+            val stStart = shift.startTime
+            val stEnd = shift.endTime
             // 漏打卡检测：有班次但缺少打卡记录，上班/下班分别独立判断
             if (record.actualStartTime == null) {
-                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_IN, "上班漏打卡", shiftName = sn, shiftTime = st))
+                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_IN, "上班漏打卡", shiftName = sn, shiftTime = stStart))
             } else {
-                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_IN, "上班已补录", shiftName = sn, shiftTime = st, clockTime = record.actualStartTime))
+                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_IN, "上班已补录", shiftName = sn, shiftTime = stStart, clockTime = record.actualStartTime))
             }
             if (record.actualEndTime == null) {
-                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_OUT, "下班漏打卡", shiftName = sn, shiftTime = st))
+                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_OUT, "下班漏打卡", shiftName = sn, shiftTime = stEnd))
             } else {
-                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_OUT, "下班已补录", shiftName = sn, shiftTime = st, clockTime = record.actualEndTime))
+                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_OUT, "下班已补录", shiftName = sn, shiftTime = stEnd, clockTime = record.actualEndTime))
             }
 
             // 加班待确认：早到/晚退分别独立判断（与小程序逻辑一致）
