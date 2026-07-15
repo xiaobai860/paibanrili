@@ -31,6 +31,7 @@ data class TodoItem(
     val type: TodoType,
     val label: String,
     val shiftName: String = "",
+    val shiftTime: String = "",
     val clockTime: String = "",
     val overtimeMinutes: Int = 0,
     val actualTime: String = ""
@@ -260,16 +261,17 @@ class CalendarViewModel @Inject constructor(
             if (shift == null || shift.builtInType == "rest" || shift.builtInType == "swap") continue
 
             val sn = shift.name
+            val st = if (shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) "${shift.startTime}-${shift.endTime}" else ""
             // 漏打卡检测：有班次但缺少打卡记录，上班/下班分别独立判断
             if (record.actualStartTime == null) {
-                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_IN, "上班漏打卡", shiftName = sn))
+                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_IN, "上班漏打卡", shiftName = sn, shiftTime = st))
             } else {
-                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_IN, "上班已补录", shiftName = sn, clockTime = record.actualStartTime))
+                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_IN, "上班已补录", shiftName = sn, shiftTime = st, clockTime = record.actualStartTime))
             }
             if (record.actualEndTime == null) {
-                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_OUT, "下班漏打卡", shiftName = sn))
+                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_OUT, "下班漏打卡", shiftName = sn, shiftTime = st))
             } else {
-                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_OUT, "下班已补录", shiftName = sn, clockTime = record.actualEndTime))
+                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_OUT, "下班已补录", shiftName = sn, shiftTime = st, clockTime = record.actualEndTime))
             }
 
             // 加班待确认：早到/晚退分别独立判断（与小程序逻辑一致）
@@ -278,14 +280,14 @@ class CalendarViewModel @Inject constructor(
                 val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime)
                 val grain = attendConfig.overtimeGranMin
                 if (earlyMin >= grain) {
-                    todos.add(TodoItem(dateStr, TodoType.PENDING_EARLY_OT, "早到加班待确认", shiftName = sn, overtimeMinutes = earlyMin, actualTime = record.actualStartTime))
+                    todos.add(TodoItem(dateStr, TodoType.PENDING_EARLY_OT, "早到加班待确认", shiftName = sn, shiftTime = st, overtimeMinutes = earlyMin, actualTime = record.actualStartTime))
                 }
             } else if (record.confirmEarlyOT) {
                 val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
-                todos.add(TodoItem(dateStr, TodoType.CONFIRMED_EARLY_OT, "已确认早到加班", shiftName = sn, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: ""))
+                todos.add(TodoItem(dateStr, TodoType.CONFIRMED_EARLY_OT, "已确认早到加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: ""))
             } else if (record.ignoreEarlyArrival) {
                 val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
-                todos.add(TodoItem(dateStr, TodoType.IGNORED_EARLY_OT, "忽略早到加班", shiftName = sn, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: ""))
+                todos.add(TodoItem(dateStr, TodoType.IGNORED_EARLY_OT, "忽略早到加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: ""))
             }
             // 晚退加班待确认：有实际下班时间 & 比班次晚 & 未忽略晚退 & 未确认晚退加班
             if (record.actualEndTime != null && !record.ignoreLateLeave && !record.confirmLateOT) {
@@ -295,14 +297,14 @@ class CalendarViewModel @Inject constructor(
                 val lateMin = normAE - normSE
                 val grain = attendConfig.overtimeGranMin
                 if (lateMin >= grain) {
-                    todos.add(TodoItem(dateStr, TodoType.PENDING_LATE_OT, "晚退加班待确认", shiftName = sn, overtimeMinutes = lateMin, actualTime = record.actualEndTime))
+                    todos.add(TodoItem(dateStr, TodoType.PENDING_LATE_OT, "晚退加班待确认", shiftName = sn, shiftTime = st, overtimeMinutes = lateMin, actualTime = record.actualEndTime))
                 }
             } else if (record.confirmLateOT) {
                 val lateMin = CalcUtils.timeToMin(record.actualEndTime ?: shift.endTime) - CalcUtils.timeToMin(shift.endTime)
-                todos.add(TodoItem(dateStr, TodoType.CONFIRMED_LATE_OT, "已确认晚退加班", shiftName = sn, overtimeMinutes = maxOf(0, lateMin), actualTime = record.actualEndTime ?: ""))
+                todos.add(TodoItem(dateStr, TodoType.CONFIRMED_LATE_OT, "已确认晚退加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, lateMin), actualTime = record.actualEndTime ?: ""))
             } else if (record.ignoreLateLeave) {
                 val lateMin = CalcUtils.timeToMin(record.actualEndTime ?: shift.endTime) - CalcUtils.timeToMin(shift.endTime)
-                todos.add(TodoItem(dateStr, TodoType.IGNORED_LATE_OT, "忽略晚退加班", shiftName = sn, overtimeMinutes = maxOf(0, lateMin), actualTime = record.actualEndTime ?: ""))
+                todos.add(TodoItem(dateStr, TodoType.IGNORED_LATE_OT, "忽略晚退加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, lateMin), actualTime = record.actualEndTime ?: ""))
             }
         }
 
