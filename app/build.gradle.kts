@@ -104,4 +104,7 @@ dependencies {
 
     // 农历计算库（tyme4j 是 lunar 的升级版）
     implementation(libs.tyme4j)
+
+    // DocumentFile（SAF 目录文件操作）
+    implementation("androidx.documentfile:documentfile:1.0.1")
 }
