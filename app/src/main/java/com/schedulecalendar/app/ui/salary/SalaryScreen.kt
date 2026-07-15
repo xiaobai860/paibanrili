@@ -97,6 +97,9 @@ fun SalaryContent(
             val future = state.future
             val details = state.details
 
+            val todayStr = java.time.LocalDate.now().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
+            val workDays = details.filter { it.record != null && it.date <= todayStr }.reversed()
+
             LazyColumn(
                 Modifier.padding(padding).fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 24.dp)
@@ -151,7 +154,6 @@ fun SalaryContent(
                 Spacer(Modifier.height(6.dp))
             }
 
-            val workDays = details.filter { it.record != null }.reversed()
             if (workDays.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -428,10 +430,10 @@ private fun SalaryDailyRow(d: DayScheduleDetail) {
 }
 
 // DayScheduleDetail 有 salary 字段但没有 overtimeSalary，需要从 normalSalary 推算
-// 这里 salary = 已在 CalcUtils 中计算的当日薪资总计，overtimeSalary 用 overtimeHours * 一个时率估算
+// 注意：overtimeHours 已包含 weekend + holiday，不可重复相加
 private val DayScheduleDetail.overtimeSalary: Double
     get() = if (overtimeHours > 0 && salary > 0) {
-        val totalH = normalHours + overtimeHours + weekendHours + holidayHours
+        val totalH = normalHours + overtimeHours
         if (totalH > 0) salary * (overtimeHours / totalH) else 0.0
     } else 0.0
 
