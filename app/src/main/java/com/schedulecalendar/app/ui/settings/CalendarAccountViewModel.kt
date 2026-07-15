@@ -19,6 +19,7 @@ import javax.inject.Inject
 data class CalendarAccountState(
     val accounts: List<CalendarAccountInfo> = emptyList(),
     val disabledAccountIds: Set<Long> = emptySet(),
+    val accountCategories: Map<String, String> = emptyMap(),
     val isLoading: Boolean = true
 )
 
@@ -42,6 +43,7 @@ class CalendarAccountViewModel @Inject constructor(
     /**
      * 加载所有系统日历账户
      * 先确保应用日历账户已创建，再加载所有账户列表
+     * 首次加载时自动禁用非应用账户
      */
     fun loadAccounts() {
         viewModelScope.launch {
@@ -50,9 +52,34 @@ class CalendarAccountViewModel @Inject constructor(
                 // 确保应用日历账户已创建（AccountManager 注册 + Calendar Provider 创建）
                 calendarRepo.getOrCreateLocalCalendarId()
                 val accounts = calendarRepo.getAllAccounts()
-                val disabledIds = prefs.getDisabledAccountIds()
+                var disabledIds = prefs.getDisabledAccountIds()
+                val categories = prefs.getAccountCategories()
+
+                // 首次加载：自动禁用除本应用外的所有日历账户，并设置应用账户默认为“纪念日”分类
+                if (!prefs.isAccountsInitialized()) {
+                    val nonAppCalIds = accounts
+                        .filter { it.accountType != com.schedulecalendar.app.data.calendar.CalendarEventRepository.ACCOUNT_TYPE }
+                        .flatMap { it.calendarIds }
+                        .toSet()
+                    if (nonAppCalIds.isNotEmpty()) {
+                        disabledIds = disabledIds + nonAppCalIds
+                        prefs.saveDisabledAccountIds(disabledIds)
+                    }
+                    // 应用自身账户默认分类为“纪念日”（包含日程和纪念日两个日历）
+                    val appAccountKey = "${com.schedulecalendar.app.data.calendar.CalendarEventRepository.ACCOUNT_NAME}|${com.schedulecalendar.app.data.calendar.CalendarEventRepository.ACCOUNT_TYPE}"
+                    val currentCategories = prefs.getAccountCategories().toMutableMap()
+                    currentCategories[appAccountKey] = "anniversary"
+                    prefs.saveAccountCategories(currentCategories)
+                    prefs.setAccountsInitialized()
+                }
+
                 _state.update {
-                    it.copy(accounts = accounts, disabledAccountIds = disabledIds, isLoading = false)
+                    it.copy(
+                        accounts = accounts,
+                        disabledAccountIds = disabledIds,
+                        accountCategories = categories,
+                        isLoading = false
+                    )
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false) }
@@ -93,5 +120,31 @@ class CalendarAccountViewModel @Inject constructor(
      */
     fun isAccountDisabled(accountId: Long): Boolean {
         return accountId in _state.value.disabledAccountIds
+    }
+
+    /**
+     * 设置账户分类
+     * @param accountKey 账户键 ("accountName|accountType")
+     * @param category "schedule" | "anniversary" | null(清除分类，显示在两者中)
+     */
+    fun setAccountCategory(accountKey: String, category: String?) {
+        viewModelScope.launch {
+            val current = prefs.getAccountCategories().toMutableMap()
+            if (category == null) {
+                current.remove(accountKey)
+            } else {
+                current[accountKey] = category
+            }
+            prefs.saveAccountCategories(current)
+            _state.update { it.copy(accountCategories = current) }
+        }
+    }
+
+    /**
+     * 获取账户的分类
+     * @return "schedule" | "anniversary" | null
+     */
+    fun getAccountCategory(accountKey: String): String? {
+        return _state.value.accountCategories[accountKey]
     }
 }

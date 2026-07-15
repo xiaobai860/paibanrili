@@ -53,7 +53,9 @@ class CalendarEventRepository @Inject constructor(
         /** 自定义账户类型，与应用包名一致，对应 authenticator.xml 中的 accountType */
         const val ACCOUNT_TYPE = "com.schedulecalendar.app"
         /** 账户名，使用中文应用名 */
-        private const val ACCOUNT_NAME = "排班日历"
+        const val ACCOUNT_NAME = "排班日历"
+        /** 纪念日日历显示名称后缀 */
+        private const val ANNIVERSARY_SUFFIX = "-纪念日"
     }
 
     /**
@@ -600,6 +602,72 @@ class CalendarEventRepository @Inject constructor(
     }
 
     /**
+     * 获取或创建纪念日专用日历ID
+     * 与应用日历使用相同的账户（AccountManager），但创建独立的日历条目，
+     * 显示名称为 "应用名-纪念日"，颜色为红色。
+     * @return 纪念日日历ID，失败返回null
+     */
+    fun getOrCreateAnniversaryCalendarId(): Long? {
+        val appName = try {
+            context.getString(context.applicationInfo.labelRes)
+        } catch (_: Exception) {
+            ACCOUNT_NAME
+        }
+        val displayName = "$appName$ANNIVERSARY_SUFFIX"
+        return try {
+            // 查找已有的纪念日日历
+            var existingCalId: Long? = null
+            context.contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI,
+                arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME),
+                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ? AND ${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} = ?",
+                arrayOf(ACCOUNT_NAME, ACCOUNT_TYPE, displayName),
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    existingCalId = cursor.getLong(0)
+                }
+            }
+            if (existingCalId != null) return existingCalId
+
+            // 确保账户存在
+            getOrCreateLocalCalendarId() ?: return null
+
+            // 创建纪念日日历
+            val values = android.content.ContentValues().apply {
+                put(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT_NAME)
+                put(CalendarContract.Calendars.ACCOUNT_TYPE, ACCOUNT_TYPE)
+                put(CalendarContract.Calendars.NAME, displayName)
+                put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, displayName)
+                put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.CAL_ACCESS_OWNER)
+                put(CalendarContract.Calendars.OWNER_ACCOUNT, ACCOUNT_NAME)
+                put(CalendarContract.Calendars.SYNC_EVENTS, 1)
+                put(CalendarContract.Calendars.VISIBLE, 1)
+                put(CalendarContract.Calendars.CALENDAR_COLOR, 0xFFE53935.toInt()) // 红色
+                put(CalendarContract.Calendars.CALENDAR_TIME_ZONE, java.util.TimeZone.getDefault().id)
+                put(CalendarContract.Calendars.CAN_ORGANIZER_RESPOND, 0)
+                put(CalendarContract.Calendars.ALLOWED_REMINDERS, "0,1,2,3")
+                put(CalendarContract.Calendars.ALLOWED_AVAILABILITY, "0,1,2")
+                put(CalendarContract.Calendars.ALLOWED_ATTENDEE_TYPES, "0,1,2")
+            }
+            val uri = context.contentResolver.insert(
+                CalendarContract.Calendars.CONTENT_URI.buildUpon()
+                    .appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER, "true")
+                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT_NAME)
+                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE, ACCOUNT_TYPE)
+                    .build(),
+                values
+            )
+            val newCalId = uri?.let { ContentUris.parseId(it) }
+            android.util.Log.i("CalendarEventRepo", "Created anniversary calendar calId=$newCalId")
+            newCalId
+        } catch (e: Exception) {
+            android.util.Log.e("CalendarEventRepo", "getOrCreateAnniversaryCalendarId failed", e)
+            null
+        }
+    }
+
+    /**
      * 更新日历事件
      */
     fun updateEvent(event: CalendarEventInfo): Boolean {
@@ -611,6 +679,7 @@ class CalendarEventRepository @Inject constructor(
                 put(CalendarContract.Events.DTEND, event.dtEnd)
                 put(CalendarContract.Events.ALL_DAY, if (event.allDay) 1 else 0)
                 put(CalendarContract.Events.EVENT_LOCATION, event.eventLocation)
+                put(CalendarContract.Events.RRULE, event.rrule)
             }
             val rows = context.contentResolver.update(
                 ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, event.id),

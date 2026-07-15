@@ -799,6 +799,8 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
             vm.loadEvents()
         }
     }
+    // 分类选择目标
+    var categoryTarget by remember { mutableStateOf<com.schedulecalendar.app.data.calendar.CalendarEventInfo?>(null) }
 
     Box(Modifier.fillMaxSize()) {
     when {
@@ -906,11 +908,15 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
                     }
 
                     items(dayEvents, key = { it.id }) { event ->
-                        CalendarEventRow(event = event, onClick = {
-                            android.util.Log.d("NavDebug", "CalendarEventRow clicked: eventId=${event.id}, title=${event.title}")
-                            vm.selectEvent(event)
-                            android.util.Log.d("NavDebug", "selectEvent completed, showEditDialog=${vm.state.value.showEditDialog}")
-                        })
+                        CalendarEventRow(
+                            event = event,
+                            onClick = {
+                                android.util.Log.d("NavDebug", "CalendarEventRow clicked: eventId=${event.id}, title=${event.title}")
+                                vm.selectEvent(event)
+                                android.util.Log.d("NavDebug", "selectEvent completed, showEditDialog=${vm.state.value.showEditDialog}")
+                            },
+                            onLongClick = { categoryTarget = event }
+                        )
                     }
                 }
             }
@@ -928,6 +934,31 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
         Icon(Icons.Default.Add, contentDescription = "新建日程")
     }
     } // end Box
+
+    // 分类选择弹窗
+    categoryTarget?.let { event ->
+        AlertDialog(
+            onDismissRequest = { categoryTarget = null },
+            title = { Text("\u5206\u7c7b\u8bbe\u7f6e") },
+            text = { Text("\u8bf7\u9009\u62e9\u300c${event.title}\u300d\u663e\u793a\u5728\u54ea\u4e2a\u5206\u7c7b\u4e2d") },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.changeEventCategory(event, toAnniversary = false)
+                    categoryTarget = null
+                }) {
+                    Text("\u65e5\u7a0b")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    vm.changeEventCategory(event, toAnniversary = true)
+                    categoryTarget = null
+                }) {
+                    Text("\u7eaa\u5ff5\u65e5")
+                }
+            }
+        )
+    }
 
     // ── 导航 pending 状态（放在 let 块外部，避免 dismiss 时被取消）──
     var pendingEditEventId by remember { mutableStateOf<Long?>(null) }
@@ -993,20 +1024,29 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CalendarEventRow(
     event: com.schedulecalendar.app.data.calendar.CalendarEventInfo,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
 ) {
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
     val startStr = remember(event.dtStart) { timeFormat.format(Date(event.dtStart)) }
     val endStr = remember(event.dtEnd) { timeFormat.format(Date(event.dtEnd)) }
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                }
+            ),
         shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        onClick = onClick
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1065,7 +1105,7 @@ private fun CalendarEventRow(
 @Composable
 private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavController) {
     val anniversaries by vm.anniversaries.collectAsStateWithLifecycle()
-    var deleteTarget by remember { mutableStateOf<com.schedulecalendar.app.data.calendar.CalendarEventInfo?>(null) }
+    var categoryTarget by remember { mutableStateOf<com.schedulecalendar.app.data.calendar.CalendarEventInfo?>(null) }
 
     Box(Modifier.fillMaxSize()) {
         if (anniversaries.isEmpty()) {
@@ -1098,7 +1138,7 @@ private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavControl
                     AnniversaryRow(
                         event = event,
                         onClick = { navController.navigate(RouteEditAnniversary(event.id)) },
-                        onLongClick = { deleteTarget = event }
+                        onLongClick = { categoryTarget = event }
                     )
                 }
             }
@@ -1115,23 +1155,28 @@ private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavControl
         }
     }
 
-    // 删除确认弹窗
-    deleteTarget?.let { event ->
+    // 分类选择弹窗
+    categoryTarget?.let { event ->
         val displayName = event.title.removePrefix("\u7eaa\u5ff5\u65e5: ")
         AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = { Text("\u5220\u9664\u7eaa\u5ff5\u65e5") },
-            text = { Text("\u786e\u8ba4\u5220\u9664\u300c${displayName}\u300d\uff1f\u6b64\u64cd\u4f5c\u5c06\u540c\u6b65\u5230\u7cfb\u7edf\u65e5\u5386\u3002") },
+            onDismissRequest = { categoryTarget = null },
+            title = { Text("\u5206\u7c7b\u8bbe\u7f6e") },
+            text = { Text("\u8bf7\u9009\u62e9\u300c${displayName}\u300d\u663e\u793a\u5728\u54ea\u4e2a\u5206\u7c7b\u4e2d") },
             confirmButton = {
                 TextButton(onClick = {
-                    vm.deleteEvent(event.id)
-                    deleteTarget = null
+                    vm.changeEventCategory(event, toAnniversary = false)
+                    categoryTarget = null
                 }) {
-                    Text("\u5220\u9664", color = MaterialTheme.colorScheme.error)
+                    Text("\u65e5\u7a0b")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("\u53d6\u6d88") }
+                TextButton(onClick = {
+                    vm.changeEventCategory(event, toAnniversary = true)
+                    categoryTarget = null
+                }) {
+                    Text("\u7eaa\u5ff5\u65e5")
+                }
             }
         )
     }
