@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
+import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
@@ -43,6 +44,7 @@ class ReminderScheduler @Inject constructor(
         const val EXTRA_IS_CLOCK_IN = "is_clock_in"
         const val EXTRA_DATE = "reminder_date"
         const val EXTRA_TIME = "reminder_time"
+        const val EXTRA_SHIFT_NAME = "reminder_shift_name"
         const val CHANNEL_ID = "work_reminder"
         const val CHANNEL_NAME = "上下班提醒"
         const val NOTIFICATION_ID_CLOCK_IN = 1001
@@ -102,7 +104,8 @@ class ReminderScheduler @Inject constructor(
                     date = date,
                     timeStr = shiftTimes.first,
                     advanceMinutes = clockInMinutes,
-                    isClockIn = true
+                    isClockIn = true,
+                    shiftName = shiftTimes.third
                 )
             }
             if (clockOutEnabled && shiftTimes.second.isNotBlank()) {
@@ -110,7 +113,8 @@ class ReminderScheduler @Inject constructor(
                     date = date,
                     timeStr = shiftTimes.second,
                     advanceMinutes = clockOutMinutes,
-                    isClockIn = false
+                    isClockIn = false,
+                    shiftName = shiftTimes.third
                 )
             }
         }
@@ -129,9 +133,9 @@ class ReminderScheduler @Inject constructor(
 
     /**
      * 从班次 ID 获取上下班时间
-     * @return Pair(上班时间, 下班时间) 格式 "HH:mm"，内置休息/调休班次返回 null
+     * @return Triple(上班时间, 下班时间, 班次名称) 格式 "HH:mm"，内置休息/调休班次返回 null
      */
-    private suspend fun getShiftTimes(shiftId: String?): Pair<String, String>? {
+    private suspend fun getShiftTimes(shiftId: String?): Triple<String, String, String>? {
         if (shiftId.isNullOrBlank()) return null
         return try {
             val shift = shiftRepo.getById(shiftId) ?: return null
@@ -139,7 +143,7 @@ class ReminderScheduler @Inject constructor(
             if (shift.builtIn && shift.builtInType != null) return null
             // 空时间的班次不设置提醒
             if (shift.startTime.isBlank() || shift.endTime.isBlank()) return null
-            Pair(shift.startTime, shift.endTime)
+            Triple(shift.startTime, shift.endTime, shift.name)
         } catch (_: Exception) {
             null
         }
@@ -157,7 +161,8 @@ class ReminderScheduler @Inject constructor(
         date: LocalDate,
         timeStr: String,
         advanceMinutes: Int,
-        isClockIn: Boolean
+        isClockIn: Boolean,
+        shiftName: String
     ) {
         try {
             val timeParts = timeStr.split(":")
@@ -177,6 +182,7 @@ class ReminderScheduler @Inject constructor(
                 putExtra(EXTRA_IS_CLOCK_IN, isClockIn)
                 putExtra(EXTRA_DATE, date.toString())
                 putExtra(EXTRA_TIME, timeStr)
+                putExtra(EXTRA_SHIFT_NAME, shiftName)
                 action = if (isClockIn) "CLOCK_IN_REMINDER" else "CLOCK_OUT_REMINDER"
             }
 
@@ -226,19 +232,32 @@ class ReminderScheduler @Inject constructor(
     fun showReminderNotification(
         isClockIn: Boolean,
         date: String,
-        time: String
+        time: String,
+        shiftName: String
     ) {
-        val title = if (isClockIn) "上班提醒" else "下班提醒"
         val typeLabel = if (isClockIn) "上班" else "下班"
+        val title = if (shiftName.isNotEmpty()) "$shiftName - ${typeLabel}提醒" else "${typeLabel}提醒"
         val body = "今天${typeLabel}时间：$time"
 
         val notificationId = if (isClockIn) NOTIFICATION_ID_CLOCK_IN else NOTIFICATION_ID_CLOCK_OUT
+
+        // 点击通知后打开应用并触发对应打卡动作
+        val action = if (isClockIn) MainActivity.ACTION_CLOCK_IN else MainActivity.ACTION_CLOCK_OUT
+        val tapIntent = Intent(context, MainActivity::class.java).apply {
+            this.action = action
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val tapPending = PendingIntent.getActivity(
+            context, notificationId, tapIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(tapPending)
             .setAutoCancel(true)
             .build()
 
