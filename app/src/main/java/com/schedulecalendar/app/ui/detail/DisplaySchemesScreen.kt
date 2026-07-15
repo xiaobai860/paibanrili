@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.core.graphics.toColorInt
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -552,7 +553,7 @@ private fun DataRowEditor(
                                 shape = RoundedCornerShape(3.dp),
                                 color = rowConfig.backgroundColorLeft?.let {
                                     try {
-                                        Color(android.graphics.Color.parseColor(it))
+                                        Color(it.toColorInt())
                                     } catch (_: Exception) {
                                         MaterialTheme.colorScheme.surfaceVariant
                                     }
@@ -600,7 +601,7 @@ private fun DataRowEditor(
                                 shape = RoundedCornerShape(3.dp),
                                 color = rowConfig.backgroundColorRight?.let {
                                     try {
-                                        Color(android.graphics.Color.parseColor(it))
+                                        Color(it.toColorInt())
                                     } catch (_: Exception) {
                                         MaterialTheme.colorScheme.surfaceVariant
                                     }
@@ -730,7 +731,7 @@ private fun MiniDayCellPreview(
                                 val bgColor = if (index == 0) {
                                     rowConfig.backgroundColorLeft?.let {
                                         try {
-                                            Color(android.graphics.Color.parseColor(it))
+                                            Color(it.toColorInt())
                                         } catch (_: Exception) {
                                             MaterialTheme.colorScheme.surfaceVariant
                                         }
@@ -738,7 +739,7 @@ private fun MiniDayCellPreview(
                                 } else {
                                     rowConfig.backgroundColorRight?.let {
                                         try {
-                                            Color(android.graphics.Color.parseColor(it))
+                                            Color(it.toColorInt())
                                         } catch (_: Exception) {
                                             MaterialTheme.colorScheme.surfaceVariant
                                         }
@@ -772,7 +773,7 @@ private fun MiniDayCellPreview(
                                                 else rowConfig.backgroundColorRight ?: "#E0E0E0"
                                             ).let {
                                                 try {
-                                                    Color(android.graphics.Color.parseColor(it))
+                                                    Color(it.toColorInt())
                                                 } catch (_: Exception) {
                                                     MaterialTheme.colorScheme.onSurface
                                                 }
@@ -890,7 +891,7 @@ private fun ColorSlotButton(
 ) {
     val backgroundColor = color?.let {
         try {
-            Color(android.graphics.Color.parseColor(it))
+            Color(it.toColorInt())
         } catch (_: Exception) {
             MaterialTheme.colorScheme.surfaceVariant
         }
@@ -924,7 +925,7 @@ private fun ColorSlotButton(
                     modifier = Modifier.size(10.dp),
                     tint = textColorForBackground(color).let {
                         try {
-                            Color(android.graphics.Color.parseColor(it))
+                            Color(it.toColorInt())
                         } catch (_: Exception) {
                             Color.Black
                         }
@@ -975,7 +976,7 @@ private fun SimpleColorPicker(
                                 ),
                             shape = RoundedCornerShape(4.dp),
                             color = try {
-                                Color(android.graphics.Color.parseColor(color))
+                                Color(color.toColorInt())
                             } catch (_: Exception) {
                                 Color.White
                             },

@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.core.graphics.toColorInt
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -394,7 +395,7 @@ fun EventColorSelector(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 EventPresetColors.forEach { hex ->
-                    val color = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { Color.Gray }
+                    val color = runCatching { Color(hex.toColorInt()) }.getOrElse { Color.Gray }
                     val isSelected = hex == selectedColor
                     Box(
                         modifier = Modifier

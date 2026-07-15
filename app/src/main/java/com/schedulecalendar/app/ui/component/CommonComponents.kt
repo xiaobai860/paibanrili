@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.core.graphics.toColorInt
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -66,7 +67,7 @@ fun ScheduleTopBar(
 /** 班次颜色圆点 */
 @Composable
 fun ShiftColorDot(hexColor: String, size: Int = 10) {
-    val color = runCatching { Color(android.graphics.Color.parseColor(hexColor)) }.getOrElse { Color(0xFF059669) }
+    val color = runCatching { Color(hexColor.toColorInt()) }.getOrElse { Color(0xFF059669) }
     Box(
         Modifier
             .size(size.dp)
@@ -86,7 +87,7 @@ fun ColorPicker(selected: String, onSelect: (String) -> Unit) {
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 rowColors.forEach { hex ->
-                    val color = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { Color.Gray }
+                    val color = runCatching { Color(hex.toColorInt()) }.getOrElse { Color.Gray }
                     Box(
                         Modifier
                             .size(28.dp)
@@ -183,10 +184,10 @@ fun TimePickerField(
     time: String,
     onTimeChange: (String) -> Unit,
     label: String,
+    modifier: Modifier = Modifier,
     enabled: Boolean = true,
     defaultTime: String = "",
-    onRequestDialog: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    onRequestDialog: (() -> Unit)? = null
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
@@ -368,8 +369,8 @@ fun ImeAdaptiveOutlinedTextField(
     onFocused: (suspend () -> Unit)? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val fieldHeight = remember { mutableStateOf(0) }
-    val fieldYInRoot = remember { mutableStateOf(0f) }
+    val fieldHeight = remember { mutableIntStateOf(0) }
+    val fieldYInRoot = remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
     val view = LocalView.current
 
@@ -389,18 +390,18 @@ fun ImeAdaptiveOutlinedTextField(
                 isFocused = focusState.isFocused
             }
             .onSizeChanged { size ->
-                fieldHeight.value = size.height
+                fieldHeight.intValue = size.height
             }
             .onGloballyPositioned { coordinates: LayoutCoordinates ->
-                fieldYInRoot.value = coordinates.positionInRoot().y
+                fieldYInRoot.floatValue = coordinates.positionInRoot().y
             }
     )
 
     // 精确滚动：使输入框下边缘刚好在 IME 键盘上方
     suspend fun scrollAboveIme() {
         if (scrollState != null) {
-            val fieldY = fieldYInRoot.value
-            val fieldBottom = fieldY + fieldHeight.value
+            val fieldY = fieldYInRoot.floatValue
+            val fieldBottom = fieldY + fieldHeight.intValue
 
             val windowRect = android.graphics.Rect()
             view.getWindowVisibleDisplayFrame(windowRect)
@@ -408,7 +409,7 @@ fun ImeAdaptiveOutlinedTextField(
             val marginPx = with(density) { 16.dp.toPx() }
             val imeTopWithMargin = windowRect.bottom.toFloat() - marginPx
 
-            android.util.Log.d("ImeAdaptive", "fieldY=$fieldY fieldH=${fieldHeight.value} fieldBottom=$fieldBottom windowRect.bottom=${windowRect.bottom} imeTopWithMargin=$imeTopWithMargin scrollValue=${scrollState.value} maxScroll=${scrollState.maxValue}")
+            android.util.Log.d("ImeAdaptive", "fieldY=$fieldY fieldH=${fieldHeight.intValue} fieldBottom=$fieldBottom windowRect.bottom=${windowRect.bottom} imeTopWithMargin=$imeTopWithMargin scrollValue=${scrollState.value} maxScroll=${scrollState.maxValue}")
 
             val overflow = fieldBottom - imeTopWithMargin
             if (overflow > 0) {
@@ -433,8 +434,8 @@ fun ImeAdaptiveOutlinedTextField(
     }
 
     // 触发器 2：内容增长导致高度变化时 → 快速重新滚动保持可见
-    LaunchedEffect(fieldHeight.value) {
-        if (isFocused && fieldHeight.value > 0) {
+    LaunchedEffect(fieldHeight.intValue) {
+        if (isFocused && fieldHeight.intValue > 0) {
             delay(100)
             scrollAboveIme()
         }

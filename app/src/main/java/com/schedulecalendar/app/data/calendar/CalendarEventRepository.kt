@@ -6,6 +6,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.provider.CalendarContract
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.toColorInt
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -299,7 +300,7 @@ class CalendarEventRepository @Inject constructor(
                 }
                 if (colorHex != null) {
                     try {
-                        val colorInt = android.graphics.Color.parseColor(colorHex)
+                        val colorInt = colorHex.toColorInt()
                         put(CalendarContract.Events.EVENT_COLOR, colorInt)
                     } catch (_: Exception) {}
                 }

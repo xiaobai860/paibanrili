@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.core.graphics.toColorInt
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
@@ -324,6 +325,9 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                         },
                         label = "month_transition"
                     ) { targetMonth ->
+                        // 从 AnimatedContent 目标状态解码年月，确保过渡动画期间渲染正确
+                        val animYear = targetMonth / 100
+                        val animMonth = targetMonth % 100
                         // ── 预计算本月所有日期的展示数据 ──────────────────────────
                         data class DayCellData(
                             val day: Int, val dateStr: String,
@@ -334,11 +338,11 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             val isPrevMonth: Boolean = false, val isNextMonth: Boolean = false
                         )
                     // 构建完整网格数据：prevMonth尾部 + 当月 + nextMonth头部
-                    val prevMonthYear = if (month == 1) year - 1 else year
-                    val prevMonthMonth = if (month == 1) 12 else month - 1
+                    val prevMonthYear = if (animMonth == 1) animYear - 1 else animYear
+                    val prevMonthMonth = if (animMonth == 1) 12 else animMonth - 1
                     val prevMonthDaysInMonth = YearMonth.of(prevMonthYear, prevMonthMonth).lengthOfMonth()
-                    val nextMonthYear = if (month == 12) year + 1 else year
-                    val nextMonthMonth = if (month == 12) 1 else month + 1
+                    val nextMonthYear = if (animMonth == 12) animYear + 1 else animYear
+                    val nextMonthMonth = if (animMonth == 12) 1 else animMonth + 1
 
                     val prevFillDays = (0 until firstDow).map { idx ->
                         val day = prevMonthDaysInMonth - firstDow + 1 + idx
@@ -366,13 +370,13 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                     }
                     val curMonthDays = (0 until daysInMonth).map { dayIdx ->
                         val day = dayIdx + 1
-                        val dateStr = "%04d-%02d-%02d".format(year, month, day)
+                        val dateStr = "%04d-%02d-%02d".format(animYear, animMonth, day)
                         val record = state.schedules[dateStr]
                         val shift = record?.shiftId?.let { shiftMap[it] }
                         val detail = state.dayDetails[dateStr]
                         val isToday = dateStr == todayStr
                         val isHol = HolidayData.isLegalHoliday(dateStr)
-                        val dowOfDay = LocalDate.of(year, month, day).dayOfWeek
+                        val dowOfDay = LocalDate.of(animYear, animMonth, day).dayOfWeek
                         val isWknd = (dowOfDay == DayOfWeek.SATURDAY || dowOfDay == DayOfWeek.SUNDAY)
                             && !HolidayData.isTransferWorkday(dateStr)
                         val selected = when {
@@ -596,10 +600,10 @@ private fun DayCell(
     displayScheme: DisplayScheme,
     shiftStatuses: List<ShiftStatus>,
     batchMode: Boolean, selected: Boolean,
+    modifier: Modifier = Modifier,
     isPrevMonth: Boolean = false, isNextMonth: Boolean = false,
     onClick: () -> Unit,
-    onLongClick: () -> Unit = {},
-    modifier: Modifier = Modifier
+    onLongClick: () -> Unit = {}
 ) {
     val shiftColor = shift?.color?.let { safeColor(it) }
     val isRest = shift?.builtInType == "rest" || shift?.builtInType == "swap"
@@ -866,12 +870,12 @@ private fun DayCell(
                                             DisplayItemType.STATUS -> appliedSt?.color?.let { safeColor(it) }
                                             else -> if (index == 0) {
                                                 rowConfig.backgroundColorLeft?.let {
-                                                    try { Color(android.graphics.Color.parseColor(it)) }
+                                                    try { Color(it.toColorInt()) }
                                                     catch (_: Exception) { null }
                                                 }
                                             } else {
                                                 rowConfig.backgroundColorRight?.let {
-                                                    try { Color(android.graphics.Color.parseColor(it)) }
+                                                    try { Color(it.toColorInt()) }
                                                     catch (_: Exception) { null }
                                                 }
                                             }
@@ -2059,7 +2063,7 @@ private fun SchedulePreviewSection(
                         val prefix = if (item.type == "allowance") "+" else "-"
                         val color = if (item.type == "allowance") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                         Text(
-                            text = "${item.name} ${prefix}¥${String.format("%.0f", item.amount)}",
+                            text = "${item.name} ${prefix}¥${String.format(java.util.Locale.getDefault(), "%.0f", item.amount)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = color
                         )

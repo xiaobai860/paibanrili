@@ -2,6 +2,7 @@
 package com.schedulecalendar.app.ui.settings
 
 import android.content.Context
+import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.schedulecalendar.app.data.prefs.AppPreferences
@@ -200,7 +201,7 @@ class StorageViewModel @Inject constructor(
         if (rawPath.isBlank()) return ""
         if (rawPath.startsWith("content://")) {
             return try {
-                val uri = android.net.Uri.parse(rawPath)
+                val uri = rawPath.toUri()
                 val treeSeg = uri.path?.removePrefix("/tree/") ?: return rawPath
                 val decoded = java.net.URLDecoder.decode(treeSeg, "UTF-8")
                 val parts = decoded.split(":", limit = 2)

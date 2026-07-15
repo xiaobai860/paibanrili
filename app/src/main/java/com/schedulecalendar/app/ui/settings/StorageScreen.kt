@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -80,7 +81,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
     fun shareFile(file: BackupFile) {
         runCatching {
             val shareUri = if (file.path.startsWith("content://")) {
-                android.net.Uri.parse(file.path)
+                file.path.toUri()
             } else {
                 val f = java.io.File(file.path)
                 if (!f.exists()) {

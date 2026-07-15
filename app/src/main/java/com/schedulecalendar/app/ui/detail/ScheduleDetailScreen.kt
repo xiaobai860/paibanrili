@@ -1,7 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/ui/detail/ScheduleDetailScreen.kt
 package com.schedulecalendar.app.ui.detail
 
-import android.graphics.Color as AColor
+import androidx.core.graphics.toColorInt
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -344,7 +344,7 @@ fun ScheduleDetailScreen(
                         if (state.detailNormalSalary > 0) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("正班收入", style = MaterialTheme.typography.bodyMedium)
-                                Text("¥${String.format("%.0f", state.detailNormalSalary)}",
+                                Text("¥${String.format(java.util.Locale.getDefault(), "%.0f", state.detailNormalSalary)}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium)
                             }
@@ -352,7 +352,7 @@ fun ScheduleDetailScreen(
                         if (state.detailOvertimeSalary > 0) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("加班收入", style = MaterialTheme.typography.bodyMedium)
-                                Text("¥${String.format("%.0f", state.detailOvertimeSalary)}",
+                                Text("¥${String.format(java.util.Locale.getDefault(), "%.0f", state.detailOvertimeSalary)}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium)
                             }
@@ -362,7 +362,7 @@ fun ScheduleDetailScreen(
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("总收入", style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold)
-                                Text("¥${String.format("%.0f", state.detailTotalSalary)}",
+                                Text("¥${String.format(java.util.Locale.getDefault(), "%.0f", state.detailTotalSalary)}",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary)
@@ -659,4 +659,4 @@ private fun ShiftPickerSheet(
 }
 
 fun safeColor(hex: String): Color =
-    runCatching { Color(AColor.parseColor(hex)) }.getOrElse { Color.Gray }
+    runCatching { Color(hex.toColorInt()) }.getOrElse { Color.Gray }

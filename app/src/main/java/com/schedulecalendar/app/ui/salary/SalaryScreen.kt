@@ -12,6 +12,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
+import androidx.core.graphics.toColorInt
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,9 +52,9 @@ fun SalaryContent(
     navController: NavController,
     sharedYear: Int?,
     sharedMonth: Int?,
+    modifier: Modifier = Modifier,
     onMonthChange: (Int, Int) -> Unit = { _, _ -> },
-    vm: SalaryViewModel = hiltViewModel(),
-    modifier: Modifier = Modifier
+    vm: SalaryViewModel = hiltViewModel()
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -236,10 +237,10 @@ private fun SalaryDetailGrid(actual: SalarySummary, future: SalarySummary?) {
 @Composable
 private fun SalaryStatCell(
     label: String, value: Double,
+    modifier: Modifier = Modifier,
     future: Double? = null,
     valueColor: Color? = null,
-    isDeduction: Boolean = false,
-    modifier: Modifier = Modifier
+    isDeduction: Boolean = false
 ) {
     Surface(
         modifier = modifier,
@@ -387,7 +388,7 @@ private fun SalaryDailyRow(d: DayScheduleDetail) {
                 modifier = Modifier.width(40.dp))
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 d.shift?.let {
-                    val bgColor = runCatching { Color(android.graphics.Color.parseColor(it.color)) }.getOrElse { Color(0xFF059669) }
+                    val bgColor = runCatching { Color(it.color.toColorInt()) }.getOrElse { Color(0xFF059669) }
                     Surface(shape = RoundedCornerShape(4.dp), color = bgColor) {
                         Text(it.name, fontSize = 12.sp, color = Color.White,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),

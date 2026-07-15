@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.core.graphics.toColorInt
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -116,7 +117,7 @@ private fun HoursDetailItemCard(item: HoursDetailItem) {
 
             item.shiftName?.let { name ->
                 val bgColor = item.shiftColor?.let { hex ->
-                    runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { Color(0xFF059669) }
+                    runCatching { Color(hex.toColorInt()) }.getOrElse { Color(0xFF059669) }
                 } ?: Color(0xFF059669)
                 Surface(
                     shape = CircleShape,
