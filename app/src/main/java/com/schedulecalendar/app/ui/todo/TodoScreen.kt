@@ -261,8 +261,7 @@ private fun TodoTab(
         // 月份选择器（固定不滚动）
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(
                 onClick = { vm.goToPrevMonth() },
@@ -272,11 +271,13 @@ private fun TodoTab(
                 Spacer(Modifier.width(2.dp))
                 Text("上月", fontSize = 13.sp)
             }
+            Spacer(Modifier.weight(1f))
             Text(
                 year.toString() + "\u5e74" + month.toString() + "\u6708",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold
             )
+            Spacer(Modifier.weight(1f))
             TextButton(
                 onClick = { vm.goToNextMonth() },
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
@@ -284,6 +285,23 @@ private fun TodoTab(
                 Text("下月", fontSize = 13.sp)
                 Spacer(Modifier.width(2.dp))
                 Icon(Icons.Default.ChevronRight, null, Modifier.size(18.dp))
+            }
+        }
+        // 返回当月按钮
+        val today = java.time.LocalDate.now()
+        if (year != today.year || month != today.monthValue) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                TextButton(
+                    onClick = { vm.goToToday() },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                ) {
+                    Icon(Icons.Default.CalendarToday, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("返回当月", fontSize = 13.sp)
+                }
             }
         }
 
@@ -585,7 +603,7 @@ private fun UnifiedTodoRow(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 左侧：日期 + 星期
+        // 左侧：日期 + 星期（固定宽度）
         Column(Modifier.width(72.dp)) {
             Text(dateDisplay,
                 style = MaterialTheme.typography.bodyMedium,
@@ -598,22 +616,33 @@ private fun UnifiedTodoRow(
             }
         }
         Spacer(Modifier.width(8.dp))
-        // 中间：类型标签 + 附加信息
+        // 中间：类型标签 + 班次信息
         Column(Modifier.weight(1f)) {
-            Surface(
-                shape = RoundedCornerShape(3.dp),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-            ) {
-                Text(typeLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                    fontSize = 10.sp)
-            }
-            if (todo.shiftName.isNotEmpty()) {
-                Text(todo.shiftName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(3.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                ) {
+                    Text(typeLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        fontSize = 10.sp)
+                }
+                Spacer(Modifier.width(6.dp))
+                // 班次名称 + 班次时间
+                val shiftInfo = buildString {
+                    append(todo.shiftName)
+                    if (todo.shiftTime.isNotEmpty()) {
+                        append(" ")
+                        append(todo.shiftTime)
+                    }
+                }
+                if (shiftInfo.isNotEmpty()) {
+                    Text(shiftInfo,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             if (todo.overtimeMinutes > 0) {
                 val otLabel = if (isClockIn) "早到" else "晚退"
@@ -622,12 +651,12 @@ private fun UnifiedTodoRow(
                     color = MaterialTheme.colorScheme.tertiary)
             }
             if (todo.clockTime.isNotEmpty()) {
-                Text(todo.clockTime,
+                Text("已录: ${todo.clockTime}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (todo.actualTime.isNotEmpty()) {
-                Text("(${todo.actualTime})",
+            if (todo.actualTime.isNotEmpty() && todo.overtimeMinutes > 0) {
+                Text("实际: ${todo.actualTime}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -657,8 +686,9 @@ private fun UnifiedTodoRow(
 // 弹窗组件
 // ════════════════════════════════════════════════════════════════════════════
 
-// ── 漏打卡补录弹窗（仅含单一时间输入框） ──────────────────────────
+// ── 漏打卡补录弹窗（直接弹出时间选择器） ──────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MissedClockFillDialog(
     date: String,
@@ -666,26 +696,30 @@ private fun MissedClockFillDialog(
     onConfirm: (startTime: String?, endTime: String?) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var time by remember { mutableStateOf("") }
+    val now = java.time.LocalTime.now()
+    val timePickerState = rememberTimePickerState(
+        initialHour = now.hour,
+        initialMinute = now.minute,
+        is24Hour = true
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (isClockIn) "\u8865\u5f55\u4e0a\u73ed\u6253\u5361\u65f6\u95f4" else "\u8865\u5f55\u4e0b\u73ed\u6253\u5361\u65f6\u95f4") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("\u65e5\u671f\uff1a$date", style = MaterialTheme.typography.bodyMedium)
-                TimePickerField(
-                    time = time,
-                    onTimeChange = { time = it },
-                    label = if (isClockIn) "\u4e0a\u73ed\u65f6\u95f4" else "\u4e0b\u73ed\u65f6\u95f4",
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Spacer(Modifier.height(12.dp))
+                TimePicker(state = timePickerState)
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                if (isClockIn) onConfirm(time.ifBlank { null }, null)
-                else onConfirm(null, time.ifBlank { null })
+                val h = timePickerState.hour
+                val m = timePickerState.minute
+                val timeStr = "%02d:%02d".format(h, m)
+                if (isClockIn) onConfirm(timeStr, null)
+                else onConfirm(null, timeStr)
             }) {
                 Text("\u786e\u8ba4")
             }
