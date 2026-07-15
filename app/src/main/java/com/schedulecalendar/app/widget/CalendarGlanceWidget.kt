@@ -168,9 +168,10 @@ private fun CalendarWidgetContent() {
             Spacer(modifier = GlanceModifier.height(1.dp))
 
             // ── 日历网格 ────────────────────────────────────
+            // 每个 Row 使用 defaultWeight() 在 Column 中等分剩余垂直空间
             val totalDays = data.days.size
             for (row in 0 until data.totalRows) {
-                Row(modifier = GlanceModifier.fillMaxWidth()) {
+                Row(modifier = GlanceModifier.defaultWeight().fillMaxWidth()) {
                     for (col in 0 until 7) {
                         val cellIndex = row * 7 + col
                         val isBeforeMonth = cellIndex < data.weekStartOffset
