@@ -272,7 +272,8 @@ class CalendarEventViewModel @Inject constructor(
      * 开始监听系统日历变化
      */
     private fun startObserving() {
-        observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        observer = object : android.database.ContentObserver(handler) {
             override fun onChange(selfChange: Boolean) {
                 loadEvents()
             }
@@ -397,32 +398,6 @@ class CalendarEventViewModel @Inject constructor(
             if (success) loadEvents()
             onResult(success)
         }
-    }
-
-    /**
-     * 创建新的日历事件（同步，保留兼容）
-     */
-    fun createEvent(
-        title: String,
-        description: String?,
-        dtStart: Long,
-        dtEnd: Long,
-        allDay: Boolean = false,
-        location: String? = null,
-        calendarId: Long? = null,
-        rrule: String? = null,
-        reminderMinutes: Int? = null,
-        colorHex: String? = null
-    ): Boolean {
-        val result = calendarRepo.createEvent(
-            title, description, dtStart, dtEnd, allDay, location,
-            calendarId, rrule, reminderMinutes, colorHex
-        )
-        if (result > 0) {
-            loadEvents()
-            return true
-        }
-        return false
     }
 
     /**

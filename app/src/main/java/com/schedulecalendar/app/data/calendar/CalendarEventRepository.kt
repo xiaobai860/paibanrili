@@ -15,12 +15,9 @@ import javax.inject.Singleton
  */
 data class CalendarAccountInfo(
     val id: Long,
-    val name: String,
     val displayName: String,
     val accountName: String,
     val accountType: String,
-    val calendarCount: Int,
-    val isEnabled: Boolean = true,
     val calendarIds: Set<Long> = setOf(id)
 )
 
@@ -70,8 +67,7 @@ class CalendarEventRepository @Inject constructor(
             CalendarContract.Calendars._ID,
             CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
             CalendarContract.Calendars.ACCOUNT_NAME,
-            CalendarContract.Calendars.ACCOUNT_TYPE,
-            CalendarContract.Calendars.SYNC_EVENTS
+            CalendarContract.Calendars.ACCOUNT_TYPE
         )
     
         context.contentResolver.query(
@@ -85,7 +81,6 @@ class CalendarEventRepository @Inject constructor(
                 val rawDisplayName = cursor.getString(1)
                 val rawAccountName = cursor.getString(2)
                 val accountType = cursor.getString(3) ?: ""
-                val syncEvents = cursor.getInt(4) == 1
     
                 val calDisplayName = rawDisplayName?.trim()?.takeIf { it.isNotBlank() } ?: ""
                 val accountName = rawAccountName?.trim()?.takeIf { it.isNotBlank() } ?: ""
@@ -93,12 +88,9 @@ class CalendarEventRepository @Inject constructor(
                 val key = "calId:$calId"
                 val info = CalendarAccountInfo(
                     id = calId,
-                    name = displayName,
                     displayName = displayName,
                     accountName = accountName,
                     accountType = accountType,
-                    calendarCount = 1,
-                    isEnabled = syncEvents,
                     calendarIds = setOf(calId)
                 )
                 accounts.add(info)
@@ -207,88 +199,6 @@ class CalendarEventRepository @Inject constructor(
                 )
             }
         }
-        return events
-    }
-
-    /**
-     * 获取指定账户下所有日历事件（指定时间范围内）
-     * @param startTime 范围开始时间戳（毫秒）
-     * @param endTime 范围结束时间戳（毫秒）
-     * @param accountName 账户名，null 表示不过滤
-     */
-    fun getEvents(
-        startTime: Long,
-        endTime: Long,
-        accountName: String? = null
-    ): List<CalendarEventInfo> {
-        val events = mutableListOf<CalendarEventInfo>()
-
-        val projection = arrayOf(
-            CalendarContract.Events._ID,
-            CalendarContract.Events.CALENDAR_ID,
-            CalendarContract.Events.TITLE,
-            CalendarContract.Events.DESCRIPTION,
-            CalendarContract.Events.DTSTART,
-            CalendarContract.Events.DTEND,
-            CalendarContract.Events.ALL_DAY,
-            CalendarContract.Events.EVENT_LOCATION,
-            CalendarContract.Events.RRULE
-        )
-
-        val selection = buildString {
-            append("${CalendarContract.Events.DTSTART} >= ? AND ${CalendarContract.Events.DTEND} <= ?")
-            if (accountName != null) {
-                append(" AND ${CalendarContract.Events.ACCOUNT_NAME} = ?")
-            }
-        }
-        val selectionArgs = if (accountName != null) {
-            arrayOf(startTime.toString(), endTime.toString(), accountName)
-        } else {
-            arrayOf(startTime.toString(), endTime.toString())
-        }
-
-        // 批量加载日历信息
-        val calendarInfoMap = loadAllCalendarInfo()
-
-        context.contentResolver.query(
-            CalendarContract.Events.CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            "${CalendarContract.Events.DTSTART} ASC"
-        )?.use { cursor ->
-            while (cursor.moveToNext()) {
-                val eventId = cursor.getLong(0)
-                val calendarId = cursor.getLong(1)
-                val title = cursor.getString(2) ?: "无标题"
-                val description = cursor.getString(3)
-                val dtStart = cursor.getLong(4)
-                val dtEnd = cursor.getLong(5)
-                val allDay = cursor.getInt(6) == 1
-                val location = cursor.getString(7)
-                val rrule = cursor.getString(8)
-
-                // 从缓存中获取日历信息
-                val calInfo = calendarInfoMap[calendarId]
-
-                events.add(
-                    CalendarEventInfo(
-                        id = eventId,
-                        calendarId = calendarId,
-                        title = title,
-                        description = description,
-                        dtStart = dtStart,
-                        dtEnd = dtEnd,
-                        allDay = allDay,
-                        eventLocation = location,
-                        accountName = calInfo?.accountName ?: "",
-                        calendarDisplayName = calInfo?.displayName ?: "",
-                        rrule = rrule
-                    )
-                )
-            }
-        }
-
         return events
     }
 
