@@ -85,7 +85,6 @@ class CalendarEventRepository @Inject constructor(
                 val calDisplayName = rawDisplayName?.trim()?.takeIf { it.isNotBlank() } ?: ""
                 val accountName = rawAccountName?.trim()?.takeIf { it.isNotBlank() } ?: ""
                 val displayName = calDisplayName.ifEmpty { accountName.ifEmpty { "未知日历" } }
-                val key = "calId:$calId"
                 val info = CalendarAccountInfo(
                     id = calId,
                     displayName = displayName,
@@ -100,7 +99,7 @@ class CalendarEventRepository @Inject constructor(
         // 应用自定义账户类型排在最前面，确保默认选中优先级
         accounts.sortByDescending { if (it.accountType == ACCOUNT_TYPE) 1 else 0 }
     
-        android.util.Log.d("CalendarEventRepo", "getAllAccounts total: ${accounts.size}, accounts=${accounts.map { "${it.displayName}(${it.accountName})[${it.calendarIds}]" } }")
+        android.util.Log.v("CalendarEventRepo", "getAllAccounts total: ${accounts.size}, accounts=${accounts.map { "${it.displayName}(${it.accountName})[${it.calendarIds}]" } }")
         return accounts
     }
 

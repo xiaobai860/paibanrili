@@ -264,7 +264,7 @@ class AppPreferences @Inject constructor(
         it[KEY_ACCOUNTS_INITIALIZED] = "true"
     }
 
-    /** 账户分类映射：accountKey("accountName|accountType") -> "schedule"|"anniversary" */
+    /** 账户分类映射：accountKey("calId:<id>") -> "schedule"|"anniversary" */
     suspend fun getAccountCategories(): Map<String, String> =
         context.dataStore.data.first()[KEY_ACCOUNT_CATEGORIES]
             ?.let { json ->

@@ -86,7 +86,6 @@ class ReminderScheduler @Inject constructor(
             return
         }
 
-        val method = prefs.getReminderMethod()
         val clockInEnabled = prefs.getReminderClockIn()
         val clockOutEnabled = prefs.getReminderClockOut()
         val clockInMinutes = prefs.getReminderClockInMinutes()
@@ -106,8 +105,7 @@ class ReminderScheduler @Inject constructor(
                     date = date,
                     timeStr = shiftTimes.first,
                     advanceMinutes = clockInMinutes,
-                    isClockIn = true,
-                    method = method
+                    isClockIn = true
                 )
             }
             if (clockOutEnabled && shiftTimes.second.isNotBlank()) {
@@ -115,8 +113,7 @@ class ReminderScheduler @Inject constructor(
                     date = date,
                     timeStr = shiftTimes.second,
                     advanceMinutes = clockOutMinutes,
-                    isClockIn = false,
-                    method = method
+                    isClockIn = false
                 )
             }
         }
@@ -163,8 +160,7 @@ class ReminderScheduler @Inject constructor(
         date: LocalDate,
         timeStr: String,
         advanceMinutes: Int,
-        isClockIn: Boolean,
-        method: String
+        isClockIn: Boolean
     ) {
         try {
             val timeParts = timeStr.split(":")
@@ -193,32 +189,18 @@ class ReminderScheduler @Inject constructor(
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            if (method == "alarm") {
-                // 闹钟提醒方式：使用 setAlarmClock 保证最高可靠性
-                // 即使用户未授予精确闹钟权限，setAlarmClock 也能精确触发
-                val showIntent = Intent(context, context.javaClass).apply {
-                    action = "com.schedulecalendar.app.REMINDER_ALARM"
-                }
-                val showPendingIntent = PendingIntent.getActivity(
-                    context, requestCode, showIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerTime, showPendingIntent)
-                alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
-            } else {
-                // 日历提醒方式（备选）：也使用闹钟保证可靠性
-                val showIntent = Intent(context, context.javaClass).apply {
-                    action = "com.schedulecalendar.app.REMINDER_ALARM"
-                }
-                val showPendingIntent = PendingIntent.getActivity(
-                    context, requestCode, showIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerTime, showPendingIntent)
-                alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+            // 闹钟和日历提醒方式均使用 setAlarmClock 保证最高可靠性
+            val showIntent = Intent(context, context.javaClass).apply {
+                action = "com.schedulecalendar.app.REMINDER_ALARM"
             }
+            val showPendingIntent = PendingIntent.getActivity(
+                context, requestCode, showIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerTime, showPendingIntent)
+            alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("ReminderScheduler", "scheduleReminder failed", e)
         }
     }
 

@@ -39,6 +39,8 @@ class BackupManager @Inject constructor(
     private val gson = Gson()
     private val tsFormatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
     private val exportFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+    private val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
+    private val timeFormatter = DateTimeFormatter.ofPattern("HHmmss")
 
     /** 应用私有备份目录（始终用于恢复） */
     private val privateBackupDir: File
@@ -189,9 +191,9 @@ class BackupManager @Inject constructor(
 
         runCatching {
             val json = buildAppDataJson()
-            val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"))
+            val today = LocalDate.now().format(dateFormatter)
             val customPath = prefs.getBackupCustomPath()
-            val fileName = "应用数据_${today}_${LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss"))}.json"
+            val fileName = "应用数据_${today}_${LocalDateTime.now().format(timeFormatter)}.json"
 
             if (customPath.isNotBlank() && isSafPath(customPath)) {
                 // SAF 目录写入
