@@ -46,6 +46,11 @@ android {
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     }
+
+    // 使用日期格式版本号（如 2026071501），忽略 HighAppVersionCode 警告
+    lint {
+        disable += "HighAppVersionCode"
+    }
 }
 
 dependencies {
