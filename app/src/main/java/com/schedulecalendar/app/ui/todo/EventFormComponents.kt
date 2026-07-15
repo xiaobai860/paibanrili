@@ -87,16 +87,18 @@ data class EventFormData(
 fun EventTitleField(
     value: String,
     onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    scrollState: ScrollState? = null
 ) {
-    OutlinedTextField(
+    ImeAdaptiveOutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text("添加标题") },
         modifier = modifier.fillMaxWidth(),
         singleLine = true,
         leadingIcon = { Icon(Icons.Default.Title, null) },
-        textStyle = MaterialTheme.typography.titleMedium
+        textStyle = MaterialTheme.typography.titleMedium,
+        scrollState = scrollState
     )
 }
 

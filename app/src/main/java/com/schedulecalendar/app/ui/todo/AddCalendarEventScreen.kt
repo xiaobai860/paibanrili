@@ -114,7 +114,7 @@ fun AddCalendarEventScreen(
             FormSectionHeader("基本信息")
 
             // 标题
-            EventTitleField(value = title, onValueChange = { title = it })
+            EventTitleField(value = title, onValueChange = { title = it }, scrollState = scrollState)
 
             // 全天事件开关
             EventAllDaySwitch(checked = isAllDay, onCheckedChange = { isAllDay = it })

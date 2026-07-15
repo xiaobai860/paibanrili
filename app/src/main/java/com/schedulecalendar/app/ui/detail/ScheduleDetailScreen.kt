@@ -6,12 +6,12 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -43,7 +43,7 @@ fun ScheduleDetailScreen(
 ) {
     val state       by vm.state.collectAsStateWithLifecycle()
     val snackbar     = remember { SnackbarHostState() }
-    val listState    = rememberLazyListState()
+    val scrollState  = rememberScrollState()
 
     LaunchedEffect(Unit) {
         vm.uiEvent.collect { ev ->
@@ -58,7 +58,7 @@ fun ScheduleDetailScreen(
     var showSalaryPicker by remember { mutableStateOf(false) }
     var showStatusEditor by remember { mutableStateOf<String?>(null) } // statusId being edited
 
-    // ── 时间选择器对话框状态（提升到 LazyColumn 外部渲染） ──
+    // ── 时间选择器对话框状态（提升到滚动容器外部渲染） ──
     data class TimeDialogConfig(
         val label: String,
         val currentTime: String,
@@ -88,14 +88,9 @@ fun ScheduleDetailScreen(
     val hasStatusTimeSegment = isRestOrSwap &&
         record?.appliedStatus?.startTime != null && record?.appliedStatus?.endTime != null
 
-    // 计算备注项在 LazyColumn 中的索引
     val visibleStatuses = if (isRestOrSwap) {
         state.shiftStatuses.filter { s -> s.id != BUILTIN_STATUS_SWAP && s.id != BUILTIN_STATUS_LEAVE }
     } else state.shiftStatuses
-    val remarkItemIndex = 2 +
-        (if (selectedShift != null && !isRestOrSwap) 1 else 0) +
-        (if (visibleStatuses.isNotEmpty() && selectedShift != null) 1 else 0) +
-        (if (state.extraItems.isNotEmpty()) 1 else 0)
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -113,53 +108,52 @@ fun ScheduleDetailScreen(
             )
         }
     ) { pad ->
-        LazyColumn(
-            contentPadding = PaddingValues(
-                start = 16.dp, end = 16.dp,
-                top   = pad.calculateTopPadding() + 8.dp,
-                bottom = pad.calculateBottomPadding() + 24.dp
-            ),
+        Column(
             verticalArrangement = Arrangement.spacedBy(14.dp),
-            state = listState,
-            modifier = Modifier.imePadding()
+            modifier = Modifier
+                .verticalScroll(scrollState)
+                .imePadding()
+                .padding(
+                    start = 16.dp, end = 16.dp,
+                    top   = pad.calculateTopPadding() + 8.dp,
+                    bottom = pad.calculateBottomPadding() + 24.dp
+                )
         ) {
 
             // ── 日期信息卡片 ──────────────────────────────────────────
-            item {
-                Card(colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(date, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(weekLabel, style = MaterialTheme.typography.bodySmall,
+            Card(colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            )) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(date, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(weekLabel, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (lunarText.isNotEmpty())
+                                Text("·  $lunarText", style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                if (lunarText.isNotEmpty())
-                                    Text("·  $lunarText", style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (holidayName != null) {
+                            Surface(shape = RoundedCornerShape(6.dp), color = HolidayRed.copy(alpha = 0.15f)) {
+                                Text(holidayName, style = MaterialTheme.typography.labelSmall,
+                                    color = HolidayRed,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                             }
                         }
-                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (holidayName != null) {
-                                Surface(shape = RoundedCornerShape(6.dp), color = HolidayRed.copy(alpha = 0.15f)) {
-                                    Text(holidayName, style = MaterialTheme.typography.labelSmall,
-                                        color = HolidayRed,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
-                                }
-                            }
-                            // 工时预览
-                            if (state.previewHours > 0) {
-                                Surface(shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.secondaryContainer) {
-                                    Text("预计 ${CalcUtils.fmtHours(state.previewHours)}h",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
-                                }
+                        // 工时预览
+                        if (state.previewHours > 0) {
+                            Surface(shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer) {
+                                Text("预计 ${CalcUtils.fmtHours(state.previewHours)}h",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                             }
                         }
                     }
@@ -167,226 +161,211 @@ fun ScheduleDetailScreen(
             }
 
             // ── 班次选择 ──────────────────────────────────────────────
-            item {
-                SectionLabel("班次")
-                Row(
-                    Modifier.fillMaxWidth()
-                        .clip(MaterialTheme.shapes.medium)
-                        .clickable { showShiftPicker = true }
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (selectedShift != null) {
-                        val c = safeColor(selectedShift.color)
-                        Box(Modifier.size(12.dp).clip(CircleShape).background(c))
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(selectedShift.name, fontWeight = FontWeight.SemiBold)
-                            if (!isRestOrSwap)
-                                Text("${selectedShift.startTime} – ${selectedShift.endTime}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    } else {
-                        Text("点击选择班次", color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f))
+            SectionLabel("班次")
+            Row(
+                Modifier.fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable { showShiftPicker = true }
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (selectedShift != null) {
+                    val c = safeColor(selectedShift.color)
+                    Box(Modifier.size(12.dp).clip(CircleShape).background(c))
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(selectedShift.name, fontWeight = FontWeight.SemiBold)
+                        if (!isRestOrSwap)
+                            Text("${selectedShift.startTime} – ${selectedShift.endTime}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text("点击选择班次", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f))
                 }
+                Icon(Icons.Default.ChevronRight, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             // ── 实际打卡时间（非休息/调休班次才显示） ────────────────────────
             if (selectedShift != null && !isRestOrSwap) {
-                item {
-                    SectionLabel("实际打卡时间（可选）")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TimePickerField(
-                            time         = record?.actualStartTime ?: "",
-                            onTimeChange = vm::setActualStart,
-                            label        = "实际上班",
-                            defaultTime  = selectedShift.startTime,
-                            onRequestDialog = {
-                                timeDialogConfig = TimeDialogConfig(
-                                    label = "实际上班",
-                                    currentTime = record?.actualStartTime ?: "",
-                                    defaultTime = selectedShift.startTime,
-                                    onConfirm = vm::setActualStart
-                                )
-                            },
-                            modifier     = Modifier.weight(1f)
-                        )
-                        TimePickerField(
-                            time         = record?.actualEndTime ?: "",
-                            onTimeChange = vm::setActualEnd,
-                            label        = "实际下班",
-                            defaultTime  = selectedShift.endTime,
-                            onRequestDialog = {
-                                timeDialogConfig = TimeDialogConfig(
-                                    label = "实际下班",
-                                    currentTime = record?.actualEndTime ?: "",
-                                    defaultTime = selectedShift.endTime,
-                                    onConfirm = vm::setActualEnd
-                                )
-                            },
-                            modifier     = Modifier.weight(1f)
-                        )
-                    }
+                SectionLabel("实际打卡时间（可选）")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TimePickerField(
+                        time         = record?.actualStartTime ?: "",
+                        onTimeChange = vm::setActualStart,
+                        label        = "实际上班",
+                        defaultTime  = selectedShift.startTime,
+                        onRequestDialog = {
+                            timeDialogConfig = TimeDialogConfig(
+                                label = "实际上班",
+                                currentTime = record?.actualStartTime ?: "",
+                                defaultTime = selectedShift.startTime,
+                                onConfirm = vm::setActualStart
+                            )
+                        },
+                        modifier     = Modifier.weight(1f)
+                    )
+                    TimePickerField(
+                        time         = record?.actualEndTime ?: "",
+                        onTimeChange = vm::setActualEnd,
+                        label        = "实际下班",
+                        defaultTime  = selectedShift.endTime,
+                        onRequestDialog = {
+                            timeDialogConfig = TimeDialogConfig(
+                                label = "实际下班",
+                                currentTime = record?.actualEndTime ?: "",
+                                defaultTime = selectedShift.endTime,
+                                onConfirm = vm::setActualEnd
+                            )
+                        },
+                        modifier     = Modifier.weight(1f)
+                    )
                 }
-
             }
 
             // ── 附加状态 ──────────────────────────────────────────────
             if (visibleStatuses.isNotEmpty() && selectedShift != null) {
-                item {
-                    SectionLabel("附加状态")
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        visibleStatuses.forEach { status ->
-                            val appliedSt = if (record?.appliedStatus?.statusId == status.id) record?.appliedStatus else null
-                            val applied   = appliedSt != null
-                            StatusRow(
-                                status    = status,
-                                applied   = applied,
-                                startTime = appliedSt?.startTime,
-                                endTime   = appliedSt?.endTime,
-                                onToggle  = { vm.toggleStatus(status.id, null, null) },
-                                onEditTime = { showStatusEditor = status.id }
-                            )
-                        }
+                SectionLabel("附加状态")
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    visibleStatuses.forEach { status ->
+                        val appliedSt = if (record?.appliedStatus?.statusId == status.id) record?.appliedStatus else null
+                        val applied   = appliedSt != null
+                        StatusRow(
+                            status    = status,
+                            applied   = applied,
+                            startTime = appliedSt?.startTime,
+                            endTime   = appliedSt?.endTime,
+                            onToggle  = { vm.toggleStatus(status.id, null, null) },
+                            onEditTime = { showStatusEditor = status.id }
+                        )
                     }
                 }
             }
 
             // ── 补贴/扣款 ─────────────────────────────────────────────
             if (state.extraItems.isNotEmpty()) {
-                item {
-                    SectionLabel("补贴 / 扣款")
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        state.extraItems.forEach { item ->
-                            val checked = record?.extraItemIds?.contains(item.id) == true
-                            ExtraItemRow(item, checked) { vm.toggleExtraItem(item.id) }
-                        }
+                SectionLabel("补贴 / 扣款")
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    state.extraItems.forEach { item ->
+                        val checked = record?.extraItemIds?.contains(item.id) == true
+                        ExtraItemRow(item, checked) { vm.toggleExtraItem(item.id) }
                     }
                 }
             }
 
             // ── 备注 ──────────────────────────────────────────────────
-            item {
-                SectionLabel("备注（可选）")
-                ImeAdaptiveOutlinedTextField(
-                    value         = record?.remark ?: "",
-                    onValueChange = vm::setRemark,
-                    placeholder   = { Text("输入备注信息…") },
-                    modifier      = Modifier.fillMaxWidth(),
-                    maxLines      = Int.MAX_VALUE,
-                    minLines      = 2,
-                    onFocused     = { listState.animateScrollToItem(remarkItemIndex) }
-                )
-            }
+            SectionLabel("备注（可选）")
+            ImeAdaptiveOutlinedTextField(
+                value         = record?.remark ?: "",
+                onValueChange = vm::setRemark,
+                placeholder   = { Text("输入备注信息…") },
+                modifier      = Modifier.fillMaxWidth(),
+                maxLines      = Int.MAX_VALUE,
+                minLines      = 2,
+                scrollState   = scrollState
+            )
 
             // ── 计薪方式 ──────────────────────────────────────────────
             if (selectedShift != null && (!isRestOrSwap || hasStatusTimeSegment)) {
-                item {
-                    SectionLabel("计薪方式")
-                    if (record?.salaryMode == null) {
-                        // 自动模式：显示只读标签
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.tertiaryContainer,
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        ) {
-                            Text(
-                                text = "自动（${state.autoModeLabel.ifEmpty { "按日期判断" }}）",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
-                        }
+                SectionLabel("计薪方式")
+                if (record?.salaryMode == null) {
+                    // 自动模式：显示只读标签
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    ) {
+                        Text(
+                            text = "自动（${state.autoModeLabel.ifEmpty { "按日期判断" }}）",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
                     }
-                    val modes = listOf(SalaryMode.NORMAL to "工作日",
-                        SalaryMode.WEEKEND to "周末", SalaryMode.HOLIDAY to "节假日")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        modes.forEach { (mode, label) ->
-                            val selected = record?.salaryMode == mode
-                            FilterChip(
-                                selected = selected,
-                                onClick  = { vm.setSalaryMode(mode) },
-                                label    = { Text(label, style = MaterialTheme.typography.labelMedium) }
+                }
+                val modes = listOf(SalaryMode.NORMAL to "工作日",
+                    SalaryMode.WEEKEND to "周末", SalaryMode.HOLIDAY to "节假日")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    modes.forEach { (mode, label) ->
+                        val selected = record?.salaryMode == mode
+                        FilterChip(
+                            selected = selected,
+                            onClick  = { vm.setSalaryMode(mode) },
+                            label    = { Text(label, style = MaterialTheme.typography.labelMedium) }
+                        )
+                    }
+                    // 点击已选中的模式可以取消，恢复自动
+                    val currentMode = record?.salaryMode
+                    if (currentMode != null) {
+                        FilterChip(
+                            selected = false,
+                            onClick  = { vm.setSalaryMode(null) },
+                            label    = { Text("自动", style = MaterialTheme.typography.labelMedium) },
+                            colors   = FilterChipDefaults.filterChipColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
                             )
-                        }
-                        // 点击已选中的模式可以取消，恢复自动
-                        val currentMode = record?.salaryMode
-                        if (currentMode != null) {
-                            FilterChip(
-                                selected = false,
-                                onClick  = { vm.setSalaryMode(null) },
-                                label    = { Text("自动", style = MaterialTheme.typography.labelMedium) },
-                                colors   = FilterChipDefaults.filterChipColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                )
-                            )
-                        }
+                        )
                     }
                 }
             }
 
             // ── 工时与薪资明细 ──────────────────────────────────────────
             if (selectedShift != null && state.previewHours > 0) {
-                item {
-                    SectionLabel("工时与薪资明细")
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        )
+                SectionLabel("工时与薪资明细")
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Column(
-                            Modifier.fillMaxWidth().padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // 工时行
+                        // 工时行
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("正常工时", style = MaterialTheme.typography.bodyMedium)
+                            Text("${CalcUtils.fmtHours(state.detailNormalHours)}h",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium)
+                        }
+                        if (state.detailOvertimeHours > 0) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("正常工时", style = MaterialTheme.typography.bodyMedium)
-                                Text("${CalcUtils.fmtHours(state.detailNormalHours)}h",
+                                Text("加班工时", style = MaterialTheme.typography.bodyMedium)
+                                Text("${CalcUtils.fmtHours(state.detailOvertimeHours)}h",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium)
                             }
-                            if (state.detailOvertimeHours > 0) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("加班工时", style = MaterialTheme.typography.bodyMedium)
-                                    Text("${CalcUtils.fmtHours(state.detailOvertimeHours)}h",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium)
-                                }
+                        }
+                        HorizontalDivider()
+                        // 薪资行
+                        if (state.detailNormalSalary > 0) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("正班收入", style = MaterialTheme.typography.bodyMedium)
+                                Text("¥${String.format("%.0f", state.detailNormalSalary)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium)
                             }
+                        }
+                        if (state.detailOvertimeSalary > 0) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("加班收入", style = MaterialTheme.typography.bodyMedium)
+                                Text("¥${String.format("%.0f", state.detailOvertimeSalary)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium)
+                            }
+                        }
+                        if (state.detailTotalSalary > 0) {
                             HorizontalDivider()
-                            // 薪资行
-                            if (state.detailNormalSalary > 0) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("正班收入", style = MaterialTheme.typography.bodyMedium)
-                                    Text("¥${String.format("%.0f", state.detailNormalSalary)}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium)
-                                }
-                            }
-                            if (state.detailOvertimeSalary > 0) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("加班收入", style = MaterialTheme.typography.bodyMedium)
-                                    Text("¥${String.format("%.0f", state.detailOvertimeSalary)}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium)
-                                }
-                            }
-                            if (state.detailTotalSalary > 0) {
-                                HorizontalDivider()
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("总收入", style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold)
-                                    Text("¥${String.format("%.0f", state.detailTotalSalary)}",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary)
-                                }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("总收入", style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold)
+                                Text("¥${String.format("%.0f", state.detailTotalSalary)}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -394,19 +373,15 @@ fun ScheduleDetailScreen(
             }
 
             // ── 保存按钮 ──────────────────────────────────────────────
-            item {
-                Button(
-                    onClick  = vm::save,
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                    enabled  = record?.shiftId != null,
-                    shape    = MaterialTheme.shapes.medium
-                ) { Text("保存排班", style = MaterialTheme.typography.titleSmall) }
-            }
+            Button(
+                onClick  = vm::save,
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                enabled  = record?.shiftId != null,
+                shape    = MaterialTheme.shapes.medium
+            ) { Text("保存排班", style = MaterialTheme.typography.titleSmall) }
 
             // IME 适配：底部留白，确保输入框可滚动到键盘上方
-            item {
-                Spacer(Modifier.height(200.dp))
-            }
+            Spacer(Modifier.height(200.dp))
         }
     }
 
@@ -432,7 +407,7 @@ fun ScheduleDetailScreen(
         )
     }
 
-    // ── 时间选择器对话框（在 LazyColumn 外部渲染，避免被裁剪） ──
+    // ── 时间选择器对话框（在滚动容器外部渲染，避免被裁剪） ──
     timeDialogConfig?.let { config ->
         val effectiveTime = if (config.currentTime.isNotEmpty()) config.currentTime else config.defaultTime
         val parts = effectiveTime.split(":")
