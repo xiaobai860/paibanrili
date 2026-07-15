@@ -4,6 +4,7 @@ package com.schedulecalendar.app.ui.settings
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import com.google.gson.Gson
 import com.schedulecalendar.app.data.prefs.AppPreferences
@@ -58,28 +59,47 @@ class BackupManager @Inject constructor(
         }
     }
 
-    /** 通过 SAF DocumentFile 列出目录中的备份文件 */
+    /** 通过 DocumentsContract 单次 IPC 查询列出 SAF 目录中的备份文件（避免 DocumentFile 的 N 次 IPC 性能陷阱） */
     private fun listSafBackupFiles(treeUri: Uri, type: BackupType): List<BackupFile> {
-        val docDir = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
+        val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, rootDocId)
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED
+        )
         val prefixes = if (type == BackupType.APP_DATA) {
             listOf("应用数据_", "appdata_")
         } else {
             listOf("班次配置_", "shiftcfg_")
         }
-        return docDir.listFiles()
-            .filter { doc -> doc.isFile && doc.name?.endsWith(".json") == true && prefixes.any { doc.name?.startsWith(it) == true } }
-            .mapNotNull { doc ->
-                val uri = doc.uri
-                val name = doc.name ?: return@mapNotNull null
-                BackupFile(
+        val result = mutableListOf<BackupFile>()
+        context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+            val idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+            val mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+            val dateCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(nameCol) ?: continue
+                // 只匹配 json 备份文件
+                if (!name.endsWith(".json")) continue
+                if (prefixes.none { name.startsWith(it) }) continue
+                val docId = cursor.getString(idCol)
+                val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+                result.add(BackupFile(
                     name = name,
-                    path = uri.toString(),
+                    path = fileUri.toString(),
                     type = type,
-                    sizeBytes = doc.length(),
-                    createdAt = doc.lastModified(),
+                    sizeBytes = cursor.getLong(sizeCol),
+                    createdAt = cursor.getLong(dateCol),
                     isManual = name.contains("_manual")
-                )
+                ))
             }
+        }
+        return result
     }
 
     /** 读取备份文件内容（兼容 SAF URI 和普通文件路径） */
@@ -200,7 +220,7 @@ class BackupManager @Inject constructor(
                 existingToday?.filter { it.absolutePath != file.absolutePath }?.forEach { it.delete() }
             }
             // 裁剪保留天数
-            pruneAppDataBackups(keepCount)
+            pruneAppDataBackups(keepCount, listAppDataBackups())
         }
     }
 
@@ -230,7 +250,7 @@ class BackupManager @Inject constructor(
                 val file = File(targetDir, fileName)
                 file.writeText(json)
             }
-            pruneShiftConfigBackups(keepCount)
+            pruneShiftConfigBackups(keepCount, listShiftConfigBackups())
         }
     }
 
@@ -426,28 +446,33 @@ class BackupManager @Inject constructor(
         } ?: emptyList()
     }
 
-    /** 启动时按当前保留数量执行全局裁剪（跨目录合并后按时间排序） */
-    suspend fun pruneAllBackups() {
-        pruneAppDataBackups(prefs.getAppDataKeepCount())
-        pruneShiftConfigBackups(prefs.getShiftConfigKeepCount())
+    /** 启动时按当前保留数量执行全局裁剪（跨目录合并后按时间裁剪），返回裁剪后的列表 */
+    suspend fun pruneAllBackups(): Pair<List<BackupFile>, List<BackupFile>> {
+        val appKeep = prefs.getAppDataKeepCount()
+        val shiftKeep = prefs.getShiftConfigKeepCount()
+        val appList = listAppDataBackups()
+        val shiftList = listShiftConfigBackups()
+        val prunedApp = pruneAppDataBackups(appKeep, appList)
+        val prunedShift = pruneShiftConfigBackups(shiftKeep, shiftList)
+        return prunedApp to prunedShift
     }
 
-    /** 裁剪自动备份（仅自动备份，手动备份不删除），跨目录全局合并后按时间裁剪 */
-    private suspend fun pruneAppDataBackups(keepCount: Int) {
-        if (keepCount <= 0) return
-        val allFiles = listAppDataBackups()
-            .filter { !it.isManual }
-            .sortedByDescending { it.createdAt }
-        if (allFiles.size > keepCount) allFiles.drop(keepCount).forEach { deleteBackupFile(it.path) }
+    /** 裁剪自动备份（仅自动备份，手动备份不删除），使用已列出的列表避免重复扫描，返回裁剪后的列表 */
+    private suspend fun pruneAppDataBackups(keepCount: Int, allBackups: List<BackupFile>): List<BackupFile> {
+        if (keepCount <= 0) return allBackups
+        val autoFiles = allBackups.filter { !it.isManual }.sortedByDescending { it.createdAt }
+        if (autoFiles.size > keepCount) autoFiles.drop(keepCount).forEach { deleteBackupFile(it.path) }
+        val deletedPaths = if (autoFiles.size > keepCount) autoFiles.drop(keepCount).map { it.path }.toSet() else emptySet()
+        return allBackups.filter { it.path !in deletedPaths }
     }
 
-    /** 裁剪自动备份（仅自动备份，手动备份不删除），跨目录全局合并后按时间裁剪 */
-    private suspend fun pruneShiftConfigBackups(keepCount: Int) {
-        if (keepCount <= 0) return
-        val allFiles = listShiftConfigBackups()
-            .filter { !it.isManual }
-            .sortedByDescending { it.createdAt }
-        if (allFiles.size > keepCount) allFiles.drop(keepCount).forEach { deleteBackupFile(it.path) }
+    /** 裁剪自动备份（仅自动备份，手动备份不删除），使用已列出的列表避免重复扫描，返回裁剪后的列表 */
+    private suspend fun pruneShiftConfigBackups(keepCount: Int, allBackups: List<BackupFile>): List<BackupFile> {
+        if (keepCount <= 0) return allBackups
+        val autoFiles = allBackups.filter { !it.isManual }.sortedByDescending { it.createdAt }
+        if (autoFiles.size > keepCount) autoFiles.drop(keepCount).forEach { deleteBackupFile(it.path) }
+        val deletedPaths = if (autoFiles.size > keepCount) autoFiles.drop(keepCount).map { it.path }.toSet() else emptySet()
+        return allBackups.filter { it.path !in deletedPaths }
     }
 }
 
