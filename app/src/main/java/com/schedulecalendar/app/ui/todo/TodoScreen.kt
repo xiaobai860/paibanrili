@@ -279,7 +279,7 @@ private fun TodoTab(
                 fontWeight = FontWeight.SemiBold
             )
             if (isNotCurrentMonth) {
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
                 IconButton(
                     onClick = { vm.goToToday() },
                     modifier = Modifier.size(36.dp)
@@ -307,7 +307,8 @@ private fun TodoTab(
                 .fillMaxWidth()
                 .padding(horizontal = 4.dp, vertical = 4.dp)
                 .padding(bottom = 8.dp)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
 
             // ── 漏打卡待补录（同一天上班/下班合并显示） ──────────────────────────────────────────
