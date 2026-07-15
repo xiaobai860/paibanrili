@@ -2,8 +2,11 @@ package com.schedulecalendar.app.ui.settings
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -234,11 +237,18 @@ private fun PermissionManagementSection() {
     }
 
     // 精确闹钟权限（Android 12+）
+    // 应用声明 USE_EXACT_ALARM，安装时自动授予，等效于 SCHEDULE_EXACT_ALARM
     val hasExactAlarm = remember(refreshTrigger) {
         if (Build.VERSION.SDK_INT >= 31) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
             alarmManager.canScheduleExactAlarms()
         } else true
+    }
+
+    // 电池优化白名单状态
+    val isBatteryOptimizationIgnored = remember(refreshTrigger) {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
     // 通知权限（Android 13+）
@@ -324,41 +334,88 @@ private fun PermissionManagementSection() {
                         onAction = { permLauncher.launch(Manifest.permission.WRITE_CALENDAR) }
                     )
 
-                    // 精确闹钟权限说明
-                    // 注意：SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM 是特殊权限，
-                    // 不会出现在系统的「权限管理」页面中，仅在本应用内可见。
-                    // 当前使用 AlarmManager.setAlarmClock() 实现提醒，
-                    // 该方式不受精确闹钟权限限制，即使未授权也能正常工作。
+                    // 精确闹钟权限
+                    // USE_EXACT_ALARM 为普通权限，安装时自动授予，
+                    // 不会出现在系统的「权限管理」页面中。
                     if (Build.VERSION.SDK_INT >= 31) {
                         PermissionItem(
-                            name = "精确闹钟",
+                            name = "\u7cbe\u786e\u95f9\u949f",
                             description = if (hasExactAlarm)
-                                "已授权，闹钟提醒可精确触发"
+                                "\u5df2\u6388\u6743\uff0c\u95f9\u949f\u63d0\u9192\u53ef\u7cbe\u786e\u89e6\u53d1"
                             else
-                                "未授权（系统闹钟提醒仍可工作，此权限非必需）",
+                                "\u672a\u6388\u6743\uff0c\u8bf7\u524d\u5f80\u8bbe\u7f6e\u6388\u6743",
                             granted = hasExactAlarm,
                             onAction = {
                                 try {
-                                    val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                                    val intent = Intent(AndroidSettings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
                                     context.startActivity(intent)
                                 } catch (_: Exception) { }
                             }
                         )
                     }
-
-                    // 精确闹钟权限说明提示
-                    if (Build.VERSION.SDK_INT >= 31) {
-                        Text(
-                            text = "注：精确闹钟权限为特殊权限，不会出现在系统的权限管理页面中。\n" +
-                                "本应用使用系统闹钟（setAlarmClock）方式触发提醒，\n" +
-                                "该方式即使未授权也能准时触发，不受电池优化限制。",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            lineHeight = 16.sp,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
+                    
+                    // 电池优化白名单
+                    PermissionItem(
+                        name = "\u7535\u6c60\u4f18\u5316\u514d\u8d39",
+                        description = if (isBatteryOptimizationIgnored)
+                            "\u5df2\u8bbe\u4e3a\u65e0\u9650\u5236\uff0c\u540e\u53f0\u8fd0\u884c\u4e0d\u53d7\u9650\u5236"
+                        else
+                            "\u672a\u8bbe\u7f6e\uff0c\u540e\u53f0\u53ef\u80fd\u88ab\u7cfb\u7edf\u9650\u5236",
+                        granted = isBatteryOptimizationIgnored,
+                        onAction = {
+                            try {
+                                val intent = Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                }
+                                context.startActivity(intent)
+                            } catch (_: Exception) { }
+                        }
+                    )
+                    
+                    // 国产 ROM 后台运行保障引导
+                    if (isOemRestricted()) {
+                        Spacer(Modifier.height(4.dp))
+                        OutlinedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Warning, contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("\u540e\u53f0\u8fd0\u884c\u4fdd\u969c", style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold)
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = "\u4e3a\u786e\u4fdd\u95f9\u949f\u63d0\u9192\u5728\u540e\u53f0\u51c6\u65f6\u89e6\u53d1\uff0c\u8bf7\u5728\u7cfb\u7edf\u8bbe\u7f6e\u4e2d\u4e3a\u672c\u5e94\u7528\u5f00\u542f\uff1a\n" +
+                                        "\u2022 \u81ea\u542f\u52a8\u7ba1\u7406\n" +
+                                        "\u2022 \u7701\u7535\u7b56\u7565 \u2192 \u65e0\u9650\u5236\n" +
+                                        "\u2022 \u540e\u53f0\u5f39\u51fa\u754c\u9762\n" +
+                                        "\u2022 \u9501\u5c4f\u663e\u793a",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 16.sp
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                TextButton(
+                                    onClick = {
+                                        try {
+                                            val intent = Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                data = Uri.fromParts("package", context.packageName, null)
+                                            }
+                                            context.startActivity(intent)
+                                        } catch (_: Exception) { }
+                                    }
+                                ) {
+                                    Text("\u524d\u5f80\u5e94\u7528\u8bbe\u7f6e", fontSize = 12.sp)
+                                }
+                            }
+                        }
                     }
-
+                    
                     Spacer(Modifier.height(4.dp))
                 }
             }
@@ -390,10 +447,22 @@ private fun PermissionItem(
         }
         if (!granted) {
             TextButton(onClick = onAction, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                Text("前往设置", fontSize = 12.sp)
+                Text("\u524d\u5f80\u8bbe\u7f6e", fontSize = 12.sp)
             }
         } else {
-            Text("已授权", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+            Text("\u5df2\u6388\u6743", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
         }
     }
+}
+
+/**
+ * 检测当前设备是否为国产厂商 ROM
+ * 国产 ROM 对后台运行有额外限制，需要引导用户手动开启相关权限
+ */
+private fun isOemRestricted(): Boolean {
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    return manufacturer in listOf(
+        "xiaomi", "redmi", "huawei", "honor",
+        "oppo", "oneplus", "realme", "vivo", "iqoo"
+    )
 }
