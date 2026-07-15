@@ -110,6 +110,9 @@ fun HoursContent(
             val details = state.details
             val attendCfg = state.attendConfig
 
+            val todayStr = java.time.LocalDate.now().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
+            val workDays = details.filter { it.record != null && it.date <= todayStr }.reversed()
+
             LazyColumn(
                 Modifier.padding(padding).fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 24.dp)
@@ -175,7 +178,6 @@ fun HoursContent(
                     Spacer(Modifier.height(6.dp))
                 }
 
-                val workDays = details.filter { it.record != null }.reversed()
                 if (workDays.isEmpty()) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -256,9 +258,16 @@ private fun HoursStatsGrid(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HoursStatCell(label = "请假天数",
                 value  = run {
-                    val totalDays = actual.leaveDays; "${totalDays}天"
+                    val days = actual.leaveDays
+                    val hrs  = actual.leaveHoursRemainder
+                    if (hrs > 0) "${days}天${fmtH(hrs)}h" else "${days}天"
                 },
-                future = future?.leaveDays?.takeIf { it > 0 }?.let { "预计${it}天" },
+                future = future?.let {
+                    val days = it.leaveDays; val hrs = it.leaveHoursRemainder
+                    if (days > 0 || hrs > 0) {
+                        if (hrs > 0) "预计${days}天${fmtH(hrs)}h" else "预计${days}天"
+                    } else null
+                },
                 modifier = Modifier.weight(1f))
             HoursStatCell(label = "调休/休息",
                 value  = "${actual.swapDays + actual.restDays}天",
@@ -383,8 +392,7 @@ private fun HoursChartCard(
             if (chartView == "daily") {
                 // 图例
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf(Color(0xFF059669) to "正常", Color(0xFFDC2626) to "加班",
-                        Color(0xFFF59E0B) to "周末", Color(0xFF7C3AED) to "法定").forEach { (c, l) ->
+                    listOf(Color(0xFF059669) to "正常", Color(0xFFDC2626) to "加班(含周末/法定)").forEach { (c, l) ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Box(Modifier.size(8.dp).background(c, RoundedCornerShape(2.dp)))
                             Text(l, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -414,26 +422,25 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
             if (ds.startsWith(prefix)) details.firstOrNull { it.date == ds } ?: DayScheduleDetail(date = ds) else null
         }
     }
-    val maxH = chartDays.maxOf { it.normalHours + it.overtimeHours + it.weekendHours + it.holidayHours }.coerceAtLeast(1.0)
+    // 注意：DayScheduleDetail.overtimeHours 已包含 weekend + holiday，不可重复相加
+    val maxH = chartDays.maxOf { it.normalHours + it.overtimeHours }.coerceAtLeast(1.0)
 
-    Row(Modifier.fillMaxWidth().height(120.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
+    Row(Modifier.fillMaxWidth().height(140.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
         chartDays.forEach { d ->
-            val total = d.normalHours + d.overtimeHours + d.weekendHours + d.holidayHours
+            val total = d.normalHours + d.overtimeHours
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
                 // 顶部工时标签
                 Text(if (total > 0) "${fmtH(total)}h" else "",
                     fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.height(14.dp))
-                // 堆叠柱体
+                // 堆叠柱体：仅 normal（绿）+ overtime（红），overtime 已含周末/节假日
                 val barMaxH = 80f
                 val barH = if (total > 0) max(8f, (total / maxH * barMaxH).toFloat()) else 3f
                 androidx.compose.foundation.Canvas(Modifier.fillMaxWidth(0.7f).height(barH.dp)) {
                     val w = size.width; var y = size.height
                     val segs = listOf(
                         d.normalHours   to Color(0xFF059669),
-                        d.overtimeHours to Color(0xFFDC2626),
-                        d.weekendHours  to Color(0xFFF59E0B),
-                        d.holidayHours  to Color(0xFF7C3AED)
+                        d.overtimeHours to Color(0xFFDC2626)
                     ).filter { it.first > 0 }
                     if (segs.isEmpty()) {
                         drawRect(Color(0xFFE5E7EB))
@@ -445,8 +452,18 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
                         }
                     }
                 }
-                Spacer(Modifier.height(3.dp))
-                Text(d.date.substring(8), fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                // 加班类型提示（周末/节假日加班时显示）
+                val otLabel = buildString {
+                    if (d.holidayHours > 0) append("节${fmtH(d.holidayHours)}h")
+                    if (d.weekendHours > 0) { if (isNotEmpty()) append(" "); append("末${fmtH(d.weekendHours)}h") }
+                }
+                Text(if (otLabel.isNotEmpty()) otLabel else d.date.substring(8),
+                    fontSize = if (otLabel.isNotEmpty()) 7.sp else 9.sp,
+                    color = if (otLabel.isNotEmpty()) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant)
+                if (otLabel.isNotEmpty()) {
+                    Text(d.date.substring(8), fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }
@@ -481,7 +498,8 @@ private fun MonthlyHoursBar(trend: List<MonthlyHoursTrend>) {
 
 @Composable
 private fun HoursDailyRow(d: DayScheduleDetail) {
-    val totalH = d.normalHours + d.overtimeHours + d.weekendHours + d.holidayHours
+    // 注意：overtimeHours 已包含 weekend + holiday，不可重复相加
+    val totalH = d.normalHours + d.overtimeHours
     Surface(
         Modifier.padding(horizontal = 12.dp, vertical = 3.dp).fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),

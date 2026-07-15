@@ -228,6 +228,7 @@ data class HoursSummary(
     val weekendHours: Double        = 0.0,
     val holidayHours: Double        = 0.0,
     val leaveDays: Int              = 0,
+    val leaveHoursRemainder: Double = 0.0,
     val swapDays: Int               = 0,
     val restDays: Int               = 0,
     val totalHours: Double          = 0.0,

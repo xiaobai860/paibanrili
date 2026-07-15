@@ -66,6 +66,13 @@ class HoursViewModel @Inject constructor(
 
     private var loadJob: Job? = null
 
+    init {
+        // 排班数据变更时自动刷新
+        viewModelScope.launch {
+            scheduleRepo.refreshSignal.collect { reload() }
+        }
+    }
+
     fun reload() { loadMonth(_state.value.year, _state.value.month) }
 
     fun navigateToDetail(type: String) {
