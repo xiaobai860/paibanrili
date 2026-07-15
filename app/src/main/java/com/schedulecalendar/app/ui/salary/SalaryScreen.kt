@@ -360,17 +360,60 @@ private fun SalaryPieChart(s: SalarySummary) {
 @Composable
 private fun SalaryTrendBar(trend: List<MonthlySalaryTrend>) {
     val maxV = trend.maxOf { it.value }.coerceAtLeast(1.0)
-    Row(Modifier.fillMaxWidth().height(110.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
-        trend.forEach { d ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                Text(if (d.value > 0) "¥${(d.value / 100).toInt()}百" else "",
-                    fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.height(14.dp))
-                val barH = max(if (d.value > 0) 8f else 3f, (d.value / maxV * 72).toFloat())
-                androidx.compose.foundation.Canvas(Modifier.fillMaxWidth(0.7f).height(barH.dp)) {
-                    drawRect(if (d.value > 0) Color(0xFF059669) else Color(0xFFE5E7EB))
+    val chartHeight = 120.dp
+    val topPadding = 18.dp   // 给顶部数值留空间
+    val bottomLabelH = 16.dp // 底部月份标签
+
+    Column(Modifier.fillMaxWidth().height(chartHeight + topPadding + bottomLabelH)) {
+        // 折线图区域
+        Box(Modifier.fillMaxWidth().height(chartHeight + topPadding)) {
+            // Canvas 绘制折线
+            androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(chartHeight + topPadding)) {
+                if (trend.isEmpty()) return@Canvas
+                val plotTop = topPadding.toPx()
+                val plotBottom = size.height
+                val plotH = plotBottom - plotTop
+                val stepX = if (trend.size > 1) size.width / (trend.size - 1) else size.width / 2f
+
+                val points = trend.mapIndexed { i, d ->
+                    val x = if (trend.size > 1) i * stepX else size.width / 2f
+                    val ratio = (d.value / maxV).toFloat()
+                    val y = plotBottom - (ratio * plotH).coerceAtLeast(4f)
+                    Offset(x, y)
                 }
-                Spacer(Modifier.height(3.dp))
-                Text(d.label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                // 绘制折线
+                val lineColor = Color(0xFF059669)
+                for (i in 0 until points.size - 1) {
+                    drawLine(lineColor, points[i], points[i + 1], strokeWidth = 3f)
+                }
+                // 绘制数据点
+                points.forEach { p ->
+                    drawCircle(lineColor, radius = 4f, center = p)
+                    drawCircle(Color.White, radius = 2f, center = p)
+                }
+            }
+            // 顶部数值标签（叠加在 Canvas 上方）
+            Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                trend.forEach { d ->
+                    Text(
+                        if (d.value > 0) "¥${d.value.toLong()}" else "",
+                        fontSize = 7.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+        // 底部月份标签
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            trend.forEach { d ->
+                Text(d.label, fontSize = 9.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center)
             }
         }
     }
@@ -413,7 +456,13 @@ private fun SalaryDailyRow(d: DayScheduleDetail) {
                     else -> {}
                 }
                 if (d.extras.isNotEmpty()) {
-                    SalaryBadge("+${d.extras.size}项", Color(0xFFECFDF5), Color(0xFF059669))
+                    d.extras.forEach { extra ->
+                        val isDeduction = extra.type == "deduction"
+                        val sign = if (isDeduction) "" else "+"
+                        val textColor = if (isDeduction) MaterialTheme.colorScheme.error else Color(0xFF059669)
+                        val bgColor = if (isDeduction) Color(0xFFFEF2F2) else Color(0xFFECFDF5)
+                        SalaryBadge("${extra.name}${sign}${extra.amount.toLong()}", bgColor, textColor)
+                    }
                 }
             }
             Column(horizontalAlignment = Alignment.End) {

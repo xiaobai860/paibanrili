@@ -425,44 +425,62 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
     // 注意：DayScheduleDetail.overtimeHours 已包含 weekend + holiday，不可重复相加
     val maxH = chartDays.maxOf { it.normalHours + it.overtimeHours }.coerceAtLeast(1.0)
 
-    Row(Modifier.fillMaxWidth().height(140.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
-        chartDays.forEach { d ->
-            val total = d.normalHours + d.overtimeHours
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                // 顶部工时标签
-                Text(if (total > 0) "${fmtH(total)}h" else "",
-                    fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.height(14.dp))
-                // 堆叠柱体：仅 normal（绿）+ overtime（红），overtime 已含周末/节假日
-                val barMaxH = 80f
-                val barH = if (total > 0) max(8f, (total / maxH * barMaxH).toFloat()) else 3f
-                androidx.compose.foundation.Canvas(Modifier.fillMaxWidth(0.7f).height(barH.dp)) {
-                    val w = size.width; var y = size.height
-                    val segs = listOf(
-                        d.normalHours   to Color(0xFF059669),
-                        d.overtimeHours to Color(0xFFDC2626)
-                    ).filter { it.first > 0 }
-                    if (segs.isEmpty()) {
-                        drawRect(Color(0xFFE5E7EB))
-                    } else {
-                        segs.forEach { (h, color) ->
-                            val sh = (h / total * size.height).toFloat()
-                            y -= sh
-                            drawRect(color, topLeft = Offset(0f, y), size = androidx.compose.ui.geometry.Size(w, sh))
+    Column(Modifier.fillMaxWidth()) {
+        // ── 柱体区（含顶部数值） ──
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp).height(160.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.Bottom) {
+            chartDays.forEach { d ->
+                val total = d.normalHours + d.overtimeHours
+                // 顶部标签：节假日优先 > 周末 > 正常总工时
+                val topLabel: String
+                val topColor: Color
+                when {
+                    d.holidayHours > 0 -> {
+                        topLabel = "法${fmtH(d.holidayHours)}h"
+                        topColor = Color(0xFFD97706)
+                    }
+                    d.weekendHours > 0 -> {
+                        topLabel = "末${fmtH(d.weekendHours)}h"
+                        topColor = Color(0xFFD97706)
+                    }
+                    else -> {
+                        topLabel = if (total > 0) "${fmtH(total)}h" else ""
+                        topColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                    Text(topLabel, fontSize = 8.sp, color = topColor,
+                        modifier = Modifier.heightIn(min = 14.dp))
+                    // 堆叠柱体：仅 normal（绿）+ overtime（红），overtime 已含周末/节假日
+                    val barMaxH = 80f
+                    val barH = if (total > 0) max(8f, (total / maxH * barMaxH).toFloat()) else 3f
+                    androidx.compose.foundation.Canvas(Modifier.fillMaxWidth(0.7f).height(barH.dp)) {
+                        val w = size.width; var y = size.height
+                        val segs = listOf(
+                            d.normalHours   to Color(0xFF059669),
+                            d.overtimeHours to Color(0xFFDC2626)
+                        ).filter { it.first > 0 }
+                        if (segs.isEmpty()) {
+                            drawRect(Color(0xFFE5E7EB))
+                        } else {
+                            segs.forEach { (h, color) ->
+                                val sh = (h / total * size.height).toFloat()
+                                y -= sh
+                                drawRect(color, topLeft = Offset(0f, y), size = androidx.compose.ui.geometry.Size(w, sh))
+                            }
                         }
                     }
                 }
-                Spacer(Modifier.height(2.dp))
-                // 加班类型提示（周末/节假日加班时显示）
-                val otLabel = buildString {
-                    if (d.holidayHours > 0) append("节${fmtH(d.holidayHours)}h")
-                    if (d.weekendHours > 0) { if (isNotEmpty()) append(" "); append("末${fmtH(d.weekendHours)}h") }
-                }
-                Text(if (otLabel.isNotEmpty()) otLabel else d.date.substring(8),
-                    fontSize = if (otLabel.isNotEmpty()) 7.sp else 9.sp,
-                    color = if (otLabel.isNotEmpty()) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant)
-                if (otLabel.isNotEmpty()) {
-                    Text(d.date.substring(8), fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        // ── 底部日期行 ──
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            chartDays.forEach { d ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(d.date.substring(8), fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
             }
         }
