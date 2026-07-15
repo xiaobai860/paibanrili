@@ -258,6 +258,8 @@ private fun TodoTab(
             .fillMaxSize()
     ) {
         // 月份选择器（固定不滚动）
+        val today = java.time.LocalDate.now()
+        val isNotCurrentMonth = year != today.year || month != today.monthValue
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -276,6 +278,17 @@ private fun TodoTab(
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold
             )
+            if (isNotCurrentMonth) {
+                Spacer(Modifier.weight(1f))
+                TextButton(
+                    onClick = { vm.goToToday() },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                ) {
+                    Icon(Icons.Default.CalendarToday, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("返回当月", fontSize = 13.sp)
+                }
+            }
             Spacer(Modifier.weight(1f))
             TextButton(
                 onClick = { vm.goToNextMonth() },
@@ -284,23 +297,6 @@ private fun TodoTab(
                 Text("下月", fontSize = 13.sp)
                 Spacer(Modifier.width(2.dp))
                 Icon(Icons.Default.ChevronRight, null, Modifier.size(18.dp))
-            }
-        }
-        // 返回当月按钮
-        val today = java.time.LocalDate.now()
-        if (year != today.year || month != today.monthValue) {
-            Box(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                TextButton(
-                    onClick = { vm.goToToday() },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                ) {
-                    Icon(Icons.Default.CalendarToday, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("返回当月", fontSize = 13.sp)
-                }
             }
         }
 
@@ -314,25 +310,54 @@ private fun TodoTab(
                 .verticalScroll(rememberScrollState())
         ) {
 
-            // ── 漏打卡待补录 ──────────────────────────────────────────
+            // ── 漏打卡待补录（同一天上班/下班合并显示） ──────────────────────────────────────────
             val sortedMissed = sortTodosByDateDesc(missedTodos)
-            TodoSection(
-                icon = Icons.Default.Update, iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                title = "漏打卡待补录", count = missedTodos.size,
-                expanded = missedExpanded, onToggle = onMissedToggle, emptyText = "无",
-                items = sortedMissed, onItemClick = null,
-                itemContent = { todo ->
-                    val isClockIn = todo.type == TodoType.MISSED_CLOCK_IN
-                    UnifiedTodoRow(
-                        todo = todo,
-                        isClockIn = isClockIn,
-                        onAction = { onFillMissedClock(todo.date, isClockIn, todo.shiftTime) },
-                        actionLabel = "补录"
+            val missedByDate = sortedMissed.groupBy { it.date }
+                .toSortedMap(compareByDescending { it })
+            // 区块标题行
+            Row(
+                Modifier.fillMaxWidth()
+                    .clickable { onMissedToggle() }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Update, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "\u6f0f\u6253\u5361\u5f85\u8865\u5f55(${missedTodos.size})",
+                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f)
+                )
+                if (missedTodos.isEmpty()) {
+                    Text("\u65e0", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Icon(
+                        if (missedExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
-            )
+            }
+            AnimatedVisibility(visible = missedExpanded && missedByDate.isNotEmpty()) {
+                Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    missedByDate.forEach { (date, items) ->
+                        MergedClockRow(
+                            date = date,
+                            items = items,
+                            onAction = { todo, isClockIn ->
+                                onFillMissedClock(todo.date, isClockIn, todo.shiftTime)
+                            },
+                            actionLabel = "补录"
+                        )
+                    }
+                }
+            }
 
-            // ── 已补录（内联展开列表） ────────────────────────────────
+            // ── 已补录（同一天上班/下班合并显示） ────────────────────────────────
             CollapsibleCountRow(
                 icon = Icons.Default.Update, iconTint = MaterialTheme.colorScheme.primary,
                 title = "\u5df2\u8865\u5f55", count = filledTodos.size,
@@ -340,14 +365,15 @@ private fun TodoTab(
             )
             AnimatedVisibility(visible = filledExpanded && filledTodos.isNotEmpty()) {
                 val sortedFilled = sortTodosByDateDesc(filledTodos)
+                val filledByDate = sortedFilled.groupBy { it.date }
+                    .toSortedMap(compareByDescending { it })
                 Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    sortedFilled.forEach { todo ->
-                        val isClockIn = todo.type == TodoType.FILLED_CLOCK_IN
-                        UnifiedTodoRow(
-                            todo = todo,
-                            isClockIn = isClockIn,
-                            onAction = {
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    filledByDate.forEach { (date, items) ->
+                        MergedClockRow(
+                            date = date,
+                            items = items,
+                            onAction = { todo, isClockIn ->
                                 if (isClockIn) vm.unfillMissedClockIn(todo.date)
                                 else vm.unfillMissedClockOut(todo.date)
                             },
@@ -661,6 +687,115 @@ private fun UnifiedTodoRow(
                 ) {
                     Text(actionLabel, fontSize = 13.sp)
                 }
+            }
+        }
+    }
+}
+
+// ── 合并打卡行（同一天上班/下班合并显示） ─────────────────────────
+
+@Composable
+private fun MergedClockRow(
+    date: String,
+    items: List<TodoItem>,
+    onAction: (TodoItem, Boolean) -> Unit,
+    actionLabel: String? = null,
+    actionIcon: ImageVector? = null
+) {
+    val (dateDisplay, dayOfWeek) = formatTodoDateDisplay(date)
+    val clockInItem = items.firstOrNull {
+        it.type == TodoType.MISSED_CLOCK_IN || it.type == TodoType.FILLED_CLOCK_IN
+    }
+    val clockOutItem = items.firstOrNull {
+        it.type == TodoType.MISSED_CLOCK_OUT || it.type == TodoType.FILLED_CLOCK_OUT
+    }
+
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        // 左侧：日期 + 星期（固定宽度）
+        Column(Modifier.width(72.dp)) {
+            Text(dateDisplay,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface)
+            if (dayOfWeek.isNotEmpty()) {
+                Text(dayOfWeek,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        // 中间：上班/下班各一行
+        Column(Modifier.weight(1f)) {
+            if (clockInItem != null) {
+                MergedClockSubRow(item = clockInItem, typeLabel = "上班",
+                    onAction = { onAction(clockInItem, true) },
+                    actionLabel = actionLabel, actionIcon = actionIcon)
+            }
+            if (clockOutItem != null) {
+                if (clockInItem != null) Spacer(Modifier.height(4.dp))
+                MergedClockSubRow(item = clockOutItem, typeLabel = "下班",
+                    onAction = { onAction(clockOutItem, false) },
+                    actionLabel = actionLabel, actionIcon = actionIcon)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MergedClockSubRow(
+    item: TodoItem,
+    typeLabel: String,
+    onAction: () -> Unit,
+    actionLabel: String? = null,
+    actionIcon: ImageVector? = null
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Surface(
+            shape = RoundedCornerShape(3.dp),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+        ) {
+            Text(typeLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                fontSize = 10.sp)
+        }
+        Spacer(Modifier.width(6.dp))
+        val shiftInfo = buildString {
+            append(item.shiftName)
+            if (item.shiftTime.isNotEmpty()) {
+                append(" ")
+                append(item.shiftTime)
+            }
+        }
+        if (shiftInfo.isNotEmpty()) {
+            Text(shiftInfo,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.weight(1f))
+        if (item.clockTime.isNotEmpty()) {
+            Text("已录: ${item.clockTime}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(4.dp))
+        }
+        if (actionIcon != null) {
+            IconButton(onClick = onAction, modifier = Modifier.size(28.dp)) {
+                Icon(actionIcon, contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else if (actionLabel != null) {
+            TextButton(
+                onClick = onAction,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                modifier = Modifier.height(28.dp)
+            ) {
+                Text(actionLabel, fontSize = 13.sp)
             }
         }
     }
