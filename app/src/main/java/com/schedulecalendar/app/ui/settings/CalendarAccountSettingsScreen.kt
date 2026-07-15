@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -122,7 +123,7 @@ fun CalendarAccountSettingsScreen(
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                     Text(
-                        "禁用某个账户后，该账户的所有日程将不会在应用中显示",
+                        "禁用某个账户后，该账户的所有日程将不会在应用中显示。分类后该账户的事件只在对应页面显示。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp)
@@ -130,10 +131,16 @@ fun CalendarAccountSettingsScreen(
                 }
 
                 items(state.accounts, key = { it.id }) { account ->
+                    val accountKey = "${account.accountName}|${account.accountType}"
+                    val category = state.accountCategories[accountKey]
                     AccountCard(
                         account = account,
                         isDisabled = account.calendarIds.any { it in state.disabledAccountIds },
-                        onToggle = { vm.toggleAccount(account) }
+                        category = category,
+                        onToggle = { vm.toggleAccount(account) },
+                        onCategoryChange = { newCategory ->
+                            vm.setAccountCategory(accountKey, newCategory)
+                        }
                     )
                 }
             }
@@ -148,53 +155,89 @@ fun CalendarAccountSettingsScreen(
 private fun AccountCard(
     account: com.schedulecalendar.app.data.calendar.CalendarAccountInfo,
     isDisabled: Boolean,
-    onToggle: () -> Unit
+    category: String?,
+    onToggle: () -> Unit,
+    onCategoryChange: (String?) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isDisabled)
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
             else
                 MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isDisabled) 0.dp else 1.dp
+        ),
+        border = if (isDisabled) {
+            BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        } else null
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                val acctDisplayName = account.displayName.ifBlank {
-                    account.accountName.ifBlank { "未知日历" }
-                }
-                Text(
-                    acctDisplayName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(Modifier.height(2.dp))
-                if (account.accountName.isNotEmpty() && account.accountName != acctDisplayName) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    val acctDisplayName = account.displayName.ifBlank {
+                        account.accountName.ifBlank { "未知日历" }
+                    }
                     Text(
-                        account.accountName,
-                        style = MaterialTheme.typography.bodySmall,
+                        acctDisplayName,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    if (account.accountName.isNotEmpty() && account.accountName != acctDisplayName) {
+                        Text(
+                            account.accountName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        "${account.calendarCount} 个日历",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Text(
-                    "${account.calendarCount} 个日历",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                Switch(
+                    checked = !isDisabled,
+                    onCheckedChange = { onToggle() }
                 )
             }
 
-            Switch(
-                checked = !isDisabled,
-                onCheckedChange = { onToggle() }
-            )
+            // 分类选择（仅在账户启用时显示）
+            if (!isDisabled) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        "分类：",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FilterChip(
+                        selected = category != "anniversary",
+                        onClick = { onCategoryChange("schedule") },
+                        label = { Text("日程", style = MaterialTheme.typography.labelSmall) }
+                    )
+                    FilterChip(
+                        selected = category == "anniversary",
+                        onClick = { onCategoryChange("anniversary") },
+                        label = { Text("纪念日", style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+            }
         }
     }
 }

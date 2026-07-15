@@ -137,6 +137,12 @@ fun AddAnniversaryScreen(
     )
     val lunarYearRange = (1900..2100).toList()
 
+    // ── 纪念日专用日历ID ──────────────────────────────────
+    var anniversaryCalId by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(Unit) {
+        anniversaryCalId = vm.getAnniversaryCalendarId()
+    }
+
     // ── 权限 ──────────────────────────────────────────────────
     var hasWritePermission by remember {
         mutableStateOf(
@@ -500,110 +506,138 @@ fun AddAnniversaryScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // ── 创建按钮 ──────────────────────────────────────
-            Button(
-                onClick = {
-                    if (!hasWritePermission) {
-                        permLauncher.launch(Manifest.permission.WRITE_CALENDAR)
-                        return@Button
+            // ── 创建/保存按钮 ──────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 编辑模式下显示删除按钮
+                if (isEditMode) {
+                    OutlinedButton(
+                        onClick = {
+                            eventId?.let { id ->
+                                vm.deleteEvent(id)
+                                navController.popBackStack()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.Default.Delete, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("删除")
                     }
-                    if (title.isBlank()) return@Button
-
-                    // 计算实际公历日期
-                    val (solarY, solarM, solarD) = if (isLunarMode) {
-                        try {
-                            val s = LunarCalendar.lunarToSolar(lunarYear, lunarMonth, lunarDay)
-                            Triple(s.year, s.month, s.day)
-                        } catch (_: Exception) {
-                            errorMessage = "农历日期转换失败，请检查输入"
+                }
+                Button(
+                    onClick = {
+                        if (!hasWritePermission) {
+                            permLauncher.launch(Manifest.permission.WRITE_CALENDAR)
                             return@Button
                         }
-                    } else {
-                        Triple(selectedYear, selectedMonth, selectedDay)
-                    }
+                        if (title.isBlank()) return@Button
 
-                    // 全天事件必须使用 UTC 时区，dtEnd 为次日 00:00 UTC
-                    val utc = java.util.TimeZone.getTimeZone("UTC")
-                    val startCal = java.util.Calendar.getInstance(utc).apply {
-                        set(solarY, solarM - 1, solarD, 0, 0, 0)
-                        set(java.util.Calendar.MILLISECOND, 0)
-                    }
-                    val startTime = startCal.timeInMillis
-                    val endCal = java.util.Calendar.getInstance(utc).apply {
-                        set(solarY, solarM - 1, solarD, 0, 0, 0)
-                        set(java.util.Calendar.MILLISECOND, 0)
-                        add(java.util.Calendar.DAY_OF_MONTH, 1)
-                    }
-                    val endTime = endCal.timeInMillis
-
-                    val desc = buildString {
-                        if (repeatYearly) append("每年重复纪念日")
-                        if (isLunarMode) {
-                            if (isNotEmpty()) append("\n")
-                            append("农历：${lunarYear}年${lunarMonth}月${lunarDay}日")
+                        // 计算实际公历日期
+                        val (solarY, solarM, solarD) = if (isLunarMode) {
+                            try {
+                                val s = LunarCalendar.lunarToSolar(lunarYear, lunarMonth, lunarDay)
+                                Triple(s.year, s.month, s.day)
+                            } catch (_: Exception) {
+                                errorMessage = "农历日期转换失败，请检查输入"
+                                return@Button
+                            }
+                        } else {
+                            Triple(selectedYear, selectedMonth, selectedDay)
                         }
-                        if (description.isNotBlank()) {
-                            if (isNotEmpty()) append("\n")
-                            append(description)
+
+                        // 全天事件必须使用 UTC 时区，dtEnd 为次日 00:00 UTC
+                        val utc = java.util.TimeZone.getTimeZone("UTC")
+                        val startCal = java.util.Calendar.getInstance(utc).apply {
+                            set(solarY, solarM - 1, solarD, 0, 0, 0)
+                            set(java.util.Calendar.MILLISECOND, 0)
                         }
-                    }.ifBlank { null }
-
-                    val rrule = if (repeatYearly) "FREQ=YEARLY" else null
-                    val reminderMinutes = if (addCalendarReminder) calendarReminderTime.minutes else null
-
-                    val fullTitle = "纪念日: ${title.trim()}"
-                    isCreating = true
-                    android.util.Log.d("Anniversary", "Saving event: title=$fullTitle, start=$startTime, end=$endTime, allDay=true, rrule=$rrule, eventId=$eventId")
-
-                    if (isEditMode && eventId != null) {
-                        // 编辑模式：更新现有事件
-                        val updatedEvent = existingEvent!!.copy(
-                            title = fullTitle,
-                            description = desc,
-                            dtStart = startTime,
-                            dtEnd = endTime,
-                            allDay = true
-                        )
-                        vm.updateEvent(updatedEvent)
-                        // 仅当选项B开启时，调度精确闹钟提醒
-                        if (alarmEnabled && alarmReminder != AnniversaryReminder.NONE) {
-                            scheduleAnniversaryAlarm(solarY, solarM, solarD, fullTitle, alarmReminder)
+                        val startTime = startCal.timeInMillis
+                        val endCal = java.util.Calendar.getInstance(utc).apply {
+                            set(solarY, solarM - 1, solarD, 0, 0, 0)
+                            set(java.util.Calendar.MILLISECOND, 0)
+                            add(java.util.Calendar.DAY_OF_MONTH, 1)
                         }
-                        navController.popBackStack()
-                    } else {
-                        // 创建模式
-                        vm.createEventAsync(
-                            title = fullTitle,
-                            description = desc,
-                            dtStart = startTime,
-                            dtEnd = endTime,
-                            allDay = true,
-                            rrule = rrule,
-                            reminderMinutes = reminderMinutes
-                        ) { success ->
-                            isCreating = false
-                            android.util.Log.d("Anniversary", "Create result: success=$success")
-                            if (success) {
-                                // 仅当选项B开启时，调度精确闹钟提醒
-                                if (alarmEnabled && alarmReminder != AnniversaryReminder.NONE) {
-                                    scheduleAnniversaryAlarm(solarY, solarM, solarD, fullTitle, alarmReminder)
+                        val endTime = endCal.timeInMillis
+
+                        val desc = buildString {
+                            if (repeatYearly) append("每年重复纪念日")
+                            if (isLunarMode) {
+                                if (isNotEmpty()) append("\n")
+                                append("农历：${lunarYear}年${lunarMonth}月${lunarDay}日")
+                            }
+                            if (description.isNotBlank()) {
+                                if (isNotEmpty()) append("\n")
+                                append(description)
+                            }
+                        }.ifBlank { null }
+
+                        val rrule = if (repeatYearly) "FREQ=YEARLY" else null
+                        val reminderMinutes = if (addCalendarReminder) calendarReminderTime.minutes else null
+
+                        val fullTitle = "纪念日: ${title.trim()}"
+                        isCreating = true
+                        android.util.Log.d("Anniversary", "Saving event: title=$fullTitle, start=$startTime, end=$endTime, allDay=true, rrule=$rrule, eventId=$eventId")
+
+                        if (isEditMode && eventId != null) {
+                            // 编辑模式：更新现有事件
+                            val editRrule = if (repeatYearly) "FREQ=YEARLY" else null
+                            val updatedEvent = existingEvent!!.copy(
+                                title = fullTitle,
+                                description = desc,
+                                dtStart = startTime,
+                                dtEnd = endTime,
+                                allDay = true,
+                                rrule = editRrule,
+                                calendarId = anniversaryCalId ?: existingEvent!!.calendarId
+                            )
+                            vm.updateEvent(updatedEvent)
+                            // 仅当选项B开启时，调度精确闹钟提醒
+                            if (alarmEnabled && alarmReminder != AnniversaryReminder.NONE) {
+                                scheduleAnniversaryAlarm(solarY, solarM, solarD, fullTitle, alarmReminder)
+                            }
+                            navController.popBackStack()
+                        } else {
+                            // 创建模式：写入纪念日专用日历
+                            vm.createEventAsync(
+                                title = fullTitle,
+                                description = desc,
+                                dtStart = startTime,
+                                dtEnd = endTime,
+                                allDay = true,
+                                calendarId = anniversaryCalId,
+                                rrule = rrule,
+                                reminderMinutes = reminderMinutes
+                            ) { success ->
+                                isCreating = false
+                                android.util.Log.d("Anniversary", "Create result: success=$success")
+                                if (success) {
+                                    // 仅当选项B开启时，调度精确闹钟提醒
+                                    if (alarmEnabled && alarmReminder != AnniversaryReminder.NONE) {
+                                        scheduleAnniversaryAlarm(solarY, solarM, solarD, fullTitle, alarmReminder)
+                                    }
+                                    navController.popBackStack()
+                                } else {
+                                    errorMessage = "创建失败，请确认设备有可用的日历账户"
                                 }
-                                navController.popBackStack()
-                            } else {
-                                errorMessage = "创建失败，请确认设备有可用的日历账户"
                             }
                         }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = title.isNotBlank() && !isCreating,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Icon(Icons.Default.Check, null)
-                Spacer(Modifier.width(8.dp))
-                Text(if (isEditMode) "保存修改" else "创建纪念日", fontWeight = FontWeight.Medium)
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = title.isNotBlank() && !isCreating,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(Icons.Default.Check, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (isEditMode) "保存修改" else "创建纪念日", fontWeight = FontWeight.Medium)
+                }
             }
 
             Spacer(Modifier.height(16.dp))

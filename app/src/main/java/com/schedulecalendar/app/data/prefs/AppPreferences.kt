@@ -57,6 +57,8 @@ class AppPreferences @Inject constructor(
         val KEY_REMINDER_CLOCK_IN_MINUTES = intPreferencesKey("reminder_clock_in_minutes")
         val KEY_REMINDER_CLOCK_OUT_MINUTES = intPreferencesKey("reminder_clock_out_minutes")
         val KEY_DISABLED_ACCOUNT_IDS     = stringPreferencesKey("disabled_calendar_accounts")
+        val KEY_ACCOUNT_CATEGORIES         = stringPreferencesKey("account_categories")
+        val KEY_ACCOUNTS_INITIALIZED     = stringPreferencesKey("accounts_initialized")
     }
 
     // ── 薪资配置 ───────────────────────────────────
@@ -253,5 +255,35 @@ class AppPreferences @Inject constructor(
     val disabledAccountIdsFlow: Flow<Set<Long>> = context.dataStore.data.map {
         it[KEY_DISABLED_ACCOUNT_IDS]
             ?.split(",")?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
+    }
+
+    /** 账户是否已完成首次初始化 */
+    suspend fun isAccountsInitialized(): Boolean =
+        context.dataStore.data.first()[KEY_ACCOUNTS_INITIALIZED] == "true"
+    suspend fun setAccountsInitialized() = context.dataStore.edit {
+        it[KEY_ACCOUNTS_INITIALIZED] = "true"
+    }
+
+    /** 账户分类映射：accountKey("accountName|accountType") -> "schedule"|"anniversary" */
+    suspend fun getAccountCategories(): Map<String, String> =
+        context.dataStore.data.first()[KEY_ACCOUNT_CATEGORIES]
+            ?.let { json ->
+                try {
+                    val type = object : TypeToken<Map<String, String>>() {}.type
+                    gson.fromJson<Map<String, String>>(json, type)
+                } catch (_: Exception) { emptyMap() }
+            } ?: emptyMap()
+
+    suspend fun saveAccountCategories(categories: Map<String, String>) = context.dataStore.edit {
+        it[KEY_ACCOUNT_CATEGORIES] = gson.toJson(categories)
+    }
+    val accountCategoriesFlow: Flow<Map<String, String>> = context.dataStore.data.map {
+        it[KEY_ACCOUNT_CATEGORIES]
+            ?.let { json ->
+                try {
+                    val type = object : TypeToken<Map<String, String>>() {}.type
+                    gson.fromJson<Map<String, String>>(json, type)
+                } catch (_: Exception) { emptyMap() }
+            } ?: emptyMap()
     }
 }
