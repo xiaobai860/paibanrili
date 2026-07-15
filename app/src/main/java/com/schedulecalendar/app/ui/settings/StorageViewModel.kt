@@ -88,13 +88,27 @@ class StorageViewModel @Inject constructor(
                 customBackupPath = customPath,
                 defaultBackupPath = defaultPath
             ) }
-            // 启动时按当前保留数量裁剪多余的旧自动备份
-            backupManager.pruneAllBackups()
-            reload()
+            // 仅列出文件，不执行裁剪（裁剪在自动备份时进行），确保页面秒开
+            val appFiles = backupManager.listAppDataBackups()
+            val shiftFiles = backupManager.listShiftConfigBackups()
+            val dbFile = context.getDatabasePath("schedule_calendar.db")
+            val dbSize = if (dbFile.exists()) dbFile.length() else 0L
+            val backupSize = appFiles.sumOf { it.sizeBytes } + shiftFiles.sumOf { it.sizeBytes }
+            val freeSize = context.filesDir.freeSpace
+            _state.update {
+                it.copy(
+                    appDataBackups = appFiles.sortedByDescending { f -> f.createdAt },
+                    shiftConfigBackups = shiftFiles.sortedByDescending { f -> f.createdAt },
+                    dbSizeBytes = dbSize,
+                    backupSizeBytes = backupSize,
+                    freeSizeBytes = freeSize,
+                    loading = false
+                )
+            }
         }
     }
 
-    fun reload() = viewModelScope.launch {
+    suspend fun reload() {
         val appFiles = backupManager.listAppDataBackups()
         val shiftFiles = backupManager.listShiftConfigBackups()
         val dbFile = context.getDatabasePath("schedule_calendar.db")
@@ -123,7 +137,7 @@ class StorageViewModel @Inject constructor(
         }
         result.onSuccess { file ->
             _uiEvent.send(StorageUiEvent.ShowMessage("备份成功：${file.name}"))
-            reload()
+            viewModelScope.launch { reload() }
         }.onFailure {
             _uiEvent.send(StorageUiEvent.ShowError("备份失败：${it.message}"))
         }
@@ -174,7 +188,11 @@ class StorageViewModel @Inject constructor(
     /** 更新自定义备份路径 */
     fun updateCustomPath(path: String) {
         _state.update { it.copy(customBackupPath = path) }
-        viewModelScope.launch { prefs.saveBackupCustomPath(path) }
+        viewModelScope.launch {
+            prefs.saveBackupCustomPath(path)
+            // 路径变更后立即刷新备份列表
+            reload()
+        }
     }
 
     /** 将 SAF URI 字符串解析为可读的文件系统路径（用于 UI 显示） */
