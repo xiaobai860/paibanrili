@@ -138,12 +138,14 @@ fun EditCalendarEventScreen(
             )
         }
     ) { padding ->
+        val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(scrollState)
+                .imePadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Spacer(Modifier.height(4.dp))
@@ -151,7 +153,7 @@ fun EditCalendarEventScreen(
             // ── 基本信息 ──────────────────────────────────────────
             FormSectionHeader("基本信息")
 
-            EventTitleField(value = title, onValueChange = { title = it })
+            EventTitleField(value = title, onValueChange = { title = it }, scrollState = scrollState)
             EventAllDaySwitch(checked = isAllDay, onCheckedChange = { isAllDay = it })
             EventDateCard(
                 year = selectedYear, month = selectedMonth, day = selectedDay,
@@ -185,8 +187,8 @@ fun EditCalendarEventScreen(
             // ── 详细信息 ──────────────────────────────────────────
             FormSectionHeader("详细信息")
 
-            EventDescriptionField(value = description, onValueChange = { description = it })
-            EventLocationField(value = location, onValueChange = { location = it })
+            EventDescriptionField(value = description, onValueChange = { description = it }, scrollState = scrollState)
+            EventLocationField(value = location, onValueChange = { location = it }, scrollState = scrollState)
 
             Spacer(Modifier.height(8.dp))
 
@@ -239,6 +241,9 @@ fun EditCalendarEventScreen(
             }
 
             Spacer(Modifier.height(16.dp))
+
+            // IME 适配：底部留白，确保输入框和按钮可滚动到键盘上方
+            Spacer(Modifier.height(200.dp))
         }
     }
 

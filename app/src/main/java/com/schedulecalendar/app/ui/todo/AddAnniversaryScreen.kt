@@ -246,14 +246,15 @@ fun AddAnniversaryScreen(
             Spacer(Modifier.height(4.dp))
 
             // ── 名称 ──────────────────────────────────────────
-            OutlinedTextField(
+            ImeAdaptiveOutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
                 label = { Text("纪念日名称") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Celebration, null) },
-                placeholder = { Text("如：结婚纪念日、生日等") }
+                placeholder = { Text("如：结婚纪念日、生日等") },
+                scrollState = scrollState
             )
 
             // ── 公历/农历切换 ─────────────────────────────────

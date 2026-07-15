@@ -20,7 +20,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -337,9 +343,9 @@ fun ExpandableTimePicker(
  * IME 自适应输入框 —— 自动处理软键盘遮挡问题。
  *
  * 核心机制：
- * 1. 获得焦点时等待 IME 弹出，然后滚动父容器使输入框可见
+ * 1. 获得焦点时等待 IME 弹出，然后精确滚动父容器使输入框下边缘刚好在键盘上方
  * 2. 内容增长导致高度变化时再次触发滚动
- * 3. 对于 Column+verticalScroll：传入 scrollState，自动滚动到底部确保输入框在键盘上方
+ * 3. 对于 Column+verticalScroll：传入 scrollState，自动精确计算滚动位置
  * 4. 对于 LazyColumn：通过 onFocused 回调由调用方处理滚动
  *
  * @param scrollState  父级 Column 的 ScrollState，传入后自动处理滚动
@@ -357,12 +363,15 @@ fun ImeAdaptiveOutlinedTextField(
     singleLine: Boolean = false,
     minLines: Int = 1,
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+    textStyle: TextStyle? = null,
     scrollState: ScrollState? = null,
     onFocused: (suspend () -> Unit)? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    // 字段高度，用于检测内容增长
     val fieldHeight = remember { mutableStateOf(0) }
+    val fieldYInRoot = remember { mutableStateOf(0f) }
+    val density = LocalDensity.current
+    val view = LocalView.current
 
     OutlinedTextField(
         value = value,
@@ -374,6 +383,7 @@ fun ImeAdaptiveOutlinedTextField(
         singleLine = singleLine,
         minLines = minLines,
         maxLines = maxLines,
+        textStyle = textStyle ?: LocalTextStyle.current,
         modifier = modifier
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
@@ -381,17 +391,44 @@ fun ImeAdaptiveOutlinedTextField(
             .onSizeChanged { size ->
                 fieldHeight.value = size.height
             }
+            .onGloballyPositioned { coordinates: LayoutCoordinates ->
+                fieldYInRoot.value = coordinates.positionInRoot().y
+            }
     )
+
+    // 精确滚动：使输入框下边缘刚好在 IME 键盘上方
+    suspend fun scrollAboveIme() {
+        if (scrollState != null) {
+            val fieldY = fieldYInRoot.value
+            val fieldBottom = fieldY + fieldHeight.value
+
+            val windowRect = android.graphics.Rect()
+            view.getWindowVisibleDisplayFrame(windowRect)
+
+            val marginPx = with(density) { 16.dp.toPx() }
+            val imeTopWithMargin = windowRect.bottom.toFloat() - marginPx
+
+            android.util.Log.d("ImeAdaptive", "fieldY=$fieldY fieldH=${fieldHeight.value} fieldBottom=$fieldBottom windowRect.bottom=${windowRect.bottom} imeTopWithMargin=$imeTopWithMargin scrollValue=${scrollState.value} maxScroll=${scrollState.maxValue}")
+
+            val overflow = fieldBottom - imeTopWithMargin
+            if (overflow > 0) {
+                val target = (scrollState.value + overflow.toInt())
+                    .coerceIn(0, scrollState.maxValue)
+                android.util.Log.d("ImeAdaptive", "overflow=$overflow scrolling to $target")
+                scrollState.scrollTo(target)
+            } else {
+                android.util.Log.d("ImeAdaptive", "no overflow, no scroll needed")
+            }
+        } else {
+            onFocused?.invoke()
+        }
+    }
 
     // 触发器 1：获得焦点时 → 等待 IME 完全弹出后滚动
     LaunchedEffect(isFocused) {
         if (isFocused) {
             delay(400)
-            if (scrollState != null) {
-                scrollState.scrollTo(scrollState.maxValue)
-            } else {
-                onFocused?.invoke()
-            }
+            scrollAboveIme()
         }
     }
 
@@ -399,9 +436,7 @@ fun ImeAdaptiveOutlinedTextField(
     LaunchedEffect(fieldHeight.value) {
         if (isFocused && fieldHeight.value > 0) {
             delay(100)
-            if (scrollState != null) {
-                scrollState.scrollTo(scrollState.maxValue)
-            }
+            scrollAboveIme()
         }
     }
 }
