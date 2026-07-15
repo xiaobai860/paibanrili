@@ -286,6 +286,7 @@ class CalendarEventRepository @Inject constructor(
     ): Long {
         return try {
             val calId = calendarId ?: getFirstWritableCalendarId() ?: return -1L
+            val hasReminder = reminderMinutes != null && reminderMinutes >= 0
             val values = android.content.ContentValues().apply {
                 put(CalendarContract.Events.CALENDAR_ID, calId)
                 put(CalendarContract.Events.TITLE, title)
@@ -304,17 +305,26 @@ class CalendarEventRepository @Inject constructor(
                         put(CalendarContract.Events.EVENT_COLOR, colorInt)
                     } catch (_: Exception) {}
                 }
+                // 设置 HAS_ALARM 标志，通知系统此事件有提醒
+                if (hasReminder) {
+                    put(CalendarContract.Events.HAS_ALARM, 1)
+                }
             }
             val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
             val eventId = ContentUris.parseId(uri ?: return -1L)
 
             // 添加提醒
-            if (reminderMinutes != null && reminderMinutes >= 0) {
+            if (hasReminder) {
                 addReminder(eventId, reminderMinutes)
+                // 国产 ROM 兼容：通过 ExtendedProperties 设置 need_alarm 标志
+                // 国产 ROM（小米/华为/OPPO/vivo）不使用标准 hasAlarm 字段，
+                // 而是通过此扩展属性判断是否触发闹钟提醒
+                addExtendedProperty(eventId, "{\"need_alarm\":true}")
             }
 
             eventId
         } catch (e: Exception) {
+            android.util.Log.e("CalendarEventRepo", "createEvent failed", e)
             -1L
         }
     }
@@ -339,6 +349,33 @@ class CalendarEventRepository @Inject constructor(
             reminderId
         } catch (e: Exception) {
             android.util.Log.e("CalendarEventRepo", "addReminder failed: eventId=$eventId, minutes=$minutesBefore", e)
+            null
+        }
+    }
+
+    /**
+     * 为事件添加扩展属性（国产 ROM 兼容）
+     * 国产 ROM（小米/华为/OPPO/vivo）通过 ExtendedProperties 中的
+     * {"need_alarm":true} 判断是否触发闹钟提醒
+     */
+    private fun addExtendedProperty(eventId: Long, value: String): Long? {
+        return try {
+            val values = android.content.ContentValues().apply {
+                put(CalendarContract.ExtendedProperties.EVENT_ID, eventId)
+                put(CalendarContract.ExtendedProperties.NAME, "customAppData")
+                put(CalendarContract.ExtendedProperties.VALUE, value)
+            }
+            val uri = context.contentResolver.insert(
+                CalendarContract.ExtendedProperties.CONTENT_URI, values
+            )
+            val propId = uri?.let { ContentUris.parseId(it) }
+            if (propId != null) {
+                android.util.Log.d("CalendarEventRepo", "Added extended property: eventId=$eventId, value=$value")
+            }
+            propId
+        } catch (e: Exception) {
+            // 部分国产 ROM 可能不支持 ExtendedProperties 写入，忽略错误
+            android.util.Log.w("CalendarEventRepo", "addExtendedProperty failed (may be unsupported)", e)
             null
         }
     }
@@ -581,6 +618,67 @@ class CalendarEventRepository @Inject constructor(
             rows > 0
         } catch (e: Exception) {
             false
+        }
+    }
+
+    /**
+     * 查找应用本地日历中符合标题前缀的事件
+     * 用于上下班提醒日历事件的管理
+     * @param titlePrefix 标题前缀，如 "[上下班提醒]"
+     * @return 事件ID列表
+     */
+    fun findEventsByTitlePrefix(titlePrefix: String): List<Long> {
+        val eventIds = mutableListOf<Long>()
+        val calId = getOrCreateLocalCalendarId() ?: return eventIds
+        return try {
+            context.contentResolver.query(
+                CalendarContract.Events.CONTENT_URI,
+                arrayOf(CalendarContract.Events._ID),
+                "${CalendarContract.Events.CALENDAR_ID} = ? AND ${CalendarContract.Events.TITLE} LIKE ?",
+                arrayOf(calId.toString(), "$titlePrefix%"),
+                null
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    eventIds.add(cursor.getLong(0))
+                }
+            }
+            eventIds
+        } catch (e: Exception) {
+            android.util.Log.e("CalendarEventRepo", "findEventsByTitlePrefix failed", e)
+            eventIds
+        }
+    }
+
+    /**
+     * 批量删除事件
+     * @return 删除的事件数
+     */
+    fun deleteEvents(eventIds: List<Long>): Int {
+        var deleted = 0
+        for (id in eventIds) {
+            if (deleteEvent(id)) deleted++
+        }
+        return deleted
+    }
+
+    /**
+     * 查找指定日期和标题的提醒事件是否已存在
+     * 用于避免重复创建上下班提醒日历事件
+     */
+    fun findEventByDateAndTitle(date: String, title: String): Long? {
+        val calId = getOrCreateLocalCalendarId() ?: return null
+        return try {
+            context.contentResolver.query(
+                CalendarContract.Events.CONTENT_URI,
+                arrayOf(CalendarContract.Events._ID),
+                "${CalendarContract.Events.CALENDAR_ID} = ? AND ${CalendarContract.Events.TITLE} = ? AND ${CalendarContract.Events.DESCRIPTION} LIKE ?",
+                arrayOf(calId.toString(), title, "%$date%"),
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getLong(0) else null
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 
