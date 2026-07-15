@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.schedulecalendar.app.MainActivity
+import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
@@ -39,7 +40,8 @@ class ReminderScheduler @Inject constructor(
     @ApplicationContext private val context: Context,
     private val prefs: AppPreferences,
     private val scheduleRepo: ScheduleRepository,
-    private val shiftRepo: ShiftRepository
+    private val shiftRepo: ShiftRepository,
+    private val calendarRepo: CalendarEventRepository
 ) {
     companion object {
         const val EXTRA_IS_CLOCK_IN = "is_clock_in"
@@ -50,6 +52,11 @@ class ReminderScheduler @Inject constructor(
         const val CHANNEL_NAME = "上下班提醒"
         const val NOTIFICATION_ID_CLOCK_IN = 1001
         const val NOTIFICATION_ID_CLOCK_OUT = 1002
+
+        /** 日历提醒事件标题前缀，用于管理和清理 */
+        const val CALENDAR_REMINDER_PREFIX = "[上下班提醒] "
+        /** 日历提醒事件保留窗口：今天前后各 3 天 */
+        private const val REMINDER_WINDOW_DAYS = 3
     }
 
     private val alarmManager: AlarmManager by lazy {
@@ -76,47 +83,96 @@ class ReminderScheduler @Inject constructor(
     }
 
     /**
-     * 根据用户设置和排班记录，为未来 7 天设置提醒。
+     * 根据用户设置和排班记录，设置上下班提醒。
      * 应在应用启动、排班变更、设置变更时调用。
+     *
+     * 支持两种提醒方式：
+     * - "alarm"：使用 AlarmManager.setAlarmClock() 精确闹钟
+     * - "calendar"：创建系统日历事件并设置提醒，由系统日历应用触发通知
+     *
+     * 日历提醒事件保留窗口为今天前后各 3 天（共 7 天），
+     * 超过窗口的旧事件会自动清理，避免污染系统日历。
      */
     suspend fun scheduleUpcomingReminders() {
         val enabled = prefs.getReminderEnabled()
         if (!enabled) {
             cancelAllReminders()
+            cleanupCalendarReminders()
             return
         }
 
+        val method = prefs.getReminderMethod()
         val clockInEnabled = prefs.getReminderClockIn()
         val clockOutEnabled = prefs.getReminderClockOut()
         val clockInMinutes = prefs.getReminderClockInMinutes()
         val clockOutMinutes = prefs.getReminderClockOutMinutes()
 
-        if (!clockInEnabled && !clockOutEnabled) return
+        if (!clockInEnabled && !clockOutEnabled) {
+            cancelAllReminders()
+            cleanupCalendarReminders()
+            return
+        }
 
-        // 获取未来 7 天的排班记录
         val today = LocalDate.now()
-        for (dayOffset in 0..6) {
-            val date = today.plusDays(dayOffset.toLong())
-            val record = getShiftForDate(date.toString()) ?: continue
-            val shiftTimes = getShiftTimes(record.shiftId) ?: continue
 
-            if (clockInEnabled && shiftTimes.first.isNotBlank()) {
-                scheduleReminder(
-                    date = date,
-                    timeStr = shiftTimes.first,
-                    advanceMinutes = clockInMinutes,
-                    isClockIn = true,
-                    shiftName = shiftTimes.third
-                )
+        if (method == "calendar") {
+            // 日历提醒模式：创建系统日历事件并设置提醒
+            // 先取消所有 AlarmManager 闹钟（以防切换模式后残留）
+            cancelAllReminders()
+            // 清理窗口外的旧日历事件
+            cleanupCalendarReminders()
+            // 创建今天-3天 到 今天+3天 的日历提醒事件
+            for (dayOffset in -REMINDER_WINDOW_DAYS..REMINDER_WINDOW_DAYS) {
+                val date = today.plusDays(dayOffset.toLong())
+                val record = getShiftForDate(date.toString()) ?: continue
+                val shiftTimes = getShiftTimes(record.shiftId) ?: continue
+
+                if (clockInEnabled && shiftTimes.first.isNotBlank()) {
+                    scheduleCalendarReminder(
+                        date = date,
+                        timeStr = shiftTimes.first,
+                        advanceMinutes = clockInMinutes,
+                        isClockIn = true,
+                        shiftName = shiftTimes.third
+                    )
+                }
+                if (clockOutEnabled && shiftTimes.second.isNotBlank()) {
+                    scheduleCalendarReminder(
+                        date = date,
+                        timeStr = shiftTimes.second,
+                        advanceMinutes = clockOutMinutes,
+                        isClockIn = false,
+                        shiftName = shiftTimes.third
+                    )
+                }
             }
-            if (clockOutEnabled && shiftTimes.second.isNotBlank()) {
-                scheduleReminder(
-                    date = date,
-                    timeStr = shiftTimes.second,
-                    advanceMinutes = clockOutMinutes,
-                    isClockIn = false,
-                    shiftName = shiftTimes.third
-                )
+        } else {
+            // 闹钟提醒模式：使用 AlarmManager
+            // 清理可能残留的日历提醒事件
+            cleanupCalendarReminders()
+            for (dayOffset in 0..6) {
+                val date = today.plusDays(dayOffset.toLong())
+                val record = getShiftForDate(date.toString()) ?: continue
+                val shiftTimes = getShiftTimes(record.shiftId) ?: continue
+
+                if (clockInEnabled && shiftTimes.first.isNotBlank()) {
+                    scheduleReminder(
+                        date = date,
+                        timeStr = shiftTimes.first,
+                        advanceMinutes = clockInMinutes,
+                        isClockIn = true,
+                        shiftName = shiftTimes.third
+                    )
+                }
+                if (clockOutEnabled && shiftTimes.second.isNotBlank()) {
+                    scheduleReminder(
+                        date = date,
+                        timeStr = shiftTimes.second,
+                        advanceMinutes = clockOutMinutes,
+                        isClockIn = false,
+                        shiftName = shiftTimes.third
+                    )
+                }
             }
         }
     }
@@ -219,7 +275,7 @@ class ReminderScheduler @Inject constructor(
     }
 
     /**
-     * 取消所有提醒
+     * 取消所有 AlarmManager 提醒
      */
     fun cancelAllReminders() {
         val today = LocalDate.now()
@@ -234,6 +290,92 @@ class ReminderScheduler @Inject constructor(
                 )
                 alarmManager.cancel(pendingIntent)
             }
+        }
+    }
+
+    /**
+     * 创建系统日历事件实现上下班提醒
+     *
+     * 通过 CalendarProvider 在应用本地日历中创建带提醒的事件，
+     * 由系统日历应用负责触发通知。事件包含：
+     * - HAS_ALARM 标志（标准 API）
+     * - Reminders 表提醒记录
+     * - ExtendedProperties 中的 need_alarm 标志（国产 ROM 兼容）
+     *
+     * 事件已存在时不会重复创建（通过日期+标题去重）
+     */
+    private fun scheduleCalendarReminder(
+        date: LocalDate,
+        timeStr: String,
+        advanceMinutes: Int,
+        isClockIn: Boolean,
+        shiftName: String
+    ) {
+        try {
+            val timeParts = timeStr.split(":")
+            val hour = timeParts[0].toIntOrNull() ?: return
+            val minute = timeParts[1].toIntOrNull() ?: return
+
+            val typeLabel = if (isClockIn) "上班" else "下班"
+            val title = if (shiftName.isNotEmpty()) {
+                "$CALENDAR_REMINDER_PREFIX$shiftName $typeLabel"
+            } else {
+                "$CALENDAR_REMINDER_PREFIX$typeLabel"
+            }
+            val dateStr = date.toString()
+
+            // 检查是否已存在，避免重复创建
+            val existingId = calendarRepo.findEventByDateAndTitle(dateStr, title)
+            if (existingId != null) return
+
+            val triggerTime = date.atTime(LocalTime.of(hour, minute))
+                .minusMinutes(advanceMinutes.toLong())
+                .atZone(ZoneId.systemDefault())
+
+            val dtStart = triggerTime.toInstant().toEpochMilli()
+            val dtEnd = dtStart + 5 * 60 * 1000 // 事件时长 5 分钟
+
+            val description = "日期：$dateStr\n班次：$shiftName\n时间：$timeStr\n提前${advanceMinutes}分钟提醒"
+
+            calendarRepo.createEvent(
+                title = title,
+                description = description,
+                dtStart = dtStart,
+                dtEnd = dtEnd,
+                allDay = false,
+                calendarId = null, // 使用应用本地日历
+                reminderMinutes = advanceMinutes
+            )
+            android.util.Log.d("ReminderScheduler", "Created calendar reminder: $title on $dateStr")
+        } catch (e: Exception) {
+            android.util.Log.e("ReminderScheduler", "scheduleCalendarReminder failed", e)
+        }
+    }
+
+    /**
+     * 清理所有日历提醒事件
+     *
+     * 采用「删除全部 + 重新创建」策略：
+     * 先删除所有带前缀的提醒事件，然后由调用者重新创建窗口内的事件。
+     * 这种方式简单可靠，避免数据污染系统日历。
+     */
+    private fun cleanupCalendarReminders() {
+        forceCleanupCalendarReminders()
+    }
+
+    /**
+     * 强制清理所有日历提醒事件
+     * 在提醒关闭或切换为闹钟模式时调用
+     */
+    fun forceCleanupCalendarReminders() {
+        try {
+            val eventIds = calendarRepo.findEventsByTitlePrefix(CALENDAR_REMINDER_PREFIX)
+            if (eventIds.isNotEmpty()) {
+                val deleted = calendarRepo.deleteEvents(eventIds)
+                android.util.Log.i("ReminderScheduler", "Cleaned up $deleted calendar reminder events")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ReminderScheduler", "forceCleanupCalendarReminders failed", e)
         }
     }
 
