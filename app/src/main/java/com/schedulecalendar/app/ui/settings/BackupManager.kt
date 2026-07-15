@@ -389,7 +389,10 @@ class BackupManager @Inject constructor(
             salaryConfig = prefs.salaryConfigFlow.first(),
             attendConfig = prefs.attendConfigFlow.first(),
             scheduleRule = prefs.scheduleRuleFlow.first(),
-            displaySchemes = prefs.displaySchemesFlow.first()
+            displaySchemes = prefs.displaySchemesFlow.first(),
+            disabledAccountIds = prefs.getDisabledAccountIds().toList(),
+            accountCategories = prefs.getAccountCategories(),
+            accountsInitialized = prefs.isAccountsInitialized()
         )
         return gson.toJson(backup)
     }
@@ -418,6 +421,16 @@ class BackupManager @Inject constructor(
         backup.attendConfig?.let { prefs.saveAttendConfig(it) }
         prefs.saveScheduleRule(backup.scheduleRule)
         backup.displaySchemes?.let { prefs.saveDisplaySchemes(it) }
+        // 恢复账户分类和禁用状态
+        backup.disabledAccountIds?.let { ids ->
+            prefs.saveDisabledAccountIds(ids.toSet())
+        }
+        backup.accountCategories?.let { cats ->
+            prefs.saveAccountCategories(cats)
+        }
+        if (backup.accountsInitialized == true) {
+            prefs.setAccountsInitialized()
+        }
     }
 
     private suspend fun restoreShiftConfig(json: String) {
@@ -488,5 +501,8 @@ private data class AppDataBackup(
     val salaryConfig: SalaryConfig? = null,
     val attendConfig: AttendConfig? = null,
     val scheduleRule: ScheduleRule? = null,
-    val displaySchemes: List<DisplayScheme>? = null
+    val displaySchemes: List<DisplayScheme>? = null,
+    val disabledAccountIds: List<Long>? = null,
+    val accountCategories: Map<String, String>? = null,
+    val accountsInitialized: Boolean? = null
 )

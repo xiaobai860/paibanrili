@@ -212,7 +212,7 @@ class CalendarEventViewModel @Inject constructor(
         val categories = prefs.getAccountCategories()
         val calIdToCategory = mutableMapOf<Long, String>()
         _accounts.value.forEach { acct ->
-            val key = "${acct.accountName}|${acct.accountType}"
+            val key = calendarRepo.getAccountKey(acct)
             val category = categories[key]
             if (category != null) {
                 acct.calendarIds.forEach { calId ->
