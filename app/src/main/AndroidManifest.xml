@@ -20,7 +20,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ScheduleCalendar"
         android:allowBackup="true"
-        android:fullBackupContent="true">
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules">
 
         <activity
             android:name=".MainActivity"

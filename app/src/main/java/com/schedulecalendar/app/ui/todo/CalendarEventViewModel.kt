@@ -19,8 +19,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -68,42 +68,16 @@ class CalendarEventViewModel @Inject constructor(
     /** 原始事件列表（已过滤禁用账户，供日程和纪念日标签页使用） */
     private val _rawEvents = MutableStateFlow<List<CalendarEventInfo>>(emptyList())
 
-    init {
-        // 响应式更新日程列表：排除纪念日事件
-        viewModelScope.launch {
-            combine(_rawEvents, accountCategoriesFlow, _appCalendarIds) { events, categories, appCalIds ->
-                events.filter { event ->
-                    if (event.calendarId in appCalIds) {
-                        // 应用自身账户：纪念日日历的事件不显示在日程
-                        // 同时兼容旧数据：标题以"纪念日: "开头且有FREQ=YEARLY的也不显示
-                        val isAnniversaryCal = anniversaryCalendarId != null && event.calendarId == anniversaryCalendarId
-                        val isLegacyAnniversary = event.title.startsWith("\u7eaa\u5ff5\u65e5: ") &&
-                            event.rrule?.contains("FREQ=YEARLY") == true
-                        isAnniversaryCal || isLegacyAnniversary
-                    } else {
-                        // 外部账户：按分类过滤
-                        val category = categories[event.calendarId]
-                        category != "anniversary"
-                    }
-                }
-            }.collect { filtered ->
-                _state.update { it.copy(events = filtered) }
-            }
-        }
-    }
-
     /** 纪念日列表（只显示纪念日事件，响应分类变化） */
     val anniversaries: StateFlow<List<CalendarEventInfo>> =
         combine(_rawEvents, accountCategoriesFlow, _appCalendarIds) { events, categories, appCalIds ->
             events.filter { event ->
                 if (event.calendarId in appCalIds) {
-                    // 应用自身账户：纪念日日历的事件 + 旧的纪念日标题格式事件
                     val isAnniversaryCal = anniversaryCalendarId != null && event.calendarId == anniversaryCalendarId
-                    val isLegacyAnniversary = event.title.startsWith("\u7eaa\u5ff5\u65e5: ") &&
+                    val isLegacyAnniversary = event.title.startsWith("纪念日: ") &&
                         event.rrule?.contains("FREQ=YEARLY") == true
                     isAnniversaryCal || isLegacyAnniversary
                 } else {
-                    // 外部账户：按分类过滤
                     val category = categories[event.calendarId]
                     category == "anniversary"
                 }
@@ -121,6 +95,27 @@ class CalendarEventViewModel @Inject constructor(
 
     init {
         checkPermission()
+        // 响应式更新日程列表：排除纪念日事件
+        viewModelScope.launch {
+            combine(_rawEvents, accountCategoriesFlow, _appCalendarIds) { events, categories, appCalIds ->
+                events.filter { event ->
+                    if (event.calendarId in appCalIds) {
+                        // 应用自身账户：纪念日日历的事件不显示在日程
+                        // 同时兼容旧数据：标题以"纪念日: "开头且有FREQ=YEARLY的也不显示
+                        val isAnniversaryCal = anniversaryCalendarId != null && event.calendarId == anniversaryCalendarId
+                        val isLegacyAnniversary = event.title.startsWith("纪念日: ") &&
+                            event.rrule?.contains("FREQ=YEARLY") == true
+                        isAnniversaryCal || isLegacyAnniversary
+                    } else {
+                        // 外部账户：按分类过滤
+                        val category = categories[event.calendarId]
+                        category != "anniversary"
+                    }
+                }
+            }.collect { filtered ->
+                _state.update { it.copy(events = filtered) }
+            }
+        }
         // 只在有权限时加载账户列表和事件
         if (_state.value.hasPermission) {
             viewModelScope.launch {

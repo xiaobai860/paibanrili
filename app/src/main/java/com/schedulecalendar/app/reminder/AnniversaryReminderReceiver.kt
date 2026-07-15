@@ -37,7 +37,7 @@ class AnniversaryReminderReceiver : BroadcastReceiver() {
             .build()
 
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notificationId = BASE_NOTIFICATION_ID + title.hashCode() % 1000
+        val notificationId = BASE_NOTIFICATION_ID + (title.hashCode() and Int.MAX_VALUE) % 1000
         nm.notify(notificationId, notification)
     }
 

@@ -128,7 +128,7 @@ class CalendarAccountViewModel @Inject constructor(
 
     /**
      * 设置账户分类
-     * @param accountKey 账户键 ("accountName|accountType")
+     * @param accountKey 账户键 ("calId:<id>")
      * @param category "schedule" | "anniversary" | null(清除分类，显示在两者中)
      */
     fun setAccountCategory(accountKey: String, category: String?) {
@@ -154,7 +154,7 @@ class CalendarAccountViewModel @Inject constructor(
 
     /**
      * 获取账户的分类 key
-     * 应用自身日历使用 "calId:<id>"，外部账户使用 "accountName|accountType"
+     * 所有日历统一使用 "calId:<id>"
      */
     fun getAccountKey(account: CalendarAccountInfo): String {
         return calendarRepo.getAccountKey(account)
