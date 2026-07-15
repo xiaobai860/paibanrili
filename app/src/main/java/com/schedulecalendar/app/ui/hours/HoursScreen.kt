@@ -17,6 +17,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.core.graphics.toColorInt
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -389,6 +391,31 @@ private fun HoursChartCard(
             }
             Spacer(Modifier.height(10.dp))
 
+            // 统一动态高度：根据数据最大值动态计算，取两图表的较大值
+            val topLabelH = 16.dp
+            val bottomLabelH = 16.dp
+            val minBarH = 60.dp      // 柱体区最小高度
+            val maxBarH = 140.dp     // 柱体区最大高度
+            val refDailyMax = 8.0    // 每日参考满刻度（8小时）
+            val refMonthlyMax = 200.0 // 月度参考满刻度（200小时）
+            val dailyMax = remember(details) {
+                if (details.isEmpty()) 1.0 else details.maxOf { it.normalHours + it.overtimeHours }.coerceAtLeast(1.0)
+            }
+            val monthlyMax = remember(trend) {
+                if (trend.isEmpty()) 1.0 else trend.maxOf { it.total }.coerceAtLeast(1.0)
+            }
+            val dailyChartH = remember(dailyMax) {
+                val barArea = (minBarH + (maxBarH - minBarH) * (dailyMax / refDailyMax).coerceIn(0.3, 1.0).toFloat())
+                topLabelH + bottomLabelH + barArea
+            }
+            val monthlyChartH = remember(monthlyMax) {
+                val barArea = (minBarH + (maxBarH - minBarH) * (monthlyMax / refMonthlyMax).coerceIn(0.3, 1.0).toFloat())
+                topLabelH + bottomLabelH + barArea
+            }
+            val unifiedChartH = remember(dailyChartH, monthlyChartH) {
+                maxOf(dailyChartH, monthlyChartH)
+            }
+
             if (chartView == "daily") {
                 // 图例
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -413,7 +440,6 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
     val todayStr = remember {
         LocalDate.now().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
     }
-    // 取今天往前近8天（仅当月日期）
     val prefix = remember(details) { details.firstOrNull()?.date?.substring(0, 7) ?: "" }
     val chartDays = remember(details, todayStr, prefix) {
         (7 downTo 0).mapNotNull { offset ->
@@ -422,69 +448,55 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
             if (ds.startsWith(prefix)) details.firstOrNull { it.date == ds } ?: DayScheduleDetail(date = ds) else null
         }
     }
-    // 注意：DayScheduleDetail.overtimeHours 已包含 weekend + holiday，不可重复相加
     val maxH = chartDays.maxOf { it.normalHours + it.overtimeHours }.coerceAtLeast(1.0)
-    val n = chartDays.size
+    val textMeasurer = rememberTextMeasurer()
 
-    Column(Modifier.fillMaxWidth()) {
-        // ── 柱体区（含顶部数值） ──
-        Box(Modifier.fillMaxWidth().height(130.dp)) {
-            // 用 Canvas 绘制柱体，精确控制每根柱的 x 位置
-            Canvas(Modifier.fillMaxWidth().height(130.dp)) {
-                val colW = size.width / n
-                val barW = colW * 0.6f
-                val topLabelPx = 16.dp.toPx()
-                val bottomDatePx = 16.dp.toPx()
-                val barMaxH = size.height - topLabelPx - bottomDatePx
-                chartDays.forEachIndexed { i, d ->
-                    val total = d.normalHours + d.overtimeHours
-                    val cx = colW * i + colW / 2
-                    val barH = if (total > 0) max(8f, (total / maxH * barMaxH).toFloat()) else 3f
-                    val barLeft = cx - barW / 2
-                    val barTop = size.height - bottomDatePx - barH
-                    val segs = listOf(
-                        d.normalHours to Color(0xFF059669),
-                        d.overtimeHours to Color(0xFFDC2626)
-                    ).filter { it.first > 0 }
-                    if (segs.isEmpty()) {
-                        drawRect(Color(0xFFE5E7EB), topLeft = Offset(barLeft, barTop),
-                            size = androidx.compose.ui.geometry.Size(barW, barH))
-                    } else {
-                        var y = barTop + barH
-                        segs.forEach { (h, color) ->
-                            val sh = (h / total * barH).toFloat()
-                            y -= sh
-                            drawRect(color, topLeft = Offset(barLeft, y),
-                                size = androidx.compose.ui.geometry.Size(barW, sh))
-                        }
-                    }
+    Canvas(Modifier.fillMaxWidth().height(130.dp)) {
+        val n = chartDays.size
+        val colW = size.width / n
+        val barW = colW * 0.6f
+        val topLabelPx = 14.dp.toPx()
+        val bottomDatePx = 14.dp.toPx()
+        val barMaxH = size.height - topLabelPx - bottomDatePx
+        chartDays.forEachIndexed { i, d ->
+            val total = d.normalHours + d.overtimeHours
+            val cx = colW * i + colW / 2
+            val barH = if (total > 0) max(8f, (total / maxH * barMaxH).toFloat()) else 3f
+            val barLeft = cx - barW / 2
+            val barTop = size.height - bottomDatePx - barH
+            val segs = listOf(
+                d.normalHours to Color(0xFF059669),
+                d.overtimeHours to Color(0xFFDC2626)
+            ).filter { it.first > 0 }
+            if (segs.isEmpty()) {
+                drawRect(Color(0xFFE5E7EB), topLeft = Offset(barLeft, barTop),
+                    size = androidx.compose.ui.geometry.Size(barW, barH))
+            } else {
+                var y = barTop + barH
+                segs.forEach { (h, color) ->
+                    val sh = (h / total * barH).toFloat()
+                    y -= sh
+                    drawRect(color, topLeft = Offset(barLeft, y),
+                        size = androidx.compose.ui.geometry.Size(barW, sh))
                 }
             }
-            // 顶部数值标签
-            Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
-                chartDays.forEach { d ->
-                    val total = d.normalHours + d.overtimeHours
-                    val topLabel: String
-                    val topColor: Color
-                    when {
-                        d.holidayHours > 0 -> { topLabel = "法${fmtH(d.holidayHours)}h"; topColor = Color(0xFFD97706) }
-                        d.weekendHours > 0 -> { topLabel = "末${fmtH(d.weekendHours)}h"; topColor = Color(0xFFD97706) }
-                        else -> { topLabel = if (total > 0) "${fmtH(total)}h" else ""; topColor = MaterialTheme.colorScheme.onSurfaceVariant }
-                    }
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
-                        Text(topLabel, fontSize = 8.sp, color = topColor)
-                    }
-                }
+            // top label
+            val topLabel: String
+            val topColor: Color
+            when {
+                d.holidayHours > 0 -> { topLabel = "法${fmtH(d.holidayHours)}h"; topColor = Color(0xFFD97706) }
+                d.weekendHours > 0 -> { topLabel = "末${fmtH(d.weekendHours)}h"; topColor = Color(0xFFD97706) }
+                else -> { topLabel = if (total > 0) "${fmtH(total)}h" else ""; topColor = Color(0xFF78909C) }
             }
-            // 底部日期行
-            Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
-                chartDays.forEach { d ->
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        Text(d.date.substring(8), fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                    }
-                }
+            if (topLabel.isNotEmpty()) {
+                val tl = textMeasurer.measure(topLabel,
+                    androidx.compose.ui.text.TextStyle(fontSize = 8.sp, color = topColor))
+                drawText(tl, topLeft = Offset(cx - tl.size.width / 2f, 0f))
             }
+            // bottom date label
+            val dl = textMeasurer.measure(d.date.substring(8),
+                androidx.compose.ui.text.TextStyle(fontSize = 9.sp, color = Color(0xFF78909C)))
+            drawText(dl, topLeft = Offset(cx - dl.size.width / 2f, size.height - bottomDatePx + (bottomDatePx - dl.size.height) / 2f))
         }
     }
 }
@@ -492,51 +504,42 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
 @Composable
 private fun MonthlyHoursBar(trend: List<MonthlyHoursTrend>) {
     val maxH = trend.maxOf { it.total }.coerceAtLeast(1.0)
-    val n = trend.size
+    val textMeasurer = rememberTextMeasurer()
 
-    Box(Modifier.fillMaxWidth().height(130.dp)) {
-        // Canvas 绘制柱体
-        Canvas(Modifier.fillMaxWidth().height(130.dp)) {
-            val colW = size.width / n
-            val barW = colW * 0.6f
-            val topLabelPx = 16.dp.toPx()
-            val bottomLabelPx = 16.dp.toPx()
-            val barMaxH = size.height - topLabelPx - bottomLabelPx
-            trend.forEachIndexed { i, d ->
-                val cx = colW * i + colW / 2
-                val barH = if (d.total > 0) max(8f, (d.total / maxH * barMaxH).toFloat()) else 3f
-                val barLeft = cx - barW / 2
-                val barTop = size.height - bottomLabelPx - barH
-                if (d.total == 0.0) {
-                    drawRect(Color(0xFFE5E7EB), topLeft = Offset(barLeft, barTop),
-                        size = androidx.compose.ui.geometry.Size(barW, barH))
-                } else {
-                    val normPct = (d.normal / d.total).toFloat()
-                    val otPct = (d.overtime / d.total).toFloat()
-                    drawRect(Color(0xFF059669), topLeft = Offset(barLeft, barTop + barH * otPct),
-                        size = androidx.compose.ui.geometry.Size(barW, barH * normPct))
-                    if (d.overtime > 0)
-                        drawRect(Color(0xFFDC2626), topLeft = Offset(barLeft, barTop),
-                            size = androidx.compose.ui.geometry.Size(barW, barH * otPct))
-                }
+    Canvas(Modifier.fillMaxWidth().height(130.dp)) {
+        val n = trend.size
+        val colW = size.width / n
+        val barW = colW * 0.6f
+        val topLabelPx = 14.dp.toPx()
+        val bottomLabelPx = 14.dp.toPx()
+        val barMaxH = size.height - topLabelPx - bottomLabelPx
+        trend.forEachIndexed { i, d ->
+            val cx = colW * i + colW / 2
+            val barH = if (d.total > 0) max(8f, (d.total / maxH * barMaxH).toFloat()) else 3f
+            val barLeft = cx - barW / 2
+            val barTop = size.height - bottomLabelPx - barH
+            if (d.total == 0.0) {
+                drawRect(Color(0xFFE5E7EB), topLeft = Offset(barLeft, barTop),
+                    size = androidx.compose.ui.geometry.Size(barW, barH))
+            } else {
+                val normPct = (d.normal / d.total).toFloat()
+                val otPct = (d.overtime / d.total).toFloat()
+                drawRect(Color(0xFF059669), topLeft = Offset(barLeft, barTop + barH * otPct),
+                    size = androidx.compose.ui.geometry.Size(barW, barH * normPct))
+                if (d.overtime > 0)
+                    drawRect(Color(0xFFDC2626), topLeft = Offset(barLeft, barTop),
+                        size = androidx.compose.ui.geometry.Size(barW, barH * otPct))
             }
-        }
-        // 顶部数值标签
-        Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
-            trend.forEach { d ->
-                Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
-                    Text(if (d.total > 0) "${fmtH(d.total)}h" else "",
-                        fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            // top value label
+            if (d.total > 0) {
+                val tl = textMeasurer.measure("${fmtH(d.total)}h",
+                    androidx.compose.ui.text.TextStyle(fontSize = 8.sp, color = Color(0xFF78909C)))
+                drawText(tl, topLeft = Offset(cx - tl.size.width / 2f, 0f))
             }
-        }
-        // 底部月份标签
-        Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
-            trend.forEach { d ->
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text(d.label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            // bottom month label
+            val dl = textMeasurer.measure(d.label,
+                androidx.compose.ui.text.TextStyle(fontSize = 9.sp, color = Color(0xFF78909C)))
+            drawText(dl, topLeft = Offset(cx - dl.size.width / 2f, size.height - bottomLabelPx + (bottomLabelPx - dl.size.height) / 2f))
         }
     }
 }
