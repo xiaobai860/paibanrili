@@ -99,6 +99,15 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
         }
     }
 
+    // 处理小组件点击日期导航
+    LaunchedEffect(Unit) {
+        val activity = context as? MainActivity
+        val date = activity?.consumeNavigateDate()
+        if (date != null) {
+            navController.navigate(RouteScheduleDetail(date))
+        }
+    }
+
     LaunchedEffect(Unit) {
         vm.uiEvent.collect { ev ->
             when (ev) {

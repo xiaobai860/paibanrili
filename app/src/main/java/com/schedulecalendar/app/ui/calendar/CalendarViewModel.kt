@@ -12,6 +12,9 @@ import com.schedulecalendar.app.data.repository.ShiftBreakRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
+import com.schedulecalendar.app.widget.CalendarGlanceWidget
+import com.schedulecalendar.app.widget.CalendarWidgetDay
+import com.schedulecalendar.app.widget.CalendarWidgetInfo
 import com.schedulecalendar.app.widget.GlanceWidgetData
 import com.schedulecalendar.app.widget.ScheduleGlanceWidget
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -232,6 +235,7 @@ class CalendarViewModel @Inject constructor(
                     loading        = false
                 )}
                 syncWidget(allShifts, schedules)
+                syncCalendarWidget(year = s.year, month = s.month, allShifts = allShifts, schedules = schedules, allShiftStatuses = allShiftStatuses, selectedDate = _state.value.selectedDate)
             }
         }
     }
@@ -769,6 +773,48 @@ class CalendarViewModel @Inject constructor(
         YearMonth.of(year, month).lengthOfMonth()
 
     // ── Widget 同步 ───────────────────────────────────────────────────
+
+    private suspend fun syncCalendarWidget(
+        year: Int, month: Int,
+        allShifts: List<Shift>,
+        schedules: Map<String, ScheduleRecord>,
+        allShiftStatuses: List<ShiftStatus>,
+        selectedDate: String?
+    ) {
+        val today = LocalDate.now()
+        val ym = YearMonth.of(year, month)
+        val daysInMonth = ym.lengthOfMonth()
+        val firstDow = LocalDate.of(year, month, 1).dayOfWeek.value % 7  // 0=Sun..6=Sat
+
+        val shiftMap = allShifts.associateBy { it.id }
+        val statusMap = allShiftStatuses.associateBy { it.id }
+
+        val days = (1..daysInMonth).map { d ->
+            val dateStr = "%04d-%02d-%02d".format(year, month, d)
+            val record = schedules[dateStr]
+            val shift = record?.shiftId?.let { shiftMap[it] }
+            val appliedSt = record?.appliedStatus?.let { statusMap[it.statusId] }
+            CalendarWidgetDay(
+                day = d,
+                dateStr = dateStr,
+                shiftName = shift?.name ?: "",
+                shiftColor = shift?.color ?: "",
+                statusName = appliedSt?.name ?: ""
+            )
+        }
+
+        val totalCells = firstDow + daysInMonth
+        val totalRows = (totalCells + 6) / 7
+
+        val data = CalendarWidgetInfo(
+            year = year,
+            month = month,
+            days = days,
+            weekStartOffset = firstDow,
+            totalRows = totalRows
+        )
+        CalendarGlanceWidget.updateWidgetData(context, data)
+    }
 
     private suspend fun syncWidget(shifts: List<Shift>, schedules: Map<String, ScheduleRecord>) {
         val today      = LocalDate.now()
