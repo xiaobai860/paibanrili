@@ -424,63 +424,65 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
     }
     // 注意：DayScheduleDetail.overtimeHours 已包含 weekend + holiday，不可重复相加
     val maxH = chartDays.maxOf { it.normalHours + it.overtimeHours }.coerceAtLeast(1.0)
+    val n = chartDays.size
 
     Column(Modifier.fillMaxWidth()) {
         // ── 柱体区（含顶部数值） ──
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp).height(160.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.Bottom) {
-            chartDays.forEach { d ->
-                val total = d.normalHours + d.overtimeHours
-                // 顶部标签：节假日优先 > 周末 > 正常总工时
-                val topLabel: String
-                val topColor: Color
-                when {
-                    d.holidayHours > 0 -> {
-                        topLabel = "法${fmtH(d.holidayHours)}h"
-                        topColor = Color(0xFFD97706)
-                    }
-                    d.weekendHours > 0 -> {
-                        topLabel = "末${fmtH(d.weekendHours)}h"
-                        topColor = Color(0xFFD97706)
-                    }
-                    else -> {
-                        topLabel = if (total > 0) "${fmtH(total)}h" else ""
-                        topColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    Text(topLabel, fontSize = 8.sp, color = topColor,
-                        modifier = Modifier.heightIn(min = 14.dp))
-                    // 堆叠柱体：仅 normal（绿）+ overtime（红），overtime 已含周末/节假日
-                    val barMaxH = 80f
+        Box(Modifier.fillMaxWidth().height(130.dp)) {
+            // 用 Canvas 绘制柱体，精确控制每根柱的 x 位置
+            Canvas(Modifier.fillMaxWidth().height(130.dp)) {
+                val colW = size.width / n
+                val barW = colW * 0.6f
+                val topLabelPx = 16.dp.toPx()
+                val bottomDatePx = 16.dp.toPx()
+                val barMaxH = size.height - topLabelPx - bottomDatePx
+                chartDays.forEachIndexed { i, d ->
+                    val total = d.normalHours + d.overtimeHours
+                    val cx = colW * i + colW / 2
                     val barH = if (total > 0) max(8f, (total / maxH * barMaxH).toFloat()) else 3f
-                    androidx.compose.foundation.Canvas(Modifier.fillMaxWidth(0.7f).height(barH.dp)) {
-                        val w = size.width; var y = size.height
-                        val segs = listOf(
-                            d.normalHours   to Color(0xFF059669),
-                            d.overtimeHours to Color(0xFFDC2626)
-                        ).filter { it.first > 0 }
-                        if (segs.isEmpty()) {
-                            drawRect(Color(0xFFE5E7EB))
-                        } else {
-                            segs.forEach { (h, color) ->
-                                val sh = (h / total * size.height).toFloat()
-                                y -= sh
-                                drawRect(color, topLeft = Offset(0f, y), size = androidx.compose.ui.geometry.Size(w, sh))
-                            }
+                    val barLeft = cx - barW / 2
+                    val barTop = size.height - bottomDatePx - barH
+                    val segs = listOf(
+                        d.normalHours to Color(0xFF059669),
+                        d.overtimeHours to Color(0xFFDC2626)
+                    ).filter { it.first > 0 }
+                    if (segs.isEmpty()) {
+                        drawRect(Color(0xFFE5E7EB), topLeft = Offset(barLeft, barTop),
+                            size = androidx.compose.ui.geometry.Size(barW, barH))
+                    } else {
+                        var y = barTop + barH
+                        segs.forEach { (h, color) ->
+                            val sh = (h / total * barH).toFloat()
+                            y -= sh
+                            drawRect(color, topLeft = Offset(barLeft, y),
+                                size = androidx.compose.ui.geometry.Size(barW, sh))
                         }
                     }
                 }
             }
-        }
-        // ── 底部日期行 ──
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            chartDays.forEach { d ->
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(d.date.substring(8), fontSize = 9.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            // 顶部数值标签
+            Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+                chartDays.forEach { d ->
+                    val total = d.normalHours + d.overtimeHours
+                    val topLabel: String
+                    val topColor: Color
+                    when {
+                        d.holidayHours > 0 -> { topLabel = "法${fmtH(d.holidayHours)}h"; topColor = Color(0xFFD97706) }
+                        d.weekendHours > 0 -> { topLabel = "末${fmtH(d.weekendHours)}h"; topColor = Color(0xFFD97706) }
+                        else -> { topLabel = if (total > 0) "${fmtH(total)}h" else ""; topColor = MaterialTheme.colorScheme.onSurfaceVariant }
+                    }
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
+                        Text(topLabel, fontSize = 8.sp, color = topColor)
+                    }
+                }
+            }
+            // 底部日期行
+            Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
+                chartDays.forEach { d ->
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text(d.date.substring(8), fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    }
                 }
             }
         }
@@ -490,25 +492,50 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
 @Composable
 private fun MonthlyHoursBar(trend: List<MonthlyHoursTrend>) {
     val maxH = trend.maxOf { it.total }.coerceAtLeast(1.0)
-    Row(Modifier.fillMaxWidth().height(110.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
-        trend.forEach { d ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                Text(if (d.total > 0) "${fmtH(d.total)}h" else "",
-                    fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.height(14.dp))
-                val barH = max(if (d.total > 0) 8f else 3f, (d.total / maxH * 70).toFloat())
-                androidx.compose.foundation.Canvas(Modifier.fillMaxWidth(0.7f).height(barH.dp)) {
-                    val w = size.width
-                    if (d.total == 0.0) { drawRect(Color(0xFFE5E7EB)); return@Canvas }
+    val n = trend.size
+
+    Box(Modifier.fillMaxWidth().height(130.dp)) {
+        // Canvas 绘制柱体
+        Canvas(Modifier.fillMaxWidth().height(130.dp)) {
+            val colW = size.width / n
+            val barW = colW * 0.6f
+            val topLabelPx = 16.dp.toPx()
+            val bottomLabelPx = 16.dp.toPx()
+            val barMaxH = size.height - topLabelPx - bottomLabelPx
+            trend.forEachIndexed { i, d ->
+                val cx = colW * i + colW / 2
+                val barH = if (d.total > 0) max(8f, (d.total / maxH * barMaxH).toFloat()) else 3f
+                val barLeft = cx - barW / 2
+                val barTop = size.height - bottomLabelPx - barH
+                if (d.total == 0.0) {
+                    drawRect(Color(0xFFE5E7EB), topLeft = Offset(barLeft, barTop),
+                        size = androidx.compose.ui.geometry.Size(barW, barH))
+                } else {
                     val normPct = (d.normal / d.total).toFloat()
-                    val otPct   = (d.overtime / d.total).toFloat()
-                    // 正常（底部绿）
-                    drawRect(Color(0xFF059669), topLeft = Offset(0f, size.height * otPct),
-                        size = androidx.compose.ui.geometry.Size(w, size.height * normPct))
-                    // 加班（顶部红）
-                    if (d.overtime > 0) drawRect(Color(0xFFDC2626), size = androidx.compose.ui.geometry.Size(w, size.height * otPct))
+                    val otPct = (d.overtime / d.total).toFloat()
+                    drawRect(Color(0xFF059669), topLeft = Offset(barLeft, barTop + barH * otPct),
+                        size = androidx.compose.ui.geometry.Size(barW, barH * normPct))
+                    if (d.overtime > 0)
+                        drawRect(Color(0xFFDC2626), topLeft = Offset(barLeft, barTop),
+                            size = androidx.compose.ui.geometry.Size(barW, barH * otPct))
                 }
-                Spacer(Modifier.height(3.dp))
-                Text(d.label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        // 顶部数值标签
+        Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+            trend.forEach { d ->
+                Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
+                    Text(if (d.total > 0) "${fmtH(d.total)}h" else "",
+                        fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        // 底部月份标签
+        Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
+            trend.forEach { d ->
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text(d.label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }
