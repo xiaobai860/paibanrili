@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.data.prefs.AppPreferences
@@ -152,10 +153,14 @@ class ReminderScheduler @Inject constructor(
     /**
      * 设置单个提醒
      *
-     * 优先级策略（按可靠性从高到低）：
-     * 1. setAlarmClock — 系统最高优先级，不受任何省电策略影响
-     * 2. setExactAndAllowWhileIdle — 精确唤醒，Doze 下也可触发
-     * 3. setAndAllowWhileIdle — 非精确唤醒，Doze 下可触发但可能有分钟级延迟
+     * 使用 setAlarmClock 保证最高可靠性——
+     * 系统会将其视为用户设置的闹钟，即使在 Doze 模式、
+     * 电池优化、省电模式下也能准时触发。
+     *
+     * 权限说明：
+     * - 应用声明 USE_EXACT_ALARM 权限（安装时自动授予），
+     *   等效于 SCHEDULE_EXACT_ALARM 但无需用户手动授权
+     * - setAlarmClock 需要精确闹钟权限，USE_EXACT_ALARM 已满足
      */
     private fun scheduleReminder(
         date: LocalDate,
@@ -165,6 +170,12 @@ class ReminderScheduler @Inject constructor(
         shiftName: String
     ) {
         try {
+            // 防御性检查：确认精确闹钟权限可用
+            if (Build.VERSION.SDK_INT >= 31 && !alarmManager.canScheduleExactAlarms()) {
+                android.util.Log.w("ReminderScheduler", "Exact alarm permission not granted, skipping")
+                return
+            }
+
             val timeParts = timeStr.split(":")
             val hour = timeParts[0].toIntOrNull() ?: return
             val minute = timeParts[1].toIntOrNull() ?: return
