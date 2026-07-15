@@ -47,19 +47,16 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 
     private fun createNotificationChannelIfNeeded(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val existingChannel = nm.getNotificationChannel(ReminderScheduler.CHANNEL_ID)
-            if (existingChannel == null) {
-                val channel = NotificationChannel(
-                    ReminderScheduler.CHANNEL_ID,
-                    ReminderScheduler.CHANNEL_NAME,
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "上下班打卡提醒"
-                }
-                nm.createNotificationChannel(channel)
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (nm.getNotificationChannel(ReminderScheduler.CHANNEL_ID) == null) {
+            val channel = NotificationChannel(
+                ReminderScheduler.CHANNEL_ID,
+                ReminderScheduler.CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "上下班打卡提醒"
             }
+            nm.createNotificationChannel(channel)
         }
     }
 }

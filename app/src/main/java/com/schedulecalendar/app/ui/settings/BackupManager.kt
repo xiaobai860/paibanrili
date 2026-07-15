@@ -3,6 +3,7 @@ package com.schedulecalendar.app.ui.settings
 
 import android.content.Context
 import android.content.Intent
+import androidx.core.net.toUri
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
@@ -53,7 +54,7 @@ class BackupManager @Inject constructor(
     fun persistUriPermission(rawPath: String) {
         if (!isSafPath(rawPath)) return
         runCatching {
-            val uri = Uri.parse(rawPath)
+            val uri = rawPath.toUri()
             context.contentResolver.takePersistableUriPermission(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
@@ -107,7 +108,7 @@ class BackupManager @Inject constructor(
     /** 读取备份文件内容（兼容 SAF URI 和普通文件路径） */
     fun readBackupContent(path: String): String {
         return if (isSafPath(path)) {
-            val uri = Uri.parse(path)
+            val uri = path.toUri()
             context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
                 ?: throw IllegalStateException("无法读取备份文件")
         } else {
@@ -141,7 +142,7 @@ class BackupManager @Inject constructor(
         // 1. 如果是 content:// URI，提取 tree document id
         if (rawPath.startsWith("content://")) {
             return try {
-                val uri = Uri.parse(rawPath)
+                val uri = rawPath.toUri()
                 // path 形如 /tree/primary%3ADownload%2F...
                 val treeSeg = uri.path?.removePrefix("/tree/") ?: return rawPath
                 val decoded = java.net.URLDecoder.decode(treeSeg, "UTF-8")
@@ -197,7 +198,7 @@ class BackupManager @Inject constructor(
 
             if (customPath.isNotBlank() && isSafPath(customPath)) {
                 // SAF 目录写入
-                val treeUri = Uri.parse(customPath)
+                val treeUri = customPath.toUri()
                 // 删除今天旧的自动备份
                 val docDir = DocumentFile.fromTreeUri(context, treeUri)
                 docDir?.listFiles()?.filter { doc ->
@@ -242,7 +243,7 @@ class BackupManager @Inject constructor(
             val fileName = "班次配置_${ts}.json"
             val customPath = prefs.getBackupCustomPath()
             if (customPath.isNotBlank() && isSafPath(customPath)) {
-                writeSafBackupFile(Uri.parse(customPath), fileName, json)
+                writeSafBackupFile(customPath.toUri(), fileName, json)
             } else {
                 val targetDir = if (customPath.isNotBlank()) {
                     File(resolveSafPath(customPath)).also { it.mkdirs() }
@@ -264,7 +265,7 @@ class BackupManager @Inject constructor(
         val fileName = "应用数据_${ts}_manual.json"
         val customPath = prefs.getBackupCustomPath()
         if (customPath.isNotBlank() && isSafPath(customPath)) {
-            writeSafBackupFile(Uri.parse(customPath), fileName, json)
+            writeSafBackupFile(customPath.toUri(), fileName, json)
             File(customPath, fileName)  // 伪路径，仅用于显示
         } else {
             val targetDir = if (customPath.isNotBlank()) {
@@ -284,7 +285,7 @@ class BackupManager @Inject constructor(
         val fileName = "班次配置_${ts}_manual.json"
         val customPath = prefs.getBackupCustomPath()
         if (customPath.isNotBlank() && isSafPath(customPath)) {
-            writeSafBackupFile(Uri.parse(customPath), fileName, json)
+            writeSafBackupFile(customPath.toUri(), fileName, json)
             File(customPath, fileName)  // 伪路径，仅用于显示
         } else {
             val targetDir = if (customPath.isNotBlank()) {
@@ -307,7 +308,7 @@ class BackupManager @Inject constructor(
         val result = listBackupFiles(BackupType.APP_DATA, privateBackupDir).toMutableList()
         if (customPath.isNotBlank()) {
             if (isSafPath(customPath)) {
-                result += listSafBackupFiles(Uri.parse(customPath), BackupType.APP_DATA)
+                result += listSafBackupFiles(customPath.toUri(), BackupType.APP_DATA)
             } else {
                 val realPath = resolveSafPath(customPath)
                 val dir = File(realPath)
@@ -322,7 +323,7 @@ class BackupManager @Inject constructor(
         val result = listBackupFiles(BackupType.SHIFT_CONFIG, privateBackupDir).toMutableList()
         if (customPath.isNotBlank()) {
             if (isSafPath(customPath)) {
-                result += listSafBackupFiles(Uri.parse(customPath), BackupType.SHIFT_CONFIG)
+                result += listSafBackupFiles(customPath.toUri(), BackupType.SHIFT_CONFIG)
             } else {
                 val realPath = resolveSafPath(customPath)
                 val dir = File(realPath)
@@ -363,7 +364,7 @@ class BackupManager @Inject constructor(
     fun deleteBackupFile(path: String): Boolean {
         return if (isSafPath(path)) {
             runCatching {
-                val uri = Uri.parse(path)
+                val uri = path.toUri()
                 val doc = DocumentFile.fromSingleUri(context, uri)
                 doc?.delete() == true
             }.getOrDefault(false)

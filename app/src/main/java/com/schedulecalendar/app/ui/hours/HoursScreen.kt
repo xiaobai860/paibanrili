@@ -15,6 +15,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
+import androidx.core.graphics.toColorInt
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
@@ -59,9 +60,9 @@ fun HoursContent(
     navController: NavController,
     sharedYear: Int?,
     sharedMonth: Int?,
+    modifier: Modifier = Modifier,
     onMonthChange: (Int, Int) -> Unit = { _, _ -> },
-    vm: HoursViewModel = hiltViewModel(),
-    modifier: Modifier = Modifier
+    vm: HoursViewModel = hiltViewModel()
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -302,12 +303,12 @@ private fun HoursStatsGrid(
 @Composable
 private fun HoursStatCell(
     label: String, value: String,
+    modifier: Modifier = Modifier,
     future: String? = null,
     valueColor: Color? = null,
     alertBadge: Boolean = false,
     clickable: Boolean = false,
-    onClick: () -> Unit = {},
-    modifier: Modifier = Modifier
+    onClick: () -> Unit = {}
 ) {
     Surface(
         modifier = modifier.then(if (clickable) Modifier.clickable(onClick = onClick) else Modifier),
@@ -493,7 +494,7 @@ private fun HoursDailyRow(d: DayScheduleDetail) {
                     fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.width(40.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     d.shift?.let {
-                        val bgColor = runCatching { Color(android.graphics.Color.parseColor(it.color)) }.getOrElse { Color(0xFF059669) }
+                        val bgColor = runCatching { Color(it.color.toColorInt()) }.getOrElse { Color(0xFF059669) }
                         Surface(shape = RoundedCornerShape(4.dp), color = bgColor) {
                             Text(it.name, fontSize = 12.sp, color = Color.White,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)

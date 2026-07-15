@@ -126,10 +126,10 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DurationInfoRow("\u603b\u65f6\u957f", "${String.format("%.1f", totalHours)} \u5c0f\u65f6")
-                        DurationInfoRow("\u4f11\u606f/\u7528\u9910\u65f6\u95f4", "${String.format("%.1f", breakHours)} \u5c0f\u65f6")
+                        DurationInfoRow("\u603b\u65f6\u957f", "${String.format(java.util.Locale.getDefault(), "%.1f", totalHours)} \u5c0f\u65f6")
+                        DurationInfoRow("\u4f11\u606f/\u7528\u9910\u65f6\u95f4", "${String.format(java.util.Locale.getDefault(), "%.1f", breakHours)} \u5c0f\u65f6")
                         HorizontalDivider()
-                        DurationInfoRow("\u5b9e\u9645\u5de5\u65f6", "${String.format("%.1f", actualHours)} \u5c0f\u65f6",
+                        DurationInfoRow("\u5b9e\u9645\u5de5\u65f6", "${String.format(java.util.Locale.getDefault(), "%.1f", actualHours)} \u5c0f\u65f6",
                             valueColor = MaterialTheme.colorScheme.primary)
                     }
                 }
