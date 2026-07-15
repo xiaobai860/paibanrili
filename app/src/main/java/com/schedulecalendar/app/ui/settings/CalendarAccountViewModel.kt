@@ -49,30 +49,34 @@ class CalendarAccountViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
             try {
-                // 确保应用日历账户已创建（AccountManager 注册 + Calendar Provider 创建）
+                // 确保应用日历账户已创建
                 calendarRepo.getOrCreateLocalCalendarId()
+                calendarRepo.getOrCreateAnniversaryCalendarId()
                 val accounts = calendarRepo.getAllAccounts()
                 var disabledIds = prefs.getDisabledAccountIds()
-                val categories = prefs.getAccountCategories()
-
-                // 首次加载：自动禁用除本应用外的所有日历账户，并设置应用账户默认为“纪念日”分类
+    
+                // 首次加载：自动禁用非应用账户，并设置应用日历默认分类
                 if (!prefs.isAccountsInitialized()) {
                     val nonAppCalIds = accounts
-                        .filter { it.accountType != com.schedulecalendar.app.data.calendar.CalendarEventRepository.ACCOUNT_TYPE }
+                        .filter { it.accountType != CalendarEventRepository.ACCOUNT_TYPE }
                         .flatMap { it.calendarIds }
                         .toSet()
                     if (nonAppCalIds.isNotEmpty()) {
                         disabledIds = disabledIds + nonAppCalIds
                         prefs.saveDisabledAccountIds(disabledIds)
                     }
-                    // 应用自身账户默认分类为“纪念日”（包含日程和纪念日两个日历）
-                    val appAccountKey = "${com.schedulecalendar.app.data.calendar.CalendarEventRepository.ACCOUNT_NAME}|${com.schedulecalendar.app.data.calendar.CalendarEventRepository.ACCOUNT_TYPE}"
+                    // 应用自身日历默认分类：根据显示名称判断
                     val currentCategories = prefs.getAccountCategories().toMutableMap()
-                    currentCategories[appAccountKey] = "anniversary"
+                    accounts.filter { it.accountType == CalendarEventRepository.ACCOUNT_TYPE }.forEach { acct ->
+                        val key = calendarRepo.getAccountKey(acct)
+                        val category = if (acct.displayName.contains("\u7eaa\u5ff5\u65e5")) "anniversary" else "schedule"
+                        currentCategories[key] = category
+                    }
                     prefs.saveAccountCategories(currentCategories)
                     prefs.setAccountsInitialized()
                 }
-
+    
+                val categories = prefs.getAccountCategories()
                 _state.update {
                     it.copy(
                         accounts = accounts,
@@ -146,5 +150,13 @@ class CalendarAccountViewModel @Inject constructor(
      */
     fun getAccountCategory(accountKey: String): String? {
         return _state.value.accountCategories[accountKey]
+    }
+
+    /**
+     * 获取账户的分类 key
+     * 应用自身日历使用 "calId:<id>"，外部账户使用 "accountName|accountType"
+     */
+    fun getAccountKey(account: CalendarAccountInfo): String {
+        return calendarRepo.getAccountKey(account)
     }
 }

@@ -131,7 +131,7 @@ fun CalendarAccountSettingsScreen(
                 }
 
                 items(state.accounts, key = { it.id }) { account ->
-                    val accountKey = "${account.accountName}|${account.accountType}"
+                    val accountKey = vm.getAccountKey(account)
                     val category = state.accountCategories[accountKey]
                     AccountCard(
                         account = account,
@@ -201,11 +201,6 @@ private fun AccountCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Text(
-                        "${account.calendarCount} 个日历",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
 
                 Switch(

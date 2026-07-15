@@ -54,6 +54,8 @@ class CalendarEventRepository @Inject constructor(
         const val ACCOUNT_TYPE = "com.schedulecalendar.app"
         /** 账户名，使用中文应用名 */
         const val ACCOUNT_NAME = "排班日历"
+        /** 日程日历显示名称后缀 */
+        private const val SCHEDULE_SUFFIX = "-日程"
         /** 纪念日日历显示名称后缀 */
         private const val ANNIVERSARY_SUFFIX = "-纪念日"
     }
@@ -63,7 +65,7 @@ class CalendarEventRepository @Inject constructor(
      */
     fun getAllAccounts(): List<CalendarAccountInfo> {
         val accounts = mutableListOf<CalendarAccountInfo>()
-
+    
         val projection = arrayOf(
             CalendarContract.Calendars._ID,
             CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
@@ -71,76 +73,42 @@ class CalendarEventRepository @Inject constructor(
             CalendarContract.Calendars.ACCOUNT_TYPE,
             CalendarContract.Calendars.SYNC_EVENTS
         )
-
+    
         context.contentResolver.query(
             CalendarContract.Calendars.CONTENT_URI,
             projection,
             null, null, null
         )?.use { cursor ->
-            // 按账户分组统计，收集所有日历ID
-            val accountMap = mutableMapOf<String, Pair<MutableList<Long>, MutableList<CalendarAccountInfo>>>()
-
+            // 所有日历都按单个日历拆分为独立条目
             while (cursor.moveToNext()) {
                 val calId = cursor.getLong(0)
                 val rawDisplayName = cursor.getString(1)
                 val rawAccountName = cursor.getString(2)
                 val accountType = cursor.getString(3) ?: ""
                 val syncEvents = cursor.getInt(4) == 1
-
-                // 对于本应用创建的日历账户（自定义类型），强制使用中文应用名
-                val isAppCalendarAccount = accountType == ACCOUNT_TYPE
-                val calDisplayName = if (isAppCalendarAccount) {
-                    val appName = try {
-                        context.getString(context.applicationInfo.labelRes)
-                    } catch (_: Exception) {
-                        ACCOUNT_NAME
-                    }
-                    appName
-                } else {
-                    rawDisplayName?.trim()?.takeIf { it.isNotBlank() } ?: ""
-                }
+    
+                val calDisplayName = rawDisplayName?.trim()?.takeIf { it.isNotBlank() } ?: ""
                 val accountName = rawAccountName?.trim()?.takeIf { it.isNotBlank() } ?: ""
-                
-                android.util.Log.d("CalendarEventRepo", "getAllAccounts: calId=$calId, displayName='$calDisplayName', accountName='$accountName', accountType='$accountType'")
-                
-                // displayName 后备：优先使用日历显示名，其次使用账户名，最后使用"未知日历"
                 val displayName = calDisplayName.ifEmpty { accountName.ifEmpty { "未知日历" } }
-
-                val key = "$accountName|$accountType"
-                val existing = accountMap[key]
-                if (existing != null) {
-                    // 同账户的另一个日历，追加日历ID并更新计数
-                    existing.first.add(calId)
-                    val first = existing.second[0]
-                    existing.second[0] = first.copy(calendarCount = first.calendarCount + 1)
-                } else {
-                    val calIds = mutableListOf(calId)
-                    val info = CalendarAccountInfo(
-                        id = calId,
-                        name = displayName,
-                        displayName = displayName,
-                        accountName = accountName,
-                        accountType = accountType,
-                        calendarCount = 1,
-                        isEnabled = syncEvents,
-                        calendarIds = calIds.toSet()
-                    )
-                    accountMap[key] = Pair(calIds, mutableListOf(info))
-                }
+                val key = "calId:$calId"
+                val info = CalendarAccountInfo(
+                    id = calId,
+                    name = displayName,
+                    displayName = displayName,
+                    accountName = accountName,
+                    accountType = accountType,
+                    calendarCount = 1,
+                    isEnabled = syncEvents,
+                    calendarIds = setOf(calId)
+                )
+                accounts.add(info)
             }
-
-            // 用最终的 calendarIds 更新每个账户
-            accountMap.forEach { (_, pair) ->
-                val calIds = pair.first.toSet()
-                pair.second[0] = pair.second[0].copy(calendarIds = calIds)
-            }
-            accounts.addAll(accountMap.values.flatMap { it.second })
         }
-
+    
         // 应用自定义账户类型排在最前面，确保默认选中优先级
         accounts.sortByDescending { if (it.accountType == ACCOUNT_TYPE) 1 else 0 }
-
-        android.util.Log.d("CalendarEventRepo", "getAllAccounts total: ${accounts.size}, accounts=${accounts.map { "${it.displayName}(${it.accountName})" }}")
+    
+        android.util.Log.d("CalendarEventRepo", "getAllAccounts total: ${accounts.size}, accounts=${accounts.map { "${it.displayName}(${it.accountName})[${it.calendarIds}]" } }")
         return accounts
     }
 
@@ -500,15 +468,15 @@ class CalendarEventRepository @Inject constructor(
         } catch (_: Exception) {
             ACCOUNT_NAME
         }
+        val scheduleDisplayName = "$appName$SCHEDULE_SUFFIX"
         return try {
-            // 0. 先确保 AccountManager 账户存在（清除应用数据后账户可能被删除，但日历数据库中的日历可能还在）
+            // 0. 先确保 AccountManager 账户存在
             val accountManager = AccountManager.get(context)
             val account = Account(ACCOUNT_NAME, ACCOUNT_TYPE)
             val existingAccounts = accountManager.getAccountsByType(ACCOUNT_TYPE)
             val accountExists = existingAccounts.isNotEmpty()
 
             if (!accountExists) {
-                // 检查 WRITE_CALENDAR 权限
                 val hasWritePermission = android.content.pm.PackageManager.PERMISSION_GRANTED ==
                     ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_CALENDAR)
                 if (!hasWritePermission) {
@@ -527,28 +495,28 @@ class CalendarEventRepository @Inject constructor(
                 }
             }
 
-            // 1. 查找已存在的自定义类型日历
+            // 1. 查找已存在的日程日历（排除纪念日日历）
             var existingCalId: Long? = null
             var needsUpdate = false
             
             context.contentResolver.query(
                 CalendarContract.Calendars.CONTENT_URI,
                 arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME),
-                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ?",
-                arrayOf(ACCOUNT_NAME, ACCOUNT_TYPE),
+                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ? AND ${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} NOT LIKE ?",
+                arrayOf(ACCOUNT_NAME, ACCOUNT_TYPE, "%$ANNIVERSARY_SUFFIX"),
                 null
             )?.use { cursor ->
                 if (cursor.moveToFirst()) {
                     existingCalId = cursor.getLong(0)
                     val currentDisplayName = cursor.getString(1) ?: ""
-                    needsUpdate = currentDisplayName != appName
+                    needsUpdate = currentDisplayName != scheduleDisplayName
                 }
             }
             
             if (existingCalId != null && needsUpdate) {
                 val values = android.content.ContentValues().apply {
-                    put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, appName)
-                    put(CalendarContract.Calendars.NAME, appName)
+                    put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, scheduleDisplayName)
+                    put(CalendarContract.Calendars.NAME, scheduleDisplayName)
                 }
                 val updateUri = CalendarContract.Calendars.CONTENT_URI.buildUpon()
                     .appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER, "true")
@@ -563,16 +531,16 @@ class CalendarEventRepository @Inject constructor(
             }
             
             if (existingCalId != null) {
-                android.util.Log.d("CalendarEventRepo", "Found existing calendar calId=$existingCalId, accountExists=$accountExists")
+                android.util.Log.d("CalendarEventRepo", "Found schedule calendar calId=$existingCalId, accountExists=$accountExists")
                 return existingCalId
             }
 
-            // 2. 创建新的自定义类型日历
+            // 2. 创建新的日程日历
             val values = android.content.ContentValues().apply {
                 put(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT_NAME)
                 put(CalendarContract.Calendars.ACCOUNT_TYPE, ACCOUNT_TYPE)
-                put(CalendarContract.Calendars.NAME, appName)
-                put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, appName)
+                put(CalendarContract.Calendars.NAME, scheduleDisplayName)
+                put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, scheduleDisplayName)
                 put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.CAL_ACCESS_OWNER)
                 put(CalendarContract.Calendars.OWNER_ACCOUNT, ACCOUNT_NAME)
                 put(CalendarContract.Calendars.SYNC_EVENTS, 1)
@@ -593,7 +561,7 @@ class CalendarEventRepository @Inject constructor(
                 values
             )
             val newCalId = uri?.let { ContentUris.parseId(it) }
-            android.util.Log.i("CalendarEventRepo", "Created calendar calId=$newCalId, accountType=$ACCOUNT_TYPE")
+            android.util.Log.i("CalendarEventRepo", "Created schedule calendar calId=$newCalId")
             newCalId
         } catch (e: Exception) {
             android.util.Log.e("CalendarEventRepo", "getOrCreateLocalCalendar failed", e)
@@ -728,4 +696,12 @@ class CalendarEventRepository @Inject constructor(
         val displayName: String,
         val accountName: String
     )
+
+    /**
+     * 获取账户的分类 key
+     * 所有日历都使用 "calId:<id>"，因为每个日历都是独立条目
+     */
+    fun getAccountKey(account: CalendarAccountInfo): String {
+        return "calId:${account.calendarIds.first()}"
+    }
 }
