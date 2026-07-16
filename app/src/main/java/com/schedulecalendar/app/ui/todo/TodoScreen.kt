@@ -872,20 +872,41 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
             }
         }
         else -> {
+            val listState = rememberLazyListState()
+            val grouped = eventState.events.groupBy { event ->
+                try {
+                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    sdf.format(Date(event.dtStart))
+                } catch (_: Exception) { "未知日期" }
+            }
+            val sortedDates = grouped.keys.sorted()
+
+            // 自动滚动定位到当天日期或最近有数据的日期
+            LaunchedEffect(sortedDates) {
+                if (sortedDates.isEmpty()) return@LaunchedEffect
+                val todayStr = LocalDate.now().toString()
+                // 找到距离今天最近的有数据日期
+                val targetDate = sortedDates.firstOrNull { it >= todayStr }
+                    ?: sortedDates.last()
+                // 计算该日期在 LazyColumn 中的索引（包含 stickyHeader 偏移）
+                val targetIdx = sortedDates.indexOf(targetDate)
+                if (targetIdx >= 0) {
+                    var index = 0
+                    for (i in 0 until targetIdx) {
+                        index += 1 + (grouped[sortedDates[i]]?.size ?: 0)
+                    }
+                    // 跳过目标日期自身的 stickyHeader，定位到事件列表
+                    index += 1
+                    listState.scrollToItem(index)
+                }
+            }
+
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // 按日期分组
-                val grouped = eventState.events.groupBy { event ->
-                    try {
-                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        sdf.format(Date(event.dtStart))
-                    } catch (_: Exception) { "未知日期" }
-                }
-                val sortedDates = grouped.keys.sorted()
-
                 for (dateStr in sortedDates) {
                     val dayEvents = grouped[dateStr] ?: continue
                     val displayDate = try {
@@ -1492,29 +1513,37 @@ private fun HolidayTab() {
     val holidays = remember { gatherAllHolidays() }
     val today = remember { LocalDate.now() }
     val listState = rememberLazyListState()
+    val grouped = remember(holidays) { holidays.groupBy { it.date.substring(0, 7) } }
+    val sortedMonths = remember(grouped) { grouped.keys.sorted() }
 
     // 自动滚动到当前月份
     LaunchedEffect(holidays) {
         val currentMonthKey = "%04d-%02d".format(today.year, today.monthValue)
-        val currentMonthIdx = holidays.indexOfFirst { it.date.startsWith(currentMonthKey) }
-        val targetIdx = if (currentMonthIdx >= 0) {
-            currentMonthIdx
-        } else {
-            // 当月无节假日，回退到最近的节日
-            val todayStr = today.toString()
-            val futureIdx = holidays.indexOfFirst { it.date >= todayStr }
-            if (futureIdx > 0) {
-                val prev = holidays[futureIdx - 1]
-                val curr = holidays[futureIdx]
-                val prevDiff = ChronoUnit.DAYS.between(LocalDate.parse(prev.date), today)
-                val currDiff = ChronoUnit.DAYS.between(today, LocalDate.parse(curr.date))
-                if (prevDiff <= currDiff) futureIdx - 1 else futureIdx
-            } else if (futureIdx == 0) 0
-            else holidays.lastIndex
+        val todayStr = today.toString()
+
+        // 找到目标月份
+        val targetMonth = sortedMonths.firstOrNull { it == currentMonthKey }
+            ?: sortedMonths.firstOrNull { it > currentMonthKey }
+            ?: sortedMonths.lastOrNull()
+            ?: return@LaunchedEffect
+
+        // 计算 LazyColumn 索引（含 stickyHeader 偏移）
+        val targetMonthIdx = sortedMonths.indexOf(targetMonth)
+        var listIndex = 0
+        for (i in 0 until targetMonthIdx) {
+            listIndex += 1 + (grouped[sortedMonths[i]]?.size ?: 0)
         }
-        if (targetIdx >= 0) {
-            listState.scrollToItem(targetIdx)
+        // 跳过当月 stickyHeader，定位到第一个节假日
+        listIndex += 1
+
+        // 如果当月有节假日，定位到离今天最近的；否则定位到当月第一个
+        val monthItems = grouped[targetMonth] ?: emptyList()
+        val futureItem = monthItems.firstOrNull { it.date >= todayStr }
+        if (futureItem != null) {
+            listIndex += monthItems.indexOf(futureItem)
         }
+
+        listState.scrollToItem(listIndex)
     }
 
     LazyColumn(
@@ -1523,9 +1552,6 @@ private fun HolidayTab() {
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // 按月份分组显示
-        val grouped = holidays.groupBy { it.date.substring(0, 7) } // "YYYY-MM"
-        val sortedMonths = grouped.keys.sorted()
-
         for (month in sortedMonths) {
             val items = grouped[month] ?: continue
             val monthLabel = try {

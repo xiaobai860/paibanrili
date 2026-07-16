@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -90,11 +91,13 @@ fun HuangLiScreen(navController: NavController) {
                     // 左侧：大号日期数字
                     Text(
                         text = "$day",
-                        fontSize = 56.sp,
+                        fontSize = 44.sp,
                         fontWeight = FontWeight.Light,
                         color = Color(0xFF1A1A1A),
-                        lineHeight = 60.sp,
-                        modifier = Modifier.width(56.dp)
+                        lineHeight = 48.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.width(60.dp)
                     )
 
                     // 右侧：全部信息
