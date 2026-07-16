@@ -890,7 +890,7 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
                     val dayEvents = grouped[dateStr] ?: continue
                     val displayDate = try {
                         val parts = dateStr.split("-")
-                        if (parts.size == 3) "${parts[1].toInt()}月${parts[2].toInt()}日" else dateStr
+                        if (parts.size == 3) "${parts[0].toInt()}年${parts[1].toInt()}月${parts[2].toInt()}日" else dateStr
                     } catch (_: Exception) { dateStr }
 
                     stickyHeader {
@@ -1225,7 +1225,7 @@ private fun AnniversaryRow(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.width(60.dp)) {
+            Column(Modifier.width(72.dp)) {
                 Text(
                     dateText,
                     style = MaterialTheme.typography.bodyMedium,

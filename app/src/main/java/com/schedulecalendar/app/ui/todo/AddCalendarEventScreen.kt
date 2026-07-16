@@ -57,7 +57,6 @@ fun AddCalendarEventScreen(
     // 新增字段
     var repeatRule by remember { mutableStateOf(RepeatRule.NONE) }
     var reminderTime by remember { mutableStateOf(ReminderTime.FIFTEEN_MIN) }
-    var selectedColor by remember { mutableStateOf(EventPresetColors.first()) }
     var selectedAccountId by remember { mutableStateOf<Long?>(null) }
 
     // 日期/时间选择弹窗
@@ -144,9 +143,6 @@ fun AddCalendarEventScreen(
             // 提醒时间
             EventReminderSelector(selected = reminderTime, onSelected = { reminderTime = it })
 
-            // 颜色
-            EventColorSelector(selectedColor = selectedColor, onColorSelected = { selectedColor = it })
-
             // 日历账户
             if (accounts.isNotEmpty()) {
                 EventAccountSelector(
@@ -212,8 +208,7 @@ fun AddCalendarEventScreen(
                         location = location.ifBlank { null },
                         calendarId = selectedAccountId,
                         rrule = repeatRule.rrule,
-                        reminderMinutes = if (reminderTime.minutes >= 0) reminderTime.minutes else null,
-                        colorHex = selectedColor
+                        reminderMinutes = if (reminderTime.minutes >= 0) reminderTime.minutes else null
                     ) { success ->
                         isCreating = false
                         if (success) navController.popBackStack()
