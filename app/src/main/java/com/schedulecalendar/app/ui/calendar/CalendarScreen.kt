@@ -283,7 +283,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
 
                 // 外层 Column 高度完全由内容自适应，wrapContent 让列高由内容撑开
                 // 添加水平滑动手势检测，实现月份切换（仅在非操作模式下启用）
-                val swipeThreshold = 100f
+                val swipeThreshold = 50f
                 var offsetX by remember { mutableFloatStateOf(0f) }
                 val isInOperMode = state.batchMode || state.deleteMode || state.copyMode
                 Column(

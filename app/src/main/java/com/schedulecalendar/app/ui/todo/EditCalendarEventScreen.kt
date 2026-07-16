@@ -98,7 +98,6 @@ fun EditCalendarEventScreen(
     // 新增字段（无法从 CalendarEventInfo 读取，使用默认值）
     var repeatRule by remember { mutableStateOf(RepeatRule.NONE) }
     var reminderTime by remember { mutableStateOf(ReminderTime.FIFTEEN_MIN) }
-    var selectedColor by remember { mutableStateOf(EventPresetColors.first()) }
     var selectedAccountId by remember(event.id) { mutableStateOf<Long?>(event.calendarId) }
 
     // 获取可用日历账户
@@ -174,7 +173,6 @@ fun EditCalendarEventScreen(
 
             EventRepeatSelector(selected = repeatRule, onSelected = { repeatRule = it })
             EventReminderSelector(selected = reminderTime, onSelected = { reminderTime = it })
-            EventColorSelector(selectedColor = selectedColor, onColorSelected = { selectedColor = it })
 
             if (accounts.isNotEmpty()) {
                 EventAccountSelector(
