@@ -139,7 +139,7 @@ private fun SchemeCard(scheme: DisplayScheme, onActivate: () -> Unit, onEdit: ()
                     SchemeTag("农历",    true)
                     SchemeTag("节假日",  true)
                 }
-                // 用户自选项（四行数据）
+                // 用户自选项（三行数据）
                 if (!scheme.isNoScheme && scheme.dataRows.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -201,12 +201,11 @@ private fun SchemeEditorDialog(scheme: DisplayScheme?, schemes: List<DisplaySche
         }
     }
     var name by remember { mutableStateOf(defaultName) }
-    // 四行数据行配置
+    // 三行数据行配置
     var dataRows by remember {
         mutableStateOf(
-            scheme?.dataRows?.take(4) ?: listOf(
+            scheme?.dataRows?.take(3) ?: listOf(
                 DataRowConfig(items = listOf(DisplayItemType.SHIFT, DisplayItemType.STATUS)),
-                DataRowConfig(),
                 DataRowConfig(),
                 DataRowConfig()
             )
@@ -246,7 +245,7 @@ private fun SchemeEditorDialog(scheme: DisplayScheme?, schemes: List<DisplaySche
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(88.dp),
+                    modifier = Modifier.fillMaxWidth().height(75.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // 左侧：预览区域（宽度56dp，模拟 DayCell）
@@ -254,7 +253,7 @@ private fun SchemeEditorDialog(scheme: DisplayScheme?, schemes: List<DisplaySche
                         dataRows = dataRows,
                         modifier = Modifier.width(56.dp).fillMaxHeight()
                     )
-                    // 右侧：颜色选择器网格（2列4行，与左侧 DayCell 等高对齐）
+                    // 右侧：颜色选择器网格（2列3行，与左侧 DayCell 等高对齐）
                     ColorPickerGrid(
                         dataRows = dataRows,
                         onLeftColorChange = { rowIndex, color ->
@@ -271,7 +270,7 @@ private fun SchemeEditorDialog(scheme: DisplayScheme?, schemes: List<DisplaySche
                     )
                 }
 
-                // 四行数据行配置
+                // 三行数据行配置
                 Text(
                     "数据行配置（每行最多2项）",
                     style = MaterialTheme.typography.labelMedium,
@@ -550,7 +549,7 @@ private fun MiniDayCellPreview(
             }
             // 4. 农历→数据行间距 3dp
             Spacer(Modifier.height(dataGap))
-            // 5. 数据行区域（四行）
+            // 5. 数据行区域（三行）
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(dataRowGap)
@@ -628,7 +627,7 @@ private fun MiniDayCellPreview(
     }
 }
 
-// ── 颜色选择器网格（2列4行，对应四行数据行的左右槽位）────────────────────────
+// ── 颜色选择器网格（2列3行，对应三行数据行的左右槽位）────────────────────────
 @Composable
 private fun ColorPickerGrid(
     dataRows: List<DataRowConfig>,
@@ -639,57 +638,48 @@ private fun ColorPickerGrid(
     var showPickerForSlot by remember { mutableStateOf<Pair<Int, Boolean>?>(null) }
 
     Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.Top
+        modifier = modifier.fillMaxHeight(),
+        verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
-        // 日期+农历占位区域（20dp日期 + 2dp间距 + 12dp农历 = 34dp）
-        Spacer(modifier = Modifier.height(34.dp))
-        // 农历→数据行间距（2dp，与左侧 dataGap 3dp 接近）
-        Spacer(modifier = Modifier.height(2.dp))
-        // 四行颜色选择器（均分剩余高度，与左侧 DayCell 数据行对齐）
-        Column(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp)
-        ) {
-            dataRows.forEachIndexed { rowIndex, rowConfig ->
-                // 判断该行是否有带预设颜色的特殊类型项（SHIFT/STATUS）
-                val hasLockedItem = rowConfig.items.any { item ->
-                    item != null && item.isSpecialType
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 行标签
-                    Text(
-                        "${rowIndex + 1}",
-                        fontSize = 8.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.width(10.dp)
-                    )
+        // 三行颜色选择器（均分填满左侧日期格子总高度）
+        dataRows.forEachIndexed { rowIndex, rowConfig ->
+            // 判断该行是否有带预设颜色的特殊类型项（SHIFT/STATUS）
+            val hasLockedItem = rowConfig.items.any { item ->
+                item != null && item.isSpecialType
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 行标签
+                Text(
+                    listOf("第一行", "第二行", "第三行").getOrElse(rowIndex) { "${rowIndex + 1}" },
+                    fontSize = 8.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(28.dp)
+                )
 
-                    // 左槽位颜色按钮
+                // 左槽位颜色按钮
+                ColorSlotButton(
+                    color = rowConfig.backgroundColorLeft,
+                    enabled = rowConfig.items.any { it != null },
+                    locked = hasLockedItem,
+                    onClick = { showPickerForSlot = Pair(rowIndex, true) }
+                )
+
+                // 右槽位颜色按钮（仅当有2个数据项时显示）
+                if (rowConfig.items.count { it != null } >= 2) {
                     ColorSlotButton(
-                        color = rowConfig.backgroundColorLeft,
-                        enabled = rowConfig.items.any { it != null },
+                        color = rowConfig.backgroundColorRight,
+                        enabled = true,
                         locked = hasLockedItem,
-                        onClick = { showPickerForSlot = Pair(rowIndex, true) }
+                        onClick = { showPickerForSlot = Pair(rowIndex, false) }
                     )
-
-                    // 右槽位颜色按钮（仅当有2个数据项时显示）
-                    if (rowConfig.items.count { it != null } >= 2) {
-                        ColorSlotButton(
-                            color = rowConfig.backgroundColorRight,
-                            enabled = true,
-                            locked = hasLockedItem,
-                            onClick = { showPickerForSlot = Pair(rowIndex, false) }
-                        )
-                    } else {
-                        Spacer(modifier = Modifier.size(18.dp))
-                    }
+                } else {
+                    Spacer(modifier = Modifier.size(18.dp))
                 }
             }
         }
