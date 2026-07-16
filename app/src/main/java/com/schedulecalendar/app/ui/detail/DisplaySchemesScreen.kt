@@ -246,15 +246,15 @@ private fun SchemeEditorDialog(scheme: DisplayScheme?, schemes: List<DisplaySche
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(92.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // 左侧：预览区域（宽度56dp，模拟 DayCell）
                     MiniDayCellPreview(
                         dataRows = dataRows,
-                        modifier = Modifier.width(56.dp)
+                        modifier = Modifier.width(56.dp).fillMaxHeight()
                     )
-                    // 右侧：颜色选择器网格（2列4行）
+                    // 右侧：颜色选择器网格（2列4行，与左侧 DayCell 等高对齐）
                     ColorPickerGrid(
                         dataRows = dataRows,
                         onLeftColorChange = { rowIndex, color ->
@@ -267,7 +267,7 @@ private fun SchemeEditorDialog(scheme: DisplayScheme?, schemes: List<DisplaySche
                                 set(rowIndex, get(rowIndex).copy(backgroundColorRight = color))
                             }
                         },
-                        previewHeight = 88.dp  // 20 + 2 + 12 + 3 + 4*(12 + 1) = 87dp
+                        modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                 }
 
@@ -800,30 +800,28 @@ private fun ColorPickerGrid(
     dataRows: List<DataRowConfig>,
     onLeftColorChange: (Int, String?) -> Unit,
     onRightColorChange: (Int, String?) -> Unit,
-    previewHeight: androidx.compose.ui.unit.Dp
+    modifier: Modifier = Modifier
 ) {
-    var showPickerForSlot by remember { mutableStateOf<Pair<Int, Boolean>?>(null) } // Pair(rowIndex, isLeft)
+    var showPickerForSlot by remember { mutableStateOf<Pair<Int, Boolean>?>(null) }
 
     Column(
-        modifier = Modifier
-            .width(120.dp)
-            .height(previewHeight),
+        modifier = modifier,
         verticalArrangement = Arrangement.Top
     ) {
         // 农历行占位（2dp + 12dp = 14dp）
         Spacer(modifier = Modifier.height(14.dp))
         // 数据行间距占位（3dp）
         Spacer(modifier = Modifier.height(3.dp))
-        // 四行颜色选择器（与数据行对齐）
+        // 四行颜色选择器（均分剩余高度，与左侧 DayCell 数据行对齐）
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().weight(1f),
             verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
             dataRows.forEachIndexed { rowIndex, rowConfig ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(12.dp),
+                        .weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -850,7 +848,6 @@ private fun ColorPickerGrid(
                             onClick = { showPickerForSlot = Pair(rowIndex, false) }
                         )
                     } else {
-                        // 空槽位占位
                         Spacer(modifier = Modifier.size(18.dp))
                     }
                 }

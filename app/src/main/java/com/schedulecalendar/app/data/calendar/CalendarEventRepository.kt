@@ -706,6 +706,49 @@ class CalendarEventRepository @Inject constructor(
     )
 
     /**
+     * 获取指定日期的所有事件（含年度重复纪念日）
+     * @param dateStr 日期字符串，格式 "yyyy-MM-dd"
+     * @return 当天所有的事件列表（纪念日 + 日程）
+     */
+    fun getEventsForDate(dateStr: String): List<CalendarEventInfo> {
+        val parts = dateStr.split("-")
+        if (parts.size != 3) return emptyList()
+        val year = parts[0].toIntOrNull() ?: return emptyList()
+        val month = parts[1].toIntOrNull() ?: return emptyList()
+        val day = parts[2].toIntOrNull() ?: return emptyList()
+
+        val anniversaryCalId = getOrCreateAnniversaryCalendarId()
+        val allEvents = getAllEvents()
+        val result = mutableListOf<CalendarEventInfo>()
+
+        for (event in allEvents) {
+            if (event.allDay) {
+                val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+                cal.timeInMillis = event.dtStart
+                val eventMonth = cal.get(java.util.Calendar.MONTH) + 1
+                val eventDay = cal.get(java.util.Calendar.DAY_OF_MONTH)
+                if (eventMonth == month && eventDay == day) {
+                    result.add(event)
+                    continue
+                }
+                if (event.rrule?.contains("FREQ=YEARLY") == true) continue
+            }
+            val startDay = java.util.Calendar.getInstance().apply { timeInMillis = event.dtStart }
+            val endDay = java.util.Calendar.getInstance().apply { timeInMillis = event.dtEnd }
+            val selCal = java.util.Calendar.getInstance().apply {
+                set(year, month - 1, day, 0, 0, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val selStart = selCal.timeInMillis
+            val selEnd = selStart + 86400000L
+            if (event.dtStart < selEnd && event.dtEnd > selStart) {
+                result.add(event)
+            }
+        }
+        return result
+    }
+
+    /**
      * 获取账户的分类 key
      * 所有日历都使用 "calId:<id>"，因为每个日历都是独立条目
      */

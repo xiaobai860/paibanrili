@@ -54,6 +54,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.schedulecalendar.app.MainActivity
+import com.schedulecalendar.app.data.calendar.CalendarEventInfo
 import com.schedulecalendar.app.domain.model.*
 import com.schedulecalendar.app.ui.detail.safeColor
 import com.schedulecalendar.app.ui.component.WheelDatePickerDialog
@@ -558,6 +559,19 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                         shiftStatuses = state.allShiftStatuses,
                         onEditClick = { navController.navigate(RouteScheduleDetail(selectedDate)) }
                     )
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // 区域四：纪念日与日程（仅有数据时显示）
+                // ══════════════════════════════════════════════════════════
+                if (state.selectedDateEvents.isNotEmpty()) {
+                    item(key = "anniversary_event_section") {
+                        val todayStr2 = "%04d-%02d-%02d".format(LocalDate.now().year, LocalDate.now().monthValue, LocalDate.now().dayOfMonth)
+                        AnniversaryEventSection(
+                            events = state.selectedDateEvents,
+                            selectedDate = state.selectedDate ?: todayStr2
+                        )
+                    }
                 }
             }
 
@@ -2116,6 +2130,94 @@ private fun SchedulePreviewSection(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+            }
+        }
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 纪念日与日程展示区域
+// ════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun AnniversaryEventSection(
+    events: List<CalendarEventInfo>,
+    selectedDate: String
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "\u7eaa\u5ff5\u65e5\u4e0e\u65e5\u7a0b",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            events.forEach { event ->
+                val isAnniversary = event.title.startsWith("\u7eaa\u5ff5\u65e5: ") ||
+                    event.rrule?.contains("FREQ=YEARLY") == true
+                val displayName = event.title.removePrefix("\u7eaa\u5ff5\u65e5: ")
+                val timeText = if (event.allDay) {
+                    "\u5168\u5929"
+                } else {
+                    val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                    "${sdf.format(java.util.Date(event.dtStart))} - ${sdf.format(java.util.Date(event.dtEnd))}"
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (isAnniversary) Color(0xFFE53935).copy(alpha = 0.08f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isAnniversary) Icons.Default.Favorite else Icons.Default.Event,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = if (isAnniversary) Color(0xFFE53935) else MaterialTheme.colorScheme.primary
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = displayName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = timeText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (isAnniversary) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFFE53935).copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = "\u7eaa\u5ff5\u65e5",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFE53935),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
