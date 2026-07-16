@@ -4,6 +4,7 @@ package com.schedulecalendar.app.ui.calendar
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.schedulecalendar.app.data.calendar.CalendarEventInfo
 import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.ExtraItemRepository
@@ -95,7 +96,9 @@ data class CalendarUiState(
     /** 复制排班：目标起始日期 */
     val copyTargetDate: String?                = null,
     /** 清除排班模式 */
-    val deleteMode: Boolean                    = false
+    val deleteMode: Boolean                    = false,
+    /** 选中日期的纪念日与日程事件 */
+    val selectedDateEvents: List<CalendarEventInfo> = emptyList()
 )
 
 @HiltViewModel
@@ -236,6 +239,9 @@ class CalendarViewModel @Inject constructor(
                 )}
                 syncWidget(allShifts, schedules)
                 syncCalendarWidget(year = s.year, month = s.month, allShifts = allShifts, schedules = schedules, allShiftStatuses = allShiftStatuses, selectedDate = _state.value.selectedDate)
+                // 加载选中日期的纪念日与日程（首次加载或切月后）
+                val selDate = _state.value.selectedDate ?: "%04d-%02d-%02d".format(s.year, s.month, LocalDate.now().dayOfMonth)
+                loadSelectedDateEvents(selDate)
             }
         }
     }
@@ -342,9 +348,11 @@ class CalendarViewModel @Inject constructor(
         if (sameMonth) {
             // 同月：仅更新选中日期，不触发loading，避免闪烁
             _state.update { it.copy(selectedDate = todayStr) }
+            loadSelectedDateEvents(todayStr)
         } else {
             // 跨月：不清除旧数据，避免闪烁
             _state.update { it.copy(year = today.year, month = today.monthValue, selectedDate = todayStr) }
+            loadSelectedDateEvents(todayStr)
             loadCurrentMonth()
         }
     }
@@ -377,6 +385,19 @@ class CalendarViewModel @Inject constructor(
         } else {
             // 仅更新选中日期，不触发导航
             _state.update { it.copy(selectedDate = date) }
+            loadSelectedDateEvents(date)
+        }
+    }
+
+    /** 加载选中日期的纪念日与日程事件 */
+    private fun loadSelectedDateEvents(date: String) {
+        viewModelScope.launch {
+            val events = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    calendarEventRepo.getEventsForDate(date)
+                }
+            } catch (_: Exception) { emptyList() }
+            _state.update { it.copy(selectedDateEvents = events) }
         }
     }
 

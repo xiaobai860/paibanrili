@@ -99,6 +99,11 @@ fun ScheduleDetailScreen(
                 title   = "排班编辑",
                 onBack  = { navController.popBackStack() },
                 actions = {
+                    // 保存按钮（左侧，醒目位置）
+                    TextButton(onClick = vm::save) {
+                        Text("保存", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    }
+                    // 清除按钮（右侧）
                     if (record?.shiftId != null) {
                         TextButton(onClick = vm::deleteRecord) {
                             Text("清除", color = MaterialTheme.colorScheme.error)
@@ -371,14 +376,6 @@ fun ScheduleDetailScreen(
                     }
                 }
             }
-
-            // ── 保存按钮 ──────────────────────────────────────────────
-            Button(
-                onClick  = vm::save,
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                enabled  = record?.shiftId != null,
-                shape    = MaterialTheme.shapes.medium
-            ) { Text("保存排班", style = MaterialTheme.typography.titleSmall) }
 
             // IME 适配：底部留白，确保输入框可滚动到键盘上方
             Spacer(Modifier.height(200.dp))
