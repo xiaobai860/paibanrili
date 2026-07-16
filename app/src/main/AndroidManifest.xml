@@ -84,6 +84,16 @@
                 android:resource="@xml/calendar_widget_info"/>
         </receiver>
 
+        <!-- 小组件配置 Activity（桌面长按 → 编辑） -->
+        <activity
+            android:name=".widget.WidgetConfigActivity"
+            android:exported="true"
+            android:theme="@style/Theme.ScheduleCalendar">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <!-- 上下班提醒闹钟接收器 -->
         <receiver
             android:name=".reminder.AlarmReceiver"

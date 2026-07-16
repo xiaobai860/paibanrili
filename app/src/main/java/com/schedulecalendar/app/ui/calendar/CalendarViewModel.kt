@@ -15,7 +15,7 @@ import com.schedulecalendar.app.domain.model.*
 import com.schedulecalendar.app.widget.CalendarGlanceWidget
 import com.schedulecalendar.app.widget.CalendarWidgetDay
 import com.schedulecalendar.app.widget.CalendarWidgetInfo
-import com.schedulecalendar.app.widget.GlanceWidgetData
+import com.schedulecalendar.app.widget.ClockInWidgetData
 import com.schedulecalendar.app.widget.ScheduleGlanceWidget
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -384,12 +384,14 @@ class CalendarViewModel @Inject constructor(
         val rec = (scheduleRepo.getByDate(date) ?: ScheduleRecord(date))
         scheduleRepo.save(rec.copy(actualStartTime = time))
         _uiEvent.send(CalendarUiEvent.ShowMessage("已记录上班打卡 $time"))
+        syncClockInWidget()
     }
 
     fun clockOut(date: String, time: String) = viewModelScope.launch {
         val rec = (scheduleRepo.getByDate(date) ?: ScheduleRecord(date))
         scheduleRepo.save(rec.copy(actualEndTime = time))
         _uiEvent.send(CalendarUiEvent.ShowMessage("已记录下班打卡 $time"))
+        syncClockInWidget()
     }
 
     /** 补填漏打卡时间 */
@@ -817,24 +819,33 @@ class CalendarViewModel @Inject constructor(
     }
 
     private suspend fun syncWidget(shifts: List<Shift>, schedules: Map<String, ScheduleRecord>) {
-        val today      = LocalDate.now()
-        val todayStr   = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+        val today = LocalDate.now()
+        val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+        val tomorrow = today.plusDays(1)
+        val tomorrowStr = "%04d-%02d-%02d".format(tomorrow.year, tomorrow.monthValue, tomorrow.dayOfMonth)
         val todayShift = schedules[todayStr]?.shiftId?.let { id -> shifts.find { it.id == id } }
-        val workDays   = schedules.values.count { r ->
-            val sh = shifts.find { it.id == r.shiftId }
-            sh != null && sh.builtInType != "rest" && sh.builtInType != "swap"
-        }
-        val restDays   = schedules.values.count { r ->
-            shifts.find { it.id == r.shiftId }?.builtInType == "rest"
-                || shifts.find { it.id == r.shiftId }?.builtInType == "swap"
-        }
-        // 更新 Glance 小组件
-        val widgetData = GlanceWidgetData(
-            todayShift      = todayShift?.name ?: "",
-            todayShiftColor = todayShift?.color ?: "#059669",
-            workDays        = workDays,
-            restDays        = restDays
+        val tomorrowShift = schedules[tomorrowStr]?.shiftId?.let { id -> shifts.find { it.id == id } }
+
+        // 读取打卡状态
+        val clockPrefs = context.getSharedPreferences("clock_in_widget_prefs", Context.MODE_PRIVATE)
+        val savedDate = clockPrefs.getString("clock_in_date", "") ?: ""
+        val actualStart = if (savedDate == todayStr) clockPrefs.getString("clock_in_time", "") ?: "" else ""
+        val actualEnd = if (savedDate == todayStr) clockPrefs.getString("clock_out_time", "") ?: "" else ""
+
+        val widgetData = ClockInWidgetData(
+            shiftName = todayShift?.name ?: "",
+            startTime = todayShift?.startTime ?: "",
+            endTime = todayShift?.endTime ?: "",
+            tomorrowShiftName = tomorrowShift?.name ?: "",
+            actualStartTime = actualStart,
+            actualEndTime = actualEnd,
+            shiftColor = todayShift?.color ?: "#059669"
         )
         ScheduleGlanceWidget.updateWidgetData(context, widgetData)
+    }
+
+    private suspend fun syncClockInWidget() {
+        val s = _state.value
+        syncWidget(s.allShifts, s.schedules)
     }
 }
