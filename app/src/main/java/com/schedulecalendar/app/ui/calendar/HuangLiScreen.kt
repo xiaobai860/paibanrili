@@ -71,7 +71,7 @@ fun HuangLiScreen(navController: NavController) {
                 .background(MaterialTheme.colorScheme.background)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
 
             // ══════════════════════════════════════════════════════════
@@ -90,17 +90,17 @@ fun HuangLiScreen(navController: NavController) {
                     // 左侧：大号日期数字
                     Text(
                         text = "$day",
-                        fontSize = 72.sp,
+                        fontSize = 56.sp,
                         fontWeight = FontWeight.Light,
                         color = Color(0xFF1A1A1A),
-                        lineHeight = 80.sp,
-                        modifier = Modifier.width(80.dp)
+                        lineHeight = 60.sp,
+                        modifier = Modifier.width(56.dp)
                     )
 
                     // 右侧：全部信息
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // 农历日期 + 星期
                         Text(
@@ -116,8 +116,6 @@ fun HuangLiScreen(navController: NavController) {
                             fontSize = 14.sp,
                             color = Color(0xFF666666)
                         )
-
-                        Spacer(Modifier.height(4.dp))
 
                         // 宜（绿色标签 + 完整列表）
                         Row(verticalAlignment = Alignment.Top) {
@@ -135,8 +133,6 @@ fun HuangLiScreen(navController: NavController) {
                                 lineHeight = 24.sp
                             )
                         }
-
-                        Spacer(Modifier.height(4.dp))
 
                         // 忌（红色标签 + 完整列表）
                         Row(verticalAlignment = Alignment.Top) {
