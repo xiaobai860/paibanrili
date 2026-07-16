@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">排班日历</string>
-    <string name="widget_label">排班日历</string>
-    <string name="widget_description">显示当月班次统计信息</string>
+    <string name="widget_label">快捷打卡</string>
+    <string name="widget_description">显示今日班次信息并快捷打卡</string>
     <string name="calendar_widget_label">排班日历</string>
     <string name="calendar_widget_description">显示当月日期与班次信息</string>
 
