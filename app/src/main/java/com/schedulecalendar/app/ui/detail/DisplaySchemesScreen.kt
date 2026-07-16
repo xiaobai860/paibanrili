@@ -65,7 +65,7 @@ fun DisplaySchemesScreen(navController: NavController, vm: DisplaySchemesViewMod
                     name = "预设方案",
                     isNoScheme = true,
                     builtIn = true,
-                    isActive = shouldActivate
+                    isActive = true
                 )
             ) + userSchemes
         }
@@ -156,7 +156,7 @@ private fun SchemeCard(scheme: DisplayScheme, onActivate: () -> Unit, onEdit: ()
                     }
                 }
             }
-            if (!scheme.isActive && !scheme.isNoScheme) {
+            if (!scheme.isNoScheme) {
                 Row {
                     IconButton(onClick = onEdit) {
                         Icon(Icons.Filled.Edit, "编辑", tint = MaterialTheme.colorScheme.primary)
@@ -227,7 +227,7 @@ private fun SchemeEditorDialog(scheme: DisplayScheme?, schemes: List<DisplaySche
         text  = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // 方案名称
                 OutlinedTextField(
@@ -246,7 +246,7 @@ private fun SchemeEditorDialog(scheme: DisplayScheme?, schemes: List<DisplaySche
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(92.dp),
+                    modifier = Modifier.fillMaxWidth().height(88.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // 左侧：预览区域（宽度56dp，模拟 DayCell）
@@ -315,8 +315,6 @@ private fun DataRowEditor(
     allDataRows: List<DataRowConfig>,
     currentRowIndex: Int
 ) {
-    var showLeftColorPicker by remember { mutableStateOf(false) }
-    var showRightColorPicker by remember { mutableStateOf(false) }
     var leftExpanded by remember { mutableStateOf(false) }
     var rightExpanded by remember { mutableStateOf(false) }
 
@@ -341,42 +339,13 @@ private fun DataRowEditor(
         type !in usedItems && type != currentLeftItem
     }
 
-    // 判断左侧/右侧选中的类型是否为特殊类型（SHIFT/STATUS）
-    val isLeftSpecial = currentLeftItem?.isSpecialType == true
-    val isRightSpecial = currentRightItem?.isSpecialType == true
-
-    // 特殊类型的默认背景色
-    val leftSpecialColor = currentLeftItem?.defaultColor
-    val rightSpecialColor = currentRightItem?.defaultColor
-
-    // 当左侧选了特殊类型时，自动设置背景色并禁用颜色选择
-    val effectiveLeftColor = if (isLeftSpecial) leftSpecialColor else rowConfig.backgroundColorLeft
-    val effectiveRightColor = if (isRightSpecial) rightSpecialColor else rowConfig.backgroundColorRight
-
-    // 当选择/取消特殊类型时，自动同步背景色
-    LaunchedEffect(currentLeftItem, isLeftSpecial, leftSpecialColor) {
-        if (isLeftSpecial && rowConfig.backgroundColorLeft != leftSpecialColor) {
-            onConfigChange(rowConfig.copy(backgroundColorLeft = leftSpecialColor))
-        } else if (!isLeftSpecial && leftSpecialColor != null && rowConfig.backgroundColorLeft == leftSpecialColor) {
-            // 切换回非特殊类型，清除特殊颜色
-            onConfigChange(rowConfig.copy(backgroundColorLeft = null))
-        }
-    }
-    LaunchedEffect(currentRightItem, isRightSpecial, rightSpecialColor) {
-        if (isRightSpecial && rowConfig.backgroundColorRight != rightSpecialColor) {
-            onConfigChange(rowConfig.copy(backgroundColorRight = rightSpecialColor))
-        } else if (!isRightSpecial && rightSpecialColor != null && rowConfig.backgroundColorRight == rightSpecialColor) {
-            onConfigChange(rowConfig.copy(backgroundColorRight = null))
-        }
-    }
-
     Card(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         )
     ) {
-        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
             // 行标题
             Text(
                 "第${rowIndex + 1}行",
@@ -386,7 +355,7 @@ private fun DataRowEditor(
 
             // 双下拉输入框布局（固定高度容器防止行高变化）
             Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 88.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // ── 左侧下拉框 ──
@@ -519,142 +488,7 @@ private fun DataRowEditor(
                 }
             }
 
-            // ── 颜色选择区域 ──
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // 左侧颜色选择
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("背景色1", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (isLeftSpecial) {
-                            // 特殊类型：空白+锁图标
-                            Surface(
-                                modifier = Modifier.size(20.dp),
-                                shape = RoundedCornerShape(3.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-                            ) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Filled.Lock, contentDescription = null,
-                                        modifier = Modifier.size(10.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("自动", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else {
-                            Surface(
-                                onClick = { showLeftColorPicker = true },
-                                modifier = Modifier.size(20.dp),
-                                shape = RoundedCornerShape(3.dp),
-                                color = rowConfig.backgroundColorLeft?.let {
-                                    try {
-                                        Color(it.toColorInt())
-                                    } catch (_: Exception) {
-                                        MaterialTheme.colorScheme.surfaceVariant
-                                    }
-                                } ?: MaterialTheme.colorScheme.surfaceVariant,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                            ) {}
-                            if (rowConfig.backgroundColorLeft != null) {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                TextButton(
-                                    onClick = { onConfigChange(rowConfig.copy(backgroundColorLeft = null)) },
-                                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(20.dp)
-                                ) {
-                                    Text("清除", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 右侧颜色选择
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("背景色2", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (isRightSpecial) {
-                            Surface(
-                                modifier = Modifier.size(20.dp),
-                                shape = RoundedCornerShape(3.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-                            ) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Filled.Lock, contentDescription = null,
-                                        modifier = Modifier.size(10.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("自动", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else {
-                            Surface(
-                                onClick = { showRightColorPicker = true },
-                                modifier = Modifier.size(20.dp),
-                                shape = RoundedCornerShape(3.dp),
-                                color = rowConfig.backgroundColorRight?.let {
-                                    try {
-                                        Color(it.toColorInt())
-                                    } catch (_: Exception) {
-                                        MaterialTheme.colorScheme.surfaceVariant
-                                    }
-                                } ?: MaterialTheme.colorScheme.surfaceVariant,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                            ) {}
-                            if (rowConfig.backgroundColorRight != null) {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                TextButton(
-                                    onClick = { onConfigChange(rowConfig.copy(backgroundColorRight = null)) },
-                                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(20.dp)
-                                ) {
-                                    Text("清除", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
-    }
-
-    // 左侧颜色选择器对话框（仅非特殊类型时可用）
-    if (showLeftColorPicker && !isLeftSpecial) {
-        SimpleColorPicker(
-            initialColor = rowConfig.backgroundColorLeft,
-            onColorSelected = { color ->
-                onConfigChange(rowConfig.copy(backgroundColorLeft = color))
-                showLeftColorPicker = false
-            },
-            onClear = {
-                onConfigChange(rowConfig.copy(backgroundColorLeft = null))
-                showLeftColorPicker = false
-            },
-            onDismiss = { showLeftColorPicker = false }
-        )
-    }
-
-    // 右侧颜色选择器对话框（仅非特殊类型时可用）
-    if (showRightColorPicker && !isRightSpecial) {
-        SimpleColorPicker(
-            initialColor = rowConfig.backgroundColorRight,
-            onColorSelected = { color ->
-                onConfigChange(rowConfig.copy(backgroundColorRight = color))
-                showRightColorPicker = false
-            },
-            onClear = {
-                onConfigChange(rowConfig.copy(backgroundColorRight = null))
-                showRightColorPicker = false
-            },
-            onDismiss = { showRightColorPicker = false }
-        )
     }
 }
 
@@ -808,16 +642,20 @@ private fun ColorPickerGrid(
         modifier = modifier,
         verticalArrangement = Arrangement.Top
     ) {
-        // 农历行占位（2dp + 12dp = 14dp）
-        Spacer(modifier = Modifier.height(14.dp))
-        // 数据行间距占位（3dp）
-        Spacer(modifier = Modifier.height(3.dp))
+        // 日期+农历占位区域（20dp日期 + 2dp间距 + 12dp农历 = 34dp）
+        Spacer(modifier = Modifier.height(34.dp))
+        // 农历→数据行间距（2dp，与左侧 dataGap 3dp 接近）
+        Spacer(modifier = Modifier.height(2.dp))
         // 四行颜色选择器（均分剩余高度，与左侧 DayCell 数据行对齐）
         Column(
             modifier = Modifier.fillMaxWidth().weight(1f),
             verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
             dataRows.forEachIndexed { rowIndex, rowConfig ->
+                // 判断该行是否有带预设颜色的特殊类型项（SHIFT/STATUS）
+                val hasLockedItem = rowConfig.items.any { item ->
+                    item != null && item.isSpecialType
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -837,6 +675,7 @@ private fun ColorPickerGrid(
                     ColorSlotButton(
                         color = rowConfig.backgroundColorLeft,
                         enabled = rowConfig.items.any { it != null },
+                        locked = hasLockedItem,
                         onClick = { showPickerForSlot = Pair(rowIndex, true) }
                     )
 
@@ -845,6 +684,7 @@ private fun ColorPickerGrid(
                         ColorSlotButton(
                             color = rowConfig.backgroundColorRight,
                             enabled = true,
+                            locked = hasLockedItem,
                             onClick = { showPickerForSlot = Pair(rowIndex, false) }
                         )
                     } else {
@@ -884,8 +724,10 @@ private fun ColorPickerGrid(
 private fun ColorSlotButton(
     color: String?,
     enabled: Boolean,
+    locked: Boolean = false,
     onClick: () -> Unit
 ) {
+    val isClickable = enabled && !locked
     val backgroundColor = color?.let {
         try {
             Color(it.toColorInt())
@@ -896,26 +738,36 @@ private fun ColorSlotButton(
 
     Surface(
         modifier = Modifier
-            .size(20.dp)
+            .fillMaxHeight()
+            .sizeIn(maxWidth = 24.dp, maxHeight = 24.dp)
             .clip(RoundedCornerShape(3.dp))
             .then(
-                if (enabled) Modifier.clickable(onClick = onClick)
+                if (isClickable) Modifier.clickable(onClick = onClick)
                 else Modifier
             ),
         shape = RoundedCornerShape(3.dp),
-        color = if (enabled) backgroundColor else backgroundColor.copy(alpha = 0.4f),
+        color = if (locked) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                else if (enabled) backgroundColor
+                else backgroundColor.copy(alpha = 0.4f),
         border = BorderStroke(
             1.dp,
-            if (enabled) MaterialTheme.colorScheme.outline
+            if (locked) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+            else if (enabled) MaterialTheme.colorScheme.outline
             else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
         )
     ) {
-        if (color != null && enabled) {
-            // 显示选中标记
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            if (locked) {
+                Icon(
+                    Icons.Filled.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(10.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else if (color != null && enabled) {
                 Icon(
                     Icons.Filled.Check,
                     contentDescription = null,
