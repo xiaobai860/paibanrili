@@ -708,9 +708,9 @@ private fun DayCell(
     val hasShift = shift != null && schemeHasShiftItem
     val hasStatus = appliedSt != null && schemeHasStatusItem
     
-    // 获取四行数据行配置
+    // 获取三行数据行配置
     val dataRows = if (!displayScheme.isNoScheme) {
-        displayScheme.dataRows.take(4)
+        displayScheme.dataRows.take(3)
     } else emptyList()
 
     // ── 数据项文本计算 ──────────────────────────────────────────
@@ -828,7 +828,7 @@ private fun DayCell(
                     }
                     if (visibleItems.isNotEmpty()) Pair(true, index) else null
                 }
-                val emptyCount = (4 - contentRows.size).coerceAtLeast(0)
+                val emptyCount = (3 - contentRows.size).coerceAtLeast(0)
                 // 空行上移，数据行（含 SHIFT/STATUS）下沉，维持配置顺序
                 val allRows = List(emptyCount) { Pair(false, -1) } + contentRows
 
