@@ -99,15 +99,15 @@ fun ScheduleDetailScreen(
                 title   = "排班编辑",
                 onBack  = { navController.popBackStack() },
                 actions = {
-                    // 保存按钮（左侧，醒目位置）
-                    TextButton(onClick = vm::save) {
-                        Text("保存", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    }
-                    // 清除按钮（右侧）
+                    // 清除按钮（左侧）
                     if (record?.shiftId != null) {
                         TextButton(onClick = vm::deleteRecord) {
                             Text("清除", color = MaterialTheme.colorScheme.error)
                         }
+                    }
+                    // 保存按钮（右侧）
+                    TextButton(onClick = vm::save) {
+                        Text("保存", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     }
                 }
             )
