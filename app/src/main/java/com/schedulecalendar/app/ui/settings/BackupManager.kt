@@ -180,11 +180,12 @@ class BackupManager @Inject constructor(
         return if (relativePath.isNotEmpty()) "$basePath/$relativePath" else basePath
     }
 
-    // ── 应用数据自动备份（每天最新一条） ──────────────────
+    // ── 应用数据自动备份（每天最新一条，私有+自定义目录视为整体） ──
 
     /**
      * 应用数据自动备份，每天只保留最新一条。
      * keepCount=0 时完全跳过。
+     * 私有目录和自定义目录视为整体：写入新备份后，从两个目录中清理当天的旧自动备份。
      */
     suspend fun autoBackupAppData() {
         val keepCount = prefs.getAppDataKeepCount()
@@ -198,33 +199,48 @@ class BackupManager @Inject constructor(
 
             if (customPath.isNotBlank() && isSafPath(customPath)) {
                 // SAF 目录写入
-                val treeUri = customPath.toUri()
-                // 删除今天旧的自动备份
-                val docDir = DocumentFile.fromTreeUri(context, treeUri)
-                docDir?.listFiles()?.filter { doc ->
-                    val n = doc.name ?: ""
-                    n.startsWith("应用数据_") && n.contains(today) && !n.contains("_manual") && n.endsWith(".json")
-                }?.forEach { it.delete() }
-                writeSafBackupFile(treeUri, fileName, json)
+                writeSafBackupFile(customPath.toUri(), fileName, json)
             } else {
                 val targetDir = if (customPath.isNotBlank()) {
                     File(resolveSafPath(customPath)).also { it.mkdirs() }
                 } else {
                     privateBackupDir
                 }
-                // 查找今天已有的自动备份，替换之
-                val existingToday = targetDir.listFiles { f ->
-                    f.name.startsWith("应用数据_") && f.name.contains(today)
-                            && !f.name.contains("_manual") && f.name.endsWith(".json")
-                }
                 val file = File(targetDir, fileName)
                 file.writeText(json)
-                // 删除今天旧的自动备份（如果有）
-                existingToday?.filter { it.absolutePath != file.absolutePath }?.forEach { it.delete() }
             }
-            // 裁剪保留天数
+
+            // 将私有目录和自定义目录视为整体，清理两个目录中当天的旧自动备份
+            deleteTodayAutoBackups(today, privateBackupDir)
+            if (customPath.isNotBlank()) {
+                if (isSafPath(customPath)) {
+                    deleteTodaySafAutoBackups(customPath.toUri(), today)
+                } else {
+                    val customDir = File(resolveSafPath(customPath))
+                    if (customDir.exists()) deleteTodayAutoBackups(today, customDir)
+                }
+            }
+
+            // 裁剪保留天数（跨目录合并后统一裁剪）
             pruneAppDataBackups(keepCount, listAppDataBackups())
         }
+    }
+
+    /** 删除本地目录中当天的自动备份文件 */
+    private fun deleteTodayAutoBackups(today: String, dir: File) {
+        dir.listFiles { f ->
+            f.name.startsWith("应用数据_") && f.name.contains(today)
+                    && !f.name.contains("_manual") && f.name.endsWith(".json")
+        }?.forEach { it.delete() }
+    }
+
+    /** 删除 SAF 目录中当天的自动备份文件 */
+    private fun deleteTodaySafAutoBackups(treeUri: Uri, today: String) {
+        val docDir = DocumentFile.fromTreeUri(context, treeUri) ?: return
+        docDir.listFiles().filter { doc ->
+            val n = doc.name ?: ""
+            n.startsWith("应用数据_") && n.contains(today) && !n.contains("_manual") && n.endsWith(".json")
+        }.forEach { it.delete() }
     }
 
     // ── 班次配置自动备份（每次修改生成新备份） ──────────

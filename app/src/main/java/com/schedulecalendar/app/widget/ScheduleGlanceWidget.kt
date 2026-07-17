@@ -16,6 +16,7 @@ import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
+import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.layout.*
@@ -26,9 +27,9 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
-import com.schedulecalendar.app.domain.model.HolidayData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.schedulecalendar.app.domain.model.HolidayData
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -138,7 +139,7 @@ private fun parseShiftColor(hex: String): ColorProvider {
         val b = h.substring(4, 6).toIntOrNull(16) ?: 0x69
         Color(r / 255f, g / 255f, b / 255f, 1f)
     } else Color(0xFF059669)
-    return cp(color)
+    return ColorProvider(color)
 }
 
 /** 计算下一个法定节假日天数 */
@@ -191,10 +192,11 @@ private fun ClockInWidgetContent() {
         KEY_CFG_DISPLAY_MODE, DISPLAY_MODE_SHIFT_TOMORROW
     ) ?: DISPLAY_MODE_SHIFT_TOMORROW
     val textHex = configPrefs.getString(KEY_CFG_TEXT_COLOR, "#FF333333") ?: "#FF333333"
-    val bgHex = configPrefs.getString(KEY_CFG_BG_COLOR, "#FFF5F5F5") ?: "#FFF5F5F5"
-    val bgAlpha = configPrefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 1.0f)
+    val bgHex = configPrefs.getString(KEY_CFG_BG_COLOR, "#FFFFFFFF") ?: "#FFFFFFFF"
+    val bgAlpha = configPrefs.getFloat(KEY_CFG_SCHEDULE_BG_TRANSPARENCY,
+        configPrefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 1.0f))
     val utc = hexToWidgetColor(textHex, Color(0xFF333333))
-    val ubg = hexToWidgetColor(bgHex, Color(0xFFF5F5F5)).copy(alpha = bgAlpha)
+    val ubg = hexToWidgetColor(bgHex, Color.White).copy(alpha = bgAlpha)
 
     // 解析班次颜色
     val shiftColor = parseShiftColor(data.shiftColor)
@@ -206,8 +208,9 @@ private fun ClockInWidgetContent() {
     Row(
         modifier = GlanceModifier
             .fillMaxSize()
-            .background(cp(ubg))
-            .padding(6.dp),
+            .background(ColorProvider(ubg))
+            .cornerRadius(12.dp)
+            .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // ── 左侧：班次信息（点击跳转主页面） ──
@@ -224,7 +227,7 @@ private fun ClockInWidgetContent() {
                     text = data.shiftName,
                     style = TextStyle(
                         color = shiftColor,
-                        fontSize = 14.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     ),
                     maxLines = 1
@@ -232,7 +235,7 @@ private fun ClockInWidgetContent() {
             } else {
                 Text(
                     text = "\u4eca\u65e5\u65e0\u6392\u73ed",
-                    style = TextStyle(color = cp(utc.copy(alpha = 0.6f)), fontSize = 13.sp),
+                    style = TextStyle(color = ColorProvider(utc.copy(alpha = 0.55f)), fontSize = 13.sp),
                     maxLines = 1
                 )
             }
@@ -240,9 +243,9 @@ private fun ClockInWidgetContent() {
             // 上下班时间
             if (data.startTime.isNotEmpty() || data.endTime.isNotEmpty()) {
                 val timeColor = when {
-                    hasClockIn && !hasClockOut -> cp(Color(0xFFF59E0B))
-                    hasClockOut -> cp(Color(0xFF10B981))
-                    else -> cp(utc.copy(alpha = 0.6f))
+                    hasClockIn && !hasClockOut -> ColorProvider(Color(0xFFF59E0B))
+                    hasClockOut -> ColorProvider(Color(0xFF10B981))
+                    else -> ColorProvider(utc.copy(alpha = 0.55f))
                 }
                 Text(
                     text = "$displayStart \u2013 $displayEnd",
@@ -260,7 +263,7 @@ private fun ClockInWidgetContent() {
                         Text(
                             text = countdownText,
                             style = TextStyle(
-                                color = cp(Color(0xFFDC2626)),
+                                color = ColorProvider(Color(0xFFDC2626)),
                                 fontSize = 10.sp
                             ),
                             maxLines = 1
@@ -273,7 +276,7 @@ private fun ClockInWidgetContent() {
                         Text(
                             text = "\u660e\u5929\uff1a${data.tomorrowShiftName}",
                             style = TextStyle(
-                                color = cp(utc.copy(alpha = 0.6f)),
+                                color = ColorProvider(utc.copy(alpha = 0.55f)),
                                 fontSize = 10.sp
                             ),
                             maxLines = 1
@@ -289,22 +292,22 @@ private fun ClockInWidgetContent() {
         when {
             !hasClockIn -> {
                 btnText = "\u4e0a\u73ed\n\u6253\u5361"
-                btnColor = cp(Color(0xFF059669))
+                btnColor = ColorProvider(Color(0xFF059669))
             }
             !hasClockOut -> {
                 btnText = "\u4e0b\u73ed\n\u6253\u5361"
-                btnColor = cp(Color(0xFFF59E0B))
+                btnColor = ColorProvider(Color(0xFFF59E0B))
             }
             else -> {
                 btnText = actualEnd.take(5)
-                btnColor = cp(Color(0xFF9CA3AF))
+                btnColor = ColorProvider(Color(0xFF9CA3AF))
             }
         }
 
         Box(
             modifier = GlanceModifier
-                .width(40.dp)
-                .height(40.dp)
+                .width(42.dp)
+                .height(42.dp)
                 .background(btnColor)
                 .clickable(actionRunCallback<ClockInAction>()),
             contentAlignment = Alignment.Center
@@ -312,7 +315,7 @@ private fun ClockInWidgetContent() {
             Text(
                 text = btnText,
                 style = TextStyle(
-                    color = cp(Color.White),
+                    color = ColorProvider(Color.White),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 ),
@@ -334,10 +337,6 @@ class OpenAppAction : ActionCallback {
             ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
         intent?.let { context.startActivity(it) }
     }
-}
-
-private fun cp(color: Color): ColorProvider = object : ColorProvider {
-    override fun getColor(context: Context): Color = color
 }
 
 private fun hexToWidgetColor(hex: String, fallback: Color): Color {

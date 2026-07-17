@@ -35,6 +35,9 @@ const val WIDGET_CONFIG_PREFS = "widget_config_prefs"
 const val KEY_CFG_TEXT_COLOR      = "cfg_text_color"
 const val KEY_CFG_BG_COLOR        = "cfg_bg_color"
 const val KEY_CFG_BG_TRANSPARENCY = "cfg_bg_transparency"
+// 各小组件独立透明度键
+const val KEY_CFG_CALENDAR_BG_TRANSPARENCY = "cfg_calendar_bg_transparency"
+const val KEY_CFG_SCHEDULE_BG_TRANSPARENCY = "cfg_schedule_bg_transparency"
 
 // 2x1 快捷打卡小组件显示模式
 const val KEY_CFG_DISPLAY_MODE = "cfg_schedule_display_mode"
@@ -119,7 +122,9 @@ private fun WidgetConfigScreen(
 ) {
     val context = LocalContext.current
     val prefs = context.getSharedPreferences(WIDGET_CONFIG_PREFS, Context.MODE_PRIVATE)
-    val savedTransparency = prefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 1.0f)
+    // 读取各自独立的透明度
+    val calendarTransparencyKey = if (isScheduleWidget) KEY_CFG_SCHEDULE_BG_TRANSPARENCY else KEY_CFG_CALENDAR_BG_TRANSPARENCY
+    val savedTransparency = prefs.getFloat(calendarTransparencyKey, 1.0f)
     var bgTransparency by remember { mutableFloatStateOf(savedTransparency) }
 
     val savedMode = prefs.getString(KEY_CFG_DISPLAY_MODE, DISPLAY_MODE_SHIFT_TOMORROW)
@@ -133,7 +138,7 @@ private fun WidgetConfigScreen(
 
     // 默认颜色（不再支持配置，写死为默认值）
     val defaultTextColor = Color(0xFF333333)
-    val defaultBgColor = Color(0xFFF5F5F5)
+    val defaultBgColor = Color.White
 
     Scaffold(
         topBar = {
@@ -153,11 +158,12 @@ private fun WidgetConfigScreen(
             ) {
                 Button(
                     onClick = {
-                        // 同步写入（含默认颜色 + 透明度 + 显示模式）
+                        // 同步写入（含默认颜色 + 各自透明度 + 显示模式）
+                        val transparencyKey = if (isScheduleWidget) KEY_CFG_SCHEDULE_BG_TRANSPARENCY else KEY_CFG_CALENDAR_BG_TRANSPARENCY
                         prefs.edit()
                             .putString(KEY_CFG_TEXT_COLOR, "#FF333333")
-                            .putString(KEY_CFG_BG_COLOR, "#FFF5F5F5")
-                            .putFloat(KEY_CFG_BG_TRANSPARENCY, bgTransparency)
+                            .putString(KEY_CFG_BG_COLOR, "#FFFFFFFF")
+                            .putFloat(transparencyKey, bgTransparency)
                             .putString(KEY_CFG_DISPLAY_MODE, selectedMode)
                             .commit()
                         onDone()
@@ -230,7 +236,7 @@ private fun WidgetConfigScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "背景透明度",
+                            text = if (isScheduleWidget) "快捷打卡背景透明度" else "日历背景透明度",
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurface
                         )

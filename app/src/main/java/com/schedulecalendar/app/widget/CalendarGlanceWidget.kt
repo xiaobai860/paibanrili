@@ -3,7 +3,6 @@ package com.schedulecalendar.app.widget
 
 import android.content.Context
 import android.content.Intent
-import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.TextUnit
@@ -19,6 +18,7 @@ import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
+import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.layout.*
@@ -32,8 +32,6 @@ import com.google.gson.Gson
 import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.domain.model.HolidayData
 import com.schedulecalendar.app.domain.model.LunarCalendar
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 data class CalendarWidgetDay(
@@ -100,25 +98,28 @@ private fun CalendarWidgetContent() {
     val context = LocalContext.current
     val cfgPrefs = context.getSharedPreferences(WIDGET_CONFIG_PREFS, Context.MODE_PRIVATE)
     val textHex = cfgPrefs.getString(KEY_CFG_TEXT_COLOR, "#FF333333") ?: "#FF333333"
-    val bgHex = cfgPrefs.getString(KEY_CFG_BG_COLOR, "#FFF5F5F5") ?: "#FFF5F5F5"
-    val bgAlpha = cfgPrefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 1.0f)
+    val bgHex = cfgPrefs.getString(KEY_CFG_BG_COLOR, "#FFFFFFFF") ?: "#FFFFFFFF"
+    val bgAlpha = cfgPrefs.getFloat(KEY_CFG_CALENDAR_BG_TRANSPARENCY,
+        cfgPrefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 1.0f))
     val utc = hexToWidgetColor(textHex, Color(0xFF333333))
-    val ubg = hexToWidgetColor(bgHex, Color(0xFFF5F5F5)).copy(alpha = bgAlpha)
+    val ubg = hexToWidgetColor(bgHex, Color.White).copy(alpha = bgAlpha)
     val ws = LocalSize.current
     val isLarge = ws.height >= 220.dp
     val today = LocalDate.now()
     val isCurMon = data.year == today.year && data.month == today.monthValue
     val headerText = if (data.month > 0) "${data.year}\u5e74${data.month}\u6708" else "${today.year}\u5e74${today.monthValue}\u6708"
     val weekLabels = listOf("\u4e00", "\u4e8c", "\u4e09", "\u56db", "\u4e94", "\u516d", "\u65e5")
-    val tfs = if (isLarge) 16.sp else 14.sp
-    val wfs = if (isLarge) 10.sp else 9.sp
-    val dfs = if (isLarge) 13.sp else 11.sp
-    val sfs = if (isLarge) 9.sp else 8.sp
-    val stfs = if (isLarge) 8.sp else 7.sp
-    val lfs = 8.sp
+    val tfs = if (isLarge) 15.sp else 13.sp
+    val wfs = if (isLarge) 9.sp else 8.sp
+    val dfs = if (isLarge) 12.sp else 10.sp
+    val sfs = if (isLarge) 8.sp else 7.sp
+    val stfs = if (isLarge) 7.sp else 6.sp
+    val lfs = 7.sp
     Box(
-        modifier = GlanceModifier.fillMaxSize().background(cp(ubg))
-            .padding(if (isLarge) 6.dp else 4.dp),
+        modifier = GlanceModifier.fillMaxSize()
+            .background(ColorProvider(ubg))
+            .cornerRadius(16.dp)
+            .padding(if (isLarge) 8.dp else 5.dp),
         contentAlignment = Alignment.TopCenter
     ) {
         Column(modifier = GlanceModifier.fillMaxSize()) {
@@ -129,7 +130,7 @@ private fun CalendarWidgetContent() {
             ) {
                 Text(
                     text = headerText,
-                    style = TextStyle(color = cp(utc), fontSize = tfs, fontWeight = FontWeight.Bold)
+                    style = TextStyle(color = ColorProvider(utc), fontSize = tfs, fontWeight = FontWeight.Bold)
                 )
                 Spacer(modifier = GlanceModifier.defaultWeight())
                 Box(
@@ -139,15 +140,15 @@ private fun CalendarWidgetContent() {
                 ) {
                     Text(
                         text = "\u21bb",
-                        style = TextStyle(color = cp(utc), fontSize = 12.sp)
+                        style = TextStyle(color = ColorProvider(utc), fontSize = 12.sp)
                     )
                 }
             }
             Row(modifier = GlanceModifier.fillMaxWidth()) {
                 weekLabels.forEachIndexed { i, label ->
                     Box(modifier = GlanceModifier.defaultWeight().padding(1.dp), contentAlignment = Alignment.Center) {
-                        val lc = if (i >= 5) Color(0xFFDC2626) else utc.copy(alpha = 0.6f)
-                        Text(text = label, style = TextStyle(color = cp(lc), fontSize = wfs, fontWeight = FontWeight.Medium))
+                        val lc = if (i >= 5) Color(0xFFDC2626) else utc.copy(alpha = 0.55f)
+                        Text(text = label, style = TextStyle(color = ColorProvider(lc), fontSize = wfs, fontWeight = FontWeight.Medium))
                     }
                 }
             }
@@ -208,7 +209,7 @@ private fun CalendarDayCellContent(
     }
     val clickAction = actionRunCallback<OpenDateAction>(
         actionParametersOf(OpenDateAction.KEY_DATE to day.dateStr))
-    Box(modifier = GlanceModifier.fillMaxSize().background(cp(cellBg)).clickable(clickAction),
+    Box(modifier = GlanceModifier.fillMaxSize().background(ColorProvider(cellBg)).clickable(clickAction),
         contentAlignment = Alignment.TopCenter) {
         Column(modifier = GlanceModifier.fillMaxWidth().padding(vertical = if (isLarge) 2.dp else 1.dp),
             horizontalAlignment = Alignment.CenterHorizontally) {
@@ -216,11 +217,11 @@ private fun CalendarDayCellContent(
             Row(verticalAlignment = Alignment.Top) {
                 val dayColor = if (isToday) Color(0xFF2E7D32) else textColor
                 Text(text = day.day.toString(),
-                    style = TextStyle(color = cp(dayColor), fontSize = dayNumberSize,
+                    style = TextStyle(color = ColorProvider(dayColor), fontSize = dayNumberSize,
                         fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal))
                 if (isLegalHoliday && isHolidayFirstDay) {
                     Text(text = "\u5047",
-                        style = TextStyle(color = cp(Color(0xFFDC2626)), fontSize = 7.sp,
+                        style = TextStyle(color = ColorProvider(Color(0xFFDC2626)), fontSize = 6.sp,
                             fontWeight = FontWeight.Bold))
                 }
             }
@@ -236,8 +237,8 @@ private fun CalendarDayCellContent(
                     else -> ""
                 }
                 if (displayText.isNotEmpty()) {
-                    val txtColor = if (isHolidayFirstDay && holidayName != null) Color(0xFFDC2626) else Color(0xFF9E9E9E)
-                    Text(text = displayText, style = TextStyle(color = cp(txtColor), fontSize = lunarFontSize), maxLines = 1)
+                    val txtColor = if (isHolidayFirstDay && holidayName != null) Color(0xFFDC2626) else Color(0xFF999999)
+                    Text(text = displayText, style = TextStyle(color = ColorProvider(txtColor), fontSize = lunarFontSize), maxLines = 1)
                 }
             }
             if (hasShift) {
@@ -248,15 +249,11 @@ private fun CalendarDayCellContent(
                     val b = shiftHex.substring(4, 6).toIntOrNull(16) ?: 0xF6
                     Color(r / 255f, g / 255f, b / 255f, 1f)
                 } else Color(0xFF3B82F6)
-                Text(text = day.shiftName, style = TextStyle(color = cp(shiftColor), fontSize = shiftFontSize), maxLines = 1)
+                Text(text = day.shiftName, style = TextStyle(color = ColorProvider(shiftColor), fontSize = shiftFontSize), maxLines = 1)
             }
-            if (hasStatus) Text(text = day.statusName, style = TextStyle(color = cp(Color(0xFFF97316)), fontSize = statusFontSize), maxLines = 1)
+            if (hasStatus) Text(text = day.statusName, style = TextStyle(color = ColorProvider(Color(0xFFF97316)), fontSize = statusFontSize), maxLines = 1)
         }
     }
-}
-
-private fun cp(color: Color): ColorProvider = object : ColorProvider {
-    override fun getColor(context: Context): Color = color
 }
 
 private fun hexToWidgetColor(hex: String, fallback: Color): Color {
