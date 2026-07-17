@@ -411,11 +411,11 @@ private fun PermissionManagementSection() {
                                 }
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = "\u4e3a\u786e\u4fdd\u95f9\u949f\u63d0\u9192\u5728\u540e\u53f0\u51c6\u65f6\u89e6\u53d1\uff0c\u8bf7\u5728\u7cfb\u7edf\u8bbe\u7f6e\u4e2d\u4e3a\u672c\u5e94\u7528\u5f00\u542f\uff1a\n" +
-                                        "\u2022 \u81ea\u542f\u52a8\u7ba1\u7406\n" +
-                                        "\u2022 \u7701\u7535\u7b56\u7565 \u2192 \u65e0\u9650\u5236\n" +
-                                        "\u2022 \u540e\u53f0\u5f39\u51fa\u754c\u9762\n" +
-                                        "\u2022 \u9501\u5c4f\u663e\u793a",
+                                    text = "\u4e3a\u786e\u4fdd\u63d0\u9192\u529f\u80fd\u5728\u540e\u53f0\u53ef\u9760\u8fd0\u884c\uff0c\u8bf7\u5728\u7cfb\u7edf\u8bbe\u7f6e\u4e2d\u4e3a\u672c\u5e94\u7528\u5f00\u542f\u4ee5\u4e0b\u6743\u9650\uff1a\n" +
+                                        "\u2022 \u81ea\u542f\u52a8\u7ba1\u7406\uff08\u5f00\u673a\u540e\u81ea\u52a8\u6062\u590d\u95f9\u949f\u63d0\u9192\uff09\n" +
+                                        "\u2022 \u7701\u7535\u7b56\u7565 \u2192 \u65e0\u9650\u5236\uff08\u9632\u6b62\u540e\u53f0\u88ab\u7cfb\u7edf\u6740\u6b7b\uff09\n" +
+                                        "\u2022 \u540e\u53f0\u5f39\u51fa\u754c\u9762\uff08\u70b9\u51fb\u901a\u77e5\u540e\u6253\u5f00\u5e94\u7528\uff09\n" +
+                                        "\u2022 \u684c\u9762\u5feb\u6377\u65b9\u5f0f\uff08\u957f\u6309\u56fe\u6807\u663e\u793a\u6253\u5361\u5feb\u6377\u65b9\u5f0f\uff09",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     lineHeight = 16.sp
