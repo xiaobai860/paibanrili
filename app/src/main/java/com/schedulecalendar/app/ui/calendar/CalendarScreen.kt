@@ -354,6 +354,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             val detail: DayScheduleDetail?, val isToday: Boolean,
                             val isHoliday: Boolean, val isWeekend: Boolean,
                             val selected: Boolean,
+                            val hasCalendarEvent: Boolean = false,
                             val isPrevMonth: Boolean = false, val isNextMonth: Boolean = false
                         )
                     // 构建完整网格数据：prevMonth尾部 + 当月 + nextMonth头部
@@ -384,6 +385,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             day = day, dateStr = dateStr,
                             shift = shift, record = record, detail = detail,
                             isToday = false, isHoliday = isHol, isWeekend = isWknd, selected = selected,
+                            hasCalendarEvent = dateStr in state.datesWithEvents,
                             isPrevMonth = true
                         )
                     }
@@ -404,7 +406,8 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             state.batchMode || state.deleteMode    -> dateStr in state.batchSelected
                             else                                   -> dateStr == state.selectedDate
                         }
-                        DayCellData(day, dateStr, shift, record, detail, isToday, isHol, isWknd, selected)
+                        DayCellData(day, dateStr, shift, record, detail, isToday, isHol, isWknd, selected,
+                            hasCalendarEvent = dateStr in state.datesWithEvents)
                     }
                     val totalCells = firstDow + daysInMonth
                     val totalRows = (totalCells + 6) / 7  // 向上取整
@@ -429,6 +432,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             day = idx, dateStr = dateStr,
                             shift = shift, record = record, detail = detail,
                             isToday = false, isHoliday = isHol, isWeekend = isWknd, selected = selected,
+                            hasCalendarEvent = dateStr in state.datesWithEvents,
                             isNextMonth = true
                         )
                     }
@@ -455,6 +459,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                             shiftStatuses = state.allShiftStatuses,
                                             batchMode = state.batchMode || state.deleteMode,
                                             selected = d.selected,
+                                            hasCalendarEvent = d.hasCalendarEvent,
                                             isPrevMonth = d.isPrevMonth, isNextMonth = d.isNextMonth,
                                             onClick = {
                                                 val blockPrev = (state.batchMode || state.deleteMode) && d.isPrevMonth
@@ -621,6 +626,28 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
 // 日历网格 DayCell
 // ════════════════════════════════════════════════════════════════════════════
 
+/**
+ * 状态迷你角标（早/迟/注）
+ * 显示在日期数字左侧，垂直排列
+ */
+@Composable
+private fun StatusMiniBadge(text: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(2.dp),
+        color = color.copy(alpha = 0.15f)
+    ) {
+        Text(
+            text = text,
+            fontSize = 8.sp,
+            lineHeight = 8.sp,
+            style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
+            fontWeight = FontWeight.Bold,
+            color = color,
+            modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.dp)
+        )
+    }
+}
+
 /** DayCell 底部行类型 */
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -633,12 +660,28 @@ private fun DayCell(
     shiftStatuses: List<ShiftStatus>,
     batchMode: Boolean, selected: Boolean,
     modifier: Modifier = Modifier,
+    hasCalendarEvent: Boolean = false,
     isPrevMonth: Boolean = false, isNextMonth: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {}
 ) {
     val shiftColor = shift?.color?.let { safeColor(it) }
     val isRest = shift?.builtInType == "rest" || shift?.builtInType == "swap"
+
+    // ── 早退/迟到/备注状态检测 ───────────────────────────────────
+    val isLate = record?.actualStartTime != null && shift?.startTime != null &&
+        record.actualStartTime.isNotBlank() && shift.startTime.isNotBlank() &&
+        record.actualStartTime > shift.startTime
+    val isEarlyLeave = record?.actualEndTime != null && shift?.endTime != null &&
+        record.actualEndTime.isNotBlank() && shift.endTime.isNotBlank() &&
+        record.actualEndTime < shift.endTime
+    val hasRemark = !record?.remark.isNullOrBlank()
+    // 构建左侧状态角标列表
+    val statusBadges = buildList<@Composable () -> Unit> {
+        if (isEarlyLeave) add({ StatusMiniBadge("早", Color(0xFFF97316)) })
+        if (isLate) add({ StatusMiniBadge("迟", Color(0xFFEF4444)) })
+        if (hasRemark) add({ StatusMiniBadge("注", Color(0xFF06B6D4)) })
+    }
 
     // ── 视觉状态 ──────────────────────────────────────────────
     val interactionSource = remember { MutableInteractionSource() }
@@ -796,6 +839,16 @@ private fun DayCell(
                     fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium,
                     color = cellTextFg
                 )
+                // 左侧状态角标（早退/迟到/备注）
+                if (statusBadges.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier.align(Alignment.CenterStart),
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        statusBadges.forEach { badge -> badge() }
+                    }
+                }
+                // 右上角 假/补 角标
                 if (badgeText != null) {
                     val isRestBadge = isHoliday
                     val badgeBg = if (isRestBadge) Green700.copy(alpha = 0.15f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
@@ -810,6 +863,18 @@ private fun DayCell(
                             fontWeight = FontWeight.Bold, color = badgeFg,
                             modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.dp))
                     }
+                }
+                // 底部事件指示点（日程/纪念日）
+                if (hasCalendarEvent) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .size(3.5.dp)
+                            .background(
+                                MaterialTheme.colorScheme.tertiary,
+                                CircleShape
+                            )
+                    )
                 }
             }
             // ── 2. 农历间距 2dp ──────────────────────────

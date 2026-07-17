@@ -98,7 +98,9 @@ data class CalendarUiState(
     /** 清除排班模式 */
     val deleteMode: Boolean                    = false,
     /** 选中日期的纪念日与日程事件 */
-    val selectedDateEvents: List<CalendarEventInfo> = emptyList()
+    val selectedDateEvents: List<CalendarEventInfo> = emptyList(),
+    /** 有日历事件（日程/纪念日）的日期集合（用于 DayCell 显示事件指示点） */
+    val datesWithEvents: Set<String> = emptySet()
 )
 
 @HiltViewModel
@@ -242,6 +244,8 @@ class CalendarViewModel @Inject constructor(
                 // 加载选中日期的纪念日与日程（首次加载或切月后）
                 val selDate = _state.value.selectedDate ?: "%04d-%02d-%02d".format(s.year, s.month, LocalDate.now().dayOfMonth)
                 loadSelectedDateEvents(selDate)
+                // 加载当月有日历事件（日程/纪念日）的日期集合
+                loadDatesWithEvents(rangeFrom, rangeTo)
             }
         }
     }
@@ -398,6 +402,50 @@ class CalendarViewModel @Inject constructor(
                 }
             } catch (_: Exception) { emptyList() }
             _state.update { it.copy(selectedDateEvents = events) }
+        }
+    }
+
+    /**
+     * 加载指定范围内有日历事件（日程/纪念日）的日期集合
+     * 用于 DayCell 显示事件指示点
+     */
+    private fun loadDatesWithEvents(rangeFrom: String, rangeTo: String) {
+        viewModelScope.launch {
+            val datesWithEvents = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val allEvents = calendarEventRepo.getAllEvents()
+                    val dates = mutableSetOf<String>()
+                    val fromDate = try { java.time.LocalDate.parse(rangeFrom) } catch (_: Exception) { null }
+                    val toDate = try { java.time.LocalDate.parse(rangeTo) } catch (_: Exception) { null }
+                    if (fromDate != null && toDate != null) {
+                        for (event in allEvents) {
+                            // 将事件的 dtStart 转换为日期字符串
+                            val eventDate = try {
+                                java.time.Instant.ofEpochMilli(event.dtStart)
+                                    .atZone(java.time.ZoneId.systemDefault())
+                                    .toLocalDate()
+                            } catch (_: Exception) { continue }
+                            // 检查是否在范围内
+                            if (!eventDate.isBefore(fromDate) && !eventDate.isAfter(toDate)) {
+                                dates.add(eventDate.toString())
+                            }
+                            // 处理年度重复纪念日：检查今年是否落在范围内
+                            if (event.rrule?.contains("FREQ=YEARLY") == true) {
+                                for (year in fromDate.year..toDate.year) {
+                                    val thisYearDate = try {
+                                        java.time.LocalDate.of(year, eventDate.monthValue, eventDate.dayOfMonth)
+                                    } catch (_: Exception) { continue }
+                                    if (!thisYearDate.isBefore(fromDate) && !thisYearDate.isAfter(toDate)) {
+                                        dates.add(thisYearDate.toString())
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    dates
+                }
+            } catch (_: Exception) { emptySet() }
+            _state.update { it.copy(datesWithEvents = datesWithEvents) }
         }
     }
 
