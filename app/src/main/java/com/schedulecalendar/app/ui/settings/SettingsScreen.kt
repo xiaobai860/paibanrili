@@ -108,6 +108,16 @@ fun SettingsScreen(navController: NavController, vm: SettingsViewModel = hiltVie
                 )
             }
 
+            // ── 小部件设置 ────────────────────────────────────────────
+            item {
+                SettingsCard(
+                    icon = Icons.Default.Widgets,
+                    title = "小部件设置",
+                    description = "桌面小组件样式与功能配置",
+                    onClick = { navController.navigate(RouteWidgetSettings) }
+                )
+            }
+
             // ── 其它设置 ──────────────────────────────────────────
             item {
                 SettingsCard(

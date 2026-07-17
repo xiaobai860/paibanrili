@@ -59,6 +59,8 @@ class AppPreferences @Inject constructor(
         val KEY_DISABLED_ACCOUNT_IDS     = stringPreferencesKey("disabled_calendar_accounts")
         val KEY_ACCOUNT_CATEGORIES         = stringPreferencesKey("account_categories")
         val KEY_ACCOUNTS_INITIALIZED     = stringPreferencesKey("accounts_initialized")
+        // ── 长按快捷方式开关 ──
+        val KEY_SHORTCUT_ENABLED = stringPreferencesKey("shortcut_enabled")
     }
 
     // ── 薪资配置 ───────────────────────────────────
@@ -262,6 +264,17 @@ class AppPreferences @Inject constructor(
         context.dataStore.data.first()[KEY_ACCOUNTS_INITIALIZED] == "true"
     suspend fun setAccountsInitialized() = context.dataStore.edit {
         it[KEY_ACCOUNTS_INITIALIZED] = "true"
+    }
+
+    // ── 长按快捷方式开关 ────────────────────────────
+    /** 快捷方式是否启用（默认 true） */
+    suspend fun isShortcutEnabled(): Boolean =
+        context.dataStore.data.first()[KEY_SHORTCUT_ENABLED] != "false"
+    suspend fun saveShortcutEnabled(enabled: Boolean) = context.dataStore.edit {
+        it[KEY_SHORTCUT_ENABLED] = enabled.toString()
+    }
+    val shortcutEnabledFlow: Flow<Boolean> = context.dataStore.data.map {
+        it[KEY_SHORTCUT_ENABLED] != "false"
     }
 
     /** 账户分类映射：accountKey("calId:<id>") -> "schedule"|"anniversary" */

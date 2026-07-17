@@ -3,6 +3,7 @@ package com.schedulecalendar.app.widget
 
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.TextUnit
@@ -31,6 +32,8 @@ import com.google.gson.Gson
 import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.domain.model.HolidayData
 import com.schedulecalendar.app.domain.model.LunarCalendar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 data class CalendarWidgetDay(
