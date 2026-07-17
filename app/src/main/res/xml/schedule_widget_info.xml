@@ -12,4 +12,5 @@
     android:widgetCategory="home_screen"
     android:widgetFeatures="reconfigurable"
     android:configure="com.schedulecalendar.app.widget.WidgetConfigActivity"
-    android:description="@string/widget_description" />
+    android:description="@string/widget_description"
+    android:previewImage="@drawable/preview_schedule_widget" />

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 日历小组件预览图：模拟3x3日历网格外观 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 背景 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF"/>
+            <corners android:radius="16dp"/>
+        </shape>
+    </item>
+    <!-- 内边距 -->
+    <item android:left="8dp" android:top="8dp" android:right="8dp" android:bottom="8dp">
+        <layer-list>
+            <!-- 标题栏区域 -->
+            <item android:top="0dp" android:height="20dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#F5F5F5"/>
+                    <corners android:radius="4dp"/>
+                </shape>
+            </item>
+            <!-- 星期标签区域 -->
+            <item android:top="24dp" android:height="12dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#E0E0E0"/>
+                </shape>
+            </item>
+            <!-- 日历网格区域（3x3示意） -->
+            <item android:top="40dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#FAFAFA"/>
+                </shape>
+            </item>
+            <!-- 网格线模拟 -->
+            <item android:top="40dp" android:height="1dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#EEEEEE"/>
+                </shape>
+            </item>
+            <item android:top="60dp" android:height="1dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#EEEEEE"/>
+                </shape>
+            </item>
+            <item android:top="80dp" android:height="1dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#EEEEEE"/>
+                </shape>
+            </item>
+            <item android:top="100dp" android:height="1dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#EEEEEE"/>
+                </shape>
+            </item>
+            <!-- 今日高亮 -->
+            <item android:left="40dp" android:top="60dp" android:width="20dp" android:height="20dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="#2E7D32"/>
+                    <corners android:radius="4dp"/>
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</layer-list>

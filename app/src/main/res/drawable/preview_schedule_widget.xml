@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 排班打卡小组件预览图：模拟2x1卡片外观 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 背景 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF"/>
+            <corners android:radius="12dp"/>
+        </shape>
+    </item>
+    <!-- 内容区域 -->
+    <item android:left="10dp" android:top="8dp" android:right="10dp" android:bottom="8dp">
+        <layer-list>
+            <!-- 左侧文字区域 -->
+            <item android:width="60dp" android:height="24dp" android:gravity="left|center_vertical">
+                <shape android:shape="rectangle">
+                    <solid android:color="#F0F0F0"/>
+                    <corners android:radius="4dp"/>
+                </shape>
+            </item>
+            <!-- 右侧打卡按钮 -->
+            <item android:width="36dp" android:height="36dp" android:gravity="right|center_vertical">
+                <shape android:shape="rectangle">
+                    <solid android:color="#4CAF50"/>
+                    <corners android:radius="8dp"/>
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</layer-list>
