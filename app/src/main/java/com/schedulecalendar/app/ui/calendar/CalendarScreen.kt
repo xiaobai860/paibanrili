@@ -28,7 +28,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.ripple
-import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +69,16 @@ import java.time.LocalTime
 import java.time.YearMonth
 
 private val WEEK_LABELS = listOf("一","二","三","四","五","六","日")
+
+private data class DayCellData(
+    val day: Int, val dateStr: String,
+    val shift: Shift?, val record: ScheduleRecord?,
+    val detail: DayScheduleDetail?, val isToday: Boolean,
+    val isHoliday: Boolean, val isWeekend: Boolean,
+    val selected: Boolean,
+    val hasCalendarEvent: Boolean = false,
+    val isPrevMonth: Boolean = false, val isNextMonth: Boolean = false
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -196,9 +205,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                     onClick = vm::goToToday,
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                                     modifier = Modifier.height(24.dp),
-                                    border = ButtonDefaults.outlinedButtonBorder.copy(
-                                        brush = androidx.compose.ui.graphics.SolidColor(Color.Red)
-                                    ),
+                                    border = BorderStroke(1.dp, Color.Red),
                                     colors = ButtonDefaults.outlinedButtonColors(
                                         contentColor = Color.Red
                                     )
@@ -374,15 +381,6 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                         val animYear = targetMonth / 100
                         val animMonth = targetMonth % 100
                         // ── 预计算本月所有日期的展示数据 ──────────────────────────
-                        data class DayCellData(
-                            val day: Int, val dateStr: String,
-                            val shift: Shift?, val record: ScheduleRecord?,
-                            val detail: DayScheduleDetail?, val isToday: Boolean,
-                            val isHoliday: Boolean, val isWeekend: Boolean,
-                            val selected: Boolean,
-                            val hasCalendarEvent: Boolean = false,
-                            val isPrevMonth: Boolean = false, val isNextMonth: Boolean = false
-                        )
                     // 构建完整网格数据：prevMonth尾部 + 当月 + nextMonth头部
                     val prevMonthYear = if (animMonth == 1) animYear - 1 else animYear
                     val prevMonthMonth = if (animMonth == 1) 12 else animMonth - 1

@@ -37,17 +37,13 @@ fun EditCalendarEventScreen(
     vm: CalendarEventViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    android.util.Log.d("NavDebug", "EditCalendarEventScreen created with eventId=$eventId")
 
     // 直接按 ID 加载事件（不依赖全部事件列表）
     LaunchedEffect(eventId) {
-        android.util.Log.d("NavDebug", "LaunchedEffect: calling loadEventById($eventId)")
         vm.loadEventById(eventId)
     }
     val loadedEvent by vm.singleEvent.collectAsStateWithLifecycle()
     val isSingleLoading by vm.isSingleLoading.collectAsStateWithLifecycle()
-
-    android.util.Log.d("NavDebug", "EditScreen state: isSingleLoading=$isSingleLoading, loadedEvent=${loadedEvent?.title ?: "null"}")
 
     // 加载中显示指示器
     if (isSingleLoading) {
@@ -62,14 +58,11 @@ fun EditCalendarEventScreen(
 
     // 加载完成后如果找不到事件，返回
     if (loadedEvent == null) {
-        android.util.Log.e("NavDebug", "loadedEvent is null! popping back")
         LaunchedEffect(Unit) {
             navController.popBackStack()
         }
         return
     }
-
-    android.util.Log.d("NavDebug", "Event loaded successfully: ${loadedEvent!!.title}")
 
     val event = loadedEvent!! // 此时一定非空
 

@@ -102,7 +102,6 @@ class CalendarEventRepository @Inject constructor(
         // 应用自定义账户类型排在最前面，确保默认选中优先级
         accounts.sortByDescending { if (it.accountType == ACCOUNT_TYPE) 1 else 0 }
     
-        android.util.Log.v("CalendarEventRepo", "getAllAccounts total: ${accounts.size}, accounts=${accounts.map { "${it.displayName}(${it.accountName})[${it.calendarIds}]" } }")
         return accounts
     }
 
@@ -145,7 +144,6 @@ class CalendarEventRepository @Inject constructor(
                 } else null
             }
         } catch (e: Exception) {
-            android.util.Log.e("CalendarEventRepo", "getEventById($eventId) failed", e)
             null
         }
     }
@@ -326,7 +324,6 @@ class CalendarEventRepository @Inject constructor(
 
             eventId
         } catch (e: Exception) {
-            android.util.Log.e("CalendarEventRepo", "createEvent failed", e)
             -1L
         }
     }
@@ -344,13 +341,12 @@ class CalendarEventRepository @Inject constructor(
             val uri = context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, values)
             val reminderId = uri?.let { ContentUris.parseId(it) }
             if (reminderId != null) {
-                android.util.Log.i("CalendarEventRepo", "Added reminder: eventId=$eventId, minutes=$minutesBefore, reminderId=$reminderId")
+                // reminder added successfully
             } else {
-                android.util.Log.w("CalendarEventRepo", "addReminder returned null uri: eventId=$eventId, minutes=$minutesBefore")
+                // addReminder returned null uri
             }
             reminderId
         } catch (e: Exception) {
-            android.util.Log.e("CalendarEventRepo", "addReminder failed: eventId=$eventId, minutes=$minutesBefore", e)
             null
         }
     }
@@ -372,12 +368,11 @@ class CalendarEventRepository @Inject constructor(
             )
             val propId = uri?.let { ContentUris.parseId(it) }
             if (propId != null) {
-                android.util.Log.d("CalendarEventRepo", "Added extended property: eventId=$eventId, value=$value")
+                // extended property added
             }
             propId
         } catch (e: Exception) {
             // 部分国产 ROM 可能不支持 ExtendedProperties 写入，忽略错误
-            android.util.Log.w("CalendarEventRepo", "addExtendedProperty failed (may be unsupported)", e)
             null
         }
     }
@@ -429,7 +424,6 @@ class CalendarEventRepository @Inject constructor(
                 val hasWritePermission = android.content.pm.PackageManager.PERMISSION_GRANTED ==
                     ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_CALENDAR)
                 if (!hasWritePermission) {
-                    android.util.Log.w("CalendarEventRepo", "Cannot create calendar: WRITE_CALENDAR permission not granted")
                     return null
                 }
                 val added = accountManager.addAccountExplicitly(account, null, null)
@@ -437,9 +431,7 @@ class CalendarEventRepository @Inject constructor(
                     android.content.ContentResolver.setIsSyncable(account, CalendarContract.AUTHORITY, 1)
                     android.content.ContentResolver.setSyncAutomatically(account, CalendarContract.AUTHORITY, true)
                     android.content.ContentResolver.setMasterSyncAutomatically(true)
-                    android.util.Log.i("CalendarEventRepo", "Re-registered AccountManager account: $account")
                 } else {
-                    android.util.Log.e("CalendarEventRepo", "addAccountExplicitly failed for account=$account")
                     return null
                 }
             }
@@ -480,7 +472,6 @@ class CalendarEventRepository @Inject constructor(
             }
             
             if (existingCalId != null) {
-                android.util.Log.d("CalendarEventRepo", "Found schedule calendar calId=$existingCalId, accountExists=$accountExists")
                 return existingCalId
             }
 
@@ -510,10 +501,8 @@ class CalendarEventRepository @Inject constructor(
                 values
             )
             val newCalId = uri?.let { ContentUris.parseId(it) }
-            android.util.Log.i("CalendarEventRepo", "Created schedule calendar calId=$newCalId")
             newCalId
         } catch (e: Exception) {
-            android.util.Log.e("CalendarEventRepo", "getOrCreateLocalCalendar failed", e)
             null
         }
     }
@@ -577,10 +566,8 @@ class CalendarEventRepository @Inject constructor(
                 values
             )
             val newCalId = uri?.let { ContentUris.parseId(it) }
-            android.util.Log.i("CalendarEventRepo", "Created reminder calendar calId=$newCalId")
             newCalId
         } catch (e: Exception) {
-            android.util.Log.e("CalendarEventRepo", "getOrCreateReminderCalendarId failed", e)
             null
         }
     }
@@ -643,10 +630,8 @@ class CalendarEventRepository @Inject constructor(
                 values
             )
             val newCalId = uri?.let { ContentUris.parseId(it) }
-            android.util.Log.i("CalendarEventRepo", "Created anniversary calendar calId=$newCalId")
             newCalId
         } catch (e: Exception) {
-            android.util.Log.e("CalendarEventRepo", "getOrCreateAnniversaryCalendarId failed", e)
             null
         }
     }
@@ -713,7 +698,6 @@ class CalendarEventRepository @Inject constructor(
             }
             eventIds
         } catch (e: Exception) {
-            android.util.Log.e("CalendarEventRepo", "findEventsByTitlePrefix failed", e)
             eventIds
         }
     }

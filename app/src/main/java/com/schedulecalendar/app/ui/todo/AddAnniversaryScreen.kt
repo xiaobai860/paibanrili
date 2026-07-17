@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -402,7 +403,7 @@ fun AddAnniversaryScreen(
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
                 maxLines = Int.MAX_VALUE,
-                leadingIcon = { Icon(Icons.Default.Notes, null) },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Notes, null) },
                 scrollState = scrollState
             )
 
@@ -493,9 +494,8 @@ fun AddAnniversaryScreen(
 
                         val fullTitle = "纪念日: ${title.trim()}"
                         isCreating = true
-                        android.util.Log.d("Anniversary", "Saving event: title=$fullTitle, start=$startTime, end=$endTime, allDay=true, rrule=$rrule, eventId=$eventId")
 
-                        if (isEditMode && eventId != null) {
+                        if (isEditMode) {
                             // 编辑模式：更新现有事件
                             val editRrule = if (repeatYearly) "FREQ=YEARLY" else null
                             val updatedEvent = existingEvent!!.copy(
@@ -522,7 +522,6 @@ fun AddAnniversaryScreen(
                                 reminderMinutes = reminderMinutes
                             ) { success ->
                                 isCreating = false
-                                android.util.Log.d("Anniversary", "Create result: success=$success")
                                 if (success) {
                                     navController.popBackStack()
                                 } else {

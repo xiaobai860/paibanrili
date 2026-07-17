@@ -409,16 +409,11 @@ fun ImeAdaptiveOutlinedTextField(
             val marginPx = with(density) { 16.dp.toPx() }
             val imeTopWithMargin = windowRect.bottom.toFloat() - marginPx
 
-            android.util.Log.d("ImeAdaptive", "fieldY=$fieldY fieldH=${fieldHeight.intValue} fieldBottom=$fieldBottom windowRect.bottom=${windowRect.bottom} imeTopWithMargin=$imeTopWithMargin scrollValue=${scrollState.value} maxScroll=${scrollState.maxValue}")
-
             val overflow = fieldBottom - imeTopWithMargin
             if (overflow > 0) {
                 val target = (scrollState.value + overflow.toInt())
                     .coerceIn(0, scrollState.maxValue)
-                android.util.Log.d("ImeAdaptive", "overflow=$overflow scrolling to $target")
                 scrollState.scrollTo(target)
-            } else {
-                android.util.Log.d("ImeAdaptive", "no overflow, no scroll needed")
             }
         } else {
             onFocused?.invoke()

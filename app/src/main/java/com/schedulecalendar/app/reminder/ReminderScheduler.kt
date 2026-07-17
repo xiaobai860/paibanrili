@@ -229,7 +229,6 @@ class ReminderScheduler @Inject constructor(
         try {
             // 防御性检查：确认精确闹钟权限可用
             if (Build.VERSION.SDK_INT >= 31 && !alarmManager.canScheduleExactAlarms()) {
-                android.util.Log.w("ReminderScheduler", "Exact alarm permission not granted, skipping")
                 return
             }
 
@@ -270,8 +269,7 @@ class ReminderScheduler @Inject constructor(
             )
             val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerTime, showPendingIntent)
             alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
-        } catch (e: Exception) {
-            android.util.Log.e("ReminderScheduler", "scheduleReminder failed", e)
+        } catch (_: Exception) {
         }
     }
 
@@ -347,9 +345,8 @@ class ReminderScheduler @Inject constructor(
                 calendarId = calendarRepo.getOrCreateReminderCalendarId(), // 强制使用提醒专用日历
                 reminderMinutes = advanceMinutes
             )
-            android.util.Log.d("ReminderScheduler", "Created calendar reminder: $title on $dateStr")
         } catch (e: Exception) {
-            android.util.Log.e("ReminderScheduler", "scheduleCalendarReminder failed", e)
+            // silently handle error
         }
     }
 
@@ -372,11 +369,10 @@ class ReminderScheduler @Inject constructor(
         try {
             val eventIds = calendarRepo.findEventsByTitlePrefix(CALENDAR_REMINDER_PREFIX)
             if (eventIds.isNotEmpty()) {
-                val deleted = calendarRepo.deleteEvents(eventIds)
-                android.util.Log.i("ReminderScheduler", "Cleaned up $deleted calendar reminder events")
+                calendarRepo.deleteEvents(eventIds)
             }
         } catch (e: Exception) {
-            android.util.Log.e("ReminderScheduler", "forceCleanupCalendarReminders failed", e)
+            // silently handle error
         }
     }
 
