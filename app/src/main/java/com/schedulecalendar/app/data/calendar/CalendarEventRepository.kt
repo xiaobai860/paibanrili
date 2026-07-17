@@ -56,6 +56,8 @@ class CalendarEventRepository @Inject constructor(
         private const val SCHEDULE_SUFFIX = "-日程"
         /** 纪念日日历显示名称后缀 */
         private const val ANNIVERSARY_SUFFIX = "-纪念日"
+        /** 提醒日历显示名称后缀 */
+        private const val REMINDER_SUFFIX = "-提醒"
     }
 
     /**
@@ -517,6 +519,73 @@ class CalendarEventRepository @Inject constructor(
     }
 
     /**
+     * 获取或创建提醒专用日历ID
+     * 与应用日历使用相同的账户（AccountManager），但创建独立的日历条目，
+     * 显示名称为 "应用名-提醒"，颜色为绿色。
+     * 用于上下班提醒日历事件的创建和管理。
+     * @return 提醒日历ID，失败返回null
+     */
+    fun getOrCreateReminderCalendarId(): Long? {
+        val appName = try {
+            context.getString(context.applicationInfo.labelRes)
+        } catch (_: Exception) {
+            ACCOUNT_NAME
+        }
+        val displayName = "$appName$REMINDER_SUFFIX"
+        return try {
+            // 查找已有的提醒日历
+            var existingCalId: Long? = null
+            context.contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI,
+                arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME),
+                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ? AND ${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} = ?",
+                arrayOf(ACCOUNT_NAME, ACCOUNT_TYPE, displayName),
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    existingCalId = cursor.getLong(0)
+                }
+            }
+            if (existingCalId != null) return existingCalId
+
+            // 确保账户存在
+            getOrCreateLocalCalendarId() ?: return null
+
+            // 创建提醒日历
+            val values = android.content.ContentValues().apply {
+                put(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT_NAME)
+                put(CalendarContract.Calendars.ACCOUNT_TYPE, ACCOUNT_TYPE)
+                put(CalendarContract.Calendars.NAME, displayName)
+                put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, displayName)
+                put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.CAL_ACCESS_OWNER)
+                put(CalendarContract.Calendars.OWNER_ACCOUNT, ACCOUNT_NAME)
+                put(CalendarContract.Calendars.SYNC_EVENTS, 1)
+                put(CalendarContract.Calendars.VISIBLE, 1)
+                put(CalendarContract.Calendars.CALENDAR_COLOR, 0xFF059669.toInt()) // 绿色
+                put(CalendarContract.Calendars.CALENDAR_TIME_ZONE, java.util.TimeZone.getDefault().id)
+                put(CalendarContract.Calendars.CAN_ORGANIZER_RESPOND, 0)
+                put(CalendarContract.Calendars.ALLOWED_REMINDERS, "0,1,2,3")
+                put(CalendarContract.Calendars.ALLOWED_AVAILABILITY, "0,1,2")
+                put(CalendarContract.Calendars.ALLOWED_ATTENDEE_TYPES, "0,1,2")
+            }
+            val uri = context.contentResolver.insert(
+                CalendarContract.Calendars.CONTENT_URI.buildUpon()
+                    .appendQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER, "true")
+                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT_NAME)
+                    .appendQueryParameter(CalendarContract.Calendars.ACCOUNT_TYPE, ACCOUNT_TYPE)
+                    .build(),
+                values
+            )
+            val newCalId = uri?.let { ContentUris.parseId(it) }
+            android.util.Log.i("CalendarEventRepo", "Created reminder calendar calId=$newCalId")
+            newCalId
+        } catch (e: Exception) {
+            android.util.Log.e("CalendarEventRepo", "getOrCreateReminderCalendarId failed", e)
+            null
+        }
+    }
+
+    /**
      * 获取或创建纪念日专用日历ID
      * 与应用日历使用相同的账户（AccountManager），但创建独立的日历条目，
      * 显示名称为 "应用名-纪念日"，颜色为红色。
@@ -629,7 +698,7 @@ class CalendarEventRepository @Inject constructor(
      */
     fun findEventsByTitlePrefix(titlePrefix: String): List<Long> {
         val eventIds = mutableListOf<Long>()
-        val calId = getOrCreateLocalCalendarId() ?: return eventIds
+        val calId = getOrCreateReminderCalendarId() ?: return eventIds
         return try {
             context.contentResolver.query(
                 CalendarContract.Events.CONTENT_URI,
@@ -666,7 +735,7 @@ class CalendarEventRepository @Inject constructor(
      * 用于避免重复创建上下班提醒日历事件
      */
     fun findEventByDateAndTitle(date: String, title: String): Long? {
-        val calId = getOrCreateLocalCalendarId() ?: return null
+        val calId = getOrCreateReminderCalendarId() ?: return null
         return try {
             context.contentResolver.query(
                 CalendarContract.Events.CONTENT_URI,

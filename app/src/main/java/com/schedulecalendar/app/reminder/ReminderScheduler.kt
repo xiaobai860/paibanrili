@@ -343,7 +343,7 @@ class ReminderScheduler @Inject constructor(
                 dtStart = dtStart,
                 dtEnd = dtEnd,
                 allDay = false,
-                calendarId = null, // 使用应用本地日历
+                calendarId = calendarRepo.getOrCreateReminderCalendarId(), // 强制使用提醒专用日历
                 reminderMinutes = advanceMinutes
             )
             android.util.Log.d("ReminderScheduler", "Created calendar reminder: $title on $dateStr")

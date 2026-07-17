@@ -1,5 +1,9 @@
 package com.schedulecalendar.app.ui.settings
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,6 +36,37 @@ fun ReminderSettingsScreen(
     vm: ReminderSettingsViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+
+    // 日历权限请求启动器
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.READ_CALENDAR] == true &&
+                permissions[Manifest.permission.WRITE_CALENDAR] == true
+        if (granted) {
+            vm.onCalendarPermissionGranted()
+        } else {
+            vm.onCalendarPermissionDenied()
+        }
+    }
+
+    // 监听是否需要请求日历权限
+    LaunchedEffect(state.pendingCalendarPermission) {
+        if (state.pendingCalendarPermission) {
+            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(
+                    Manifest.permission.READ_CALENDAR,
+                    Manifest.permission.WRITE_CALENDAR
+                )
+            } else {
+                arrayOf(
+                    Manifest.permission.READ_CALENDAR,
+                    Manifest.permission.WRITE_CALENDAR
+                )
+            }
+            calendarPermissionLauncher.launch(permissions)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -254,10 +290,15 @@ private fun AdvanceTimeCard(
                                     optionMinutes >= 60 -> "${optionMinutes / 60}小时"
                                     else -> "${optionMinutes}分钟"
                                 },
-                                fontSize = 13.sp
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
                             )
                         },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 40.dp),
+                        colors = FilterChipDefaults.filterChipColors()
                     )
                 }
             }

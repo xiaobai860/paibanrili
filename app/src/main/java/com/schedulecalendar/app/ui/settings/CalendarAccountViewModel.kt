@@ -52,6 +52,7 @@ class CalendarAccountViewModel @Inject constructor(
                 // 确保应用日历账户已创建
                 calendarRepo.getOrCreateLocalCalendarId()
                 calendarRepo.getOrCreateAnniversaryCalendarId()
+                calendarRepo.getOrCreateReminderCalendarId()
                 val accounts = calendarRepo.getAllAccounts()
                 var disabledIds = prefs.getDisabledAccountIds()
     
@@ -61,8 +62,11 @@ class CalendarAccountViewModel @Inject constructor(
                         .filter { it.accountType != CalendarEventRepository.ACCOUNT_TYPE }
                         .flatMap { it.calendarIds }
                         .toSet()
-                    if (nonAppCalIds.isNotEmpty()) {
-                        disabledIds = disabledIds + nonAppCalIds
+                    // 默认禁用提醒账户（不显示在日历视图中）
+                    val reminderCalId = calendarRepo.getOrCreateReminderCalendarId()
+                    val reminderIds = if (reminderCalId != null) setOf(reminderCalId) else emptySet()
+                    if (nonAppCalIds.isNotEmpty() || reminderIds.isNotEmpty()) {
+                        disabledIds = disabledIds + nonAppCalIds + reminderIds
                         prefs.saveDisabledAccountIds(disabledIds)
                     }
                     // 应用自身日历默认分类：根据显示名称判断
