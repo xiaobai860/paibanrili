@@ -336,7 +336,7 @@ private fun ClockInWidgetContent() {
         Box(
             modifier = GlanceModifier
                 .width(40.dp)
-                .height(40.dp)
+                .fillMaxHeight()
                 .background(btnBgColor)
                 .cornerRadius(10.dp)
                 .clickable(actionRunCallback<ClockInAction>()),
