@@ -3,6 +3,9 @@ package com.schedulecalendar.app.widget
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -27,8 +30,6 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.schedulecalendar.app.domain.model.HolidayData
 import java.time.LocalDate
 import java.time.LocalTime
@@ -122,7 +123,7 @@ class ClockInAction : ActionCallback {
         // Toast提示
         val isClockIn = savedDate != todayStr
         val toastMsg = if (isClockIn) "\u5df2\u6210\u529f\u6253\u5361" else "\u5df2\u66f4\u65b0\u6253\u5361"
-        withContext(Dispatchers.Main) {
+        Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
         }
     }
@@ -130,16 +131,21 @@ class ClockInAction : ActionCallback {
 
 // ── 小组件 UI 内容 ─────────────────────────────────────────────────
 
-/** 将十六进制颜色字符串转为 Glance ColorProvider */
-private fun parseShiftColor(hex: String): ColorProvider {
+/** 将十六进制颜色字符串转为 Glance ColorProvider（含深色模式适配） */
+private fun parseShiftColor(hex: String, isDark: Boolean): ColorProvider {
     val h = hex.removePrefix("#")
-    val color = if (h.length >= 6) {
+    val lightColor = if (h.length >= 6) {
         val r = h.substring(0, 2).toIntOrNull(16) ?: 0x05
         val g = h.substring(2, 4).toIntOrNull(16) ?: 0x96
         val b = h.substring(4, 6).toIntOrNull(16) ?: 0x69
         Color(r / 255f, g / 255f, b / 255f, 1f)
     } else Color(0xFF059669)
-    return ColorProvider(color)
+    return if (isDark) ColorProvider(lightColor.copy(alpha = 0.85f)) else ColorProvider(lightColor)
+}
+
+/** 根据深色模式选择颜色 */
+private fun pickColor(light: Color, dark: Color, isDark: Boolean): ColorProvider {
+    return ColorProvider(if (isDark) dark else light)
 }
 
 /** 计算下一个法定节假日天数 */
@@ -197,9 +203,13 @@ private fun ClockInWidgetContent() {
         configPrefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 1.0f))
     val utc = hexToWidgetColor(textHex, Color(0xFF333333))
     val ubg = hexToWidgetColor(bgHex, Color.White).copy(alpha = bgAlpha)
+    // 检测深色模式
+    val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    // 深色模式文字
+    val utcDark = hexToWidgetColor(textHex, Color(0xFFE0E0E0)).copy(alpha = bgAlpha.coerceAtLeast(0.5f))
 
     // 解析班次颜色
-    val shiftColor = parseShiftColor(data.shiftColor)
+    val shiftColor = parseShiftColor(data.shiftColor, isDark)
 
     // 显示时间：已打卡显示实际时间，否则显示班次时间
     val displayStart = actualStart.ifEmpty { data.startTime }
@@ -235,7 +245,7 @@ private fun ClockInWidgetContent() {
             } else {
                 Text(
                     text = "\u4eca\u65e5\u65e0\u6392\u73ed",
-                    style = TextStyle(color = ColorProvider(utc.copy(alpha = 0.55f)), fontSize = 13.sp),
+                    style = TextStyle(color = pickColor(utc.copy(alpha = 0.55f), utcDark.copy(alpha = 0.55f), isDark), fontSize = 13.sp),
                     maxLines = 1
                 )
             }
@@ -243,9 +253,9 @@ private fun ClockInWidgetContent() {
             // 上下班时间
             if (data.startTime.isNotEmpty() || data.endTime.isNotEmpty()) {
                 val timeColor = when {
-                    hasClockIn && !hasClockOut -> ColorProvider(Color(0xFFF59E0B))
-                    hasClockOut -> ColorProvider(Color(0xFF10B981))
-                    else -> ColorProvider(utc.copy(alpha = 0.55f))
+                    hasClockIn && !hasClockOut -> pickColor(Color(0xFFF59E0B), Color(0xFFFBBF24), isDark)
+                    hasClockOut -> pickColor(Color(0xFF10B981), Color(0xFF4ADE80), isDark)
+                    else -> pickColor(utc.copy(alpha = 0.55f), utcDark.copy(alpha = 0.55f), isDark)
                 }
                 Text(
                     text = "$displayStart \u2013 $displayEnd",
@@ -263,7 +273,7 @@ private fun ClockInWidgetContent() {
                         Text(
                             text = countdownText,
                             style = TextStyle(
-                                color = ColorProvider(Color(0xFFDC2626)),
+                                color = pickColor(Color(0xFFDC2626), Color(0xFFEF4444), isDark),
                                 fontSize = 10.sp
                             ),
                             maxLines = 1
@@ -276,7 +286,7 @@ private fun ClockInWidgetContent() {
                         Text(
                             text = "\u660e\u5929\uff1a${data.tomorrowShiftName}",
                             style = TextStyle(
-                                color = ColorProvider(utc.copy(alpha = 0.55f)),
+                                color = pickColor(utc.copy(alpha = 0.55f), utcDark.copy(alpha = 0.55f), isDark),
                                 fontSize = 10.sp
                             ),
                             maxLines = 1
@@ -286,36 +296,41 @@ private fun ClockInWidgetContent() {
             }
         }
 
-        // ── 右侧：打卡按钮（缩小宽度，始终可点击） ──
+        // ── 右侧：打卡按钮（柔和色调 + 圆角） ──
         val btnText: String
-        val btnColor: ColorProvider
+        val btnBgColor: ColorProvider
+        val btnTextColor: ColorProvider
         when {
             !hasClockIn -> {
                 btnText = "\u4e0a\u73ed\n\u6253\u5361"
-                btnColor = ColorProvider(Color(0xFF059669))
+                btnBgColor = pickColor(Color(0xFF059669).copy(alpha = 0.12f * bgAlpha), Color(0xFF059669).copy(alpha = 0.22f), isDark)
+                btnTextColor = pickColor(Color(0xFF059669), Color(0xFF4ADE80), isDark)
             }
             !hasClockOut -> {
                 btnText = "\u4e0b\u73ed\n\u6253\u5361"
-                btnColor = ColorProvider(Color(0xFFF59E0B))
+                btnBgColor = pickColor(Color(0xFFF59E0B).copy(alpha = 0.12f * bgAlpha), Color(0xFFF59E0B).copy(alpha = 0.22f), isDark)
+                btnTextColor = pickColor(Color(0xFFD97706), Color(0xFFFBBF24), isDark)
             }
             else -> {
                 btnText = actualEnd.take(5)
-                btnColor = ColorProvider(Color(0xFF9CA3AF))
+                btnBgColor = pickColor(Color(0xFF9CA3AF).copy(alpha = 0.10f * bgAlpha), Color(0xFF9CA3AF).copy(alpha = 0.18f), isDark)
+                btnTextColor = pickColor(Color(0xFF6B7280), Color(0xFF9CA3AF), isDark)
             }
         }
 
         Box(
             modifier = GlanceModifier
-                .width(42.dp)
-                .height(42.dp)
-                .background(btnColor)
+                .width(44.dp)
+                .height(44.dp)
+                .background(btnBgColor)
+                .cornerRadius(12.dp)
                 .clickable(actionRunCallback<ClockInAction>()),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = btnText,
                 style = TextStyle(
-                    color = ColorProvider(Color.White),
+                    color = btnTextColor,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 ),
