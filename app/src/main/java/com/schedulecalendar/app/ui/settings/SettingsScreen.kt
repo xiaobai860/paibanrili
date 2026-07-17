@@ -246,13 +246,22 @@ private fun PermissionManagementSection() {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    // 精确闹钟权限（Android 12+）
-    // 应用声明 USE_EXACT_ALARM，安装时自动授予，等效于 SCHEDULE_EXACT_ALARM
+    // 精确闹钟权限
+    // Android 13+(API 33): USE_EXACT_ALARM 为普通权限，安装时自动授予
+    // Android 12(API 31-32): 需要 SCHEDULE_EXACT_ALARM，默认拒绝，需用户手动授权
     val hasExactAlarm = remember(refreshTrigger) {
-        if (Build.VERSION.SDK_INT >= 31) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            // Android 13+: USE_EXACT_ALARM 始终已授予
+            true
+        } else if (Build.VERSION.SDK_INT >= 31) {
+            // Android 12: 检查 SCHEDULE_EXACT_ALARM
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
             alarmManager.canScheduleExactAlarms()
         } else true
+    }
+    // Android 12 需要用户手动授权精确闹钟
+    val needsExactAlarmAction = remember(refreshTrigger) {
+        Build.VERSION.SDK_INT in 31..32 && !hasExactAlarm
     }
 
     // 电池优化白名单状态
@@ -316,10 +325,10 @@ private fun PermissionManagementSection() {
                     HorizontalDivider()
                     Spacer(Modifier.height(4.dp))
 
-                    // 通知权限
+                    // 通知权限（Android 13+ 需要用户授权）
                     PermissionItem(
-                        name = "通知",
-                        description = "打卡提醒、班次变更等通知",
+                        name = "通知权限",
+                        description = "上下班打卡提醒、班次变更通知等",
                         granted = hasNotification,
                         onAction = {
                             if (Build.VERSION.SDK_INT >= 33) {
@@ -331,7 +340,7 @@ private fun PermissionManagementSection() {
                     // 日历读取权限
                     PermissionItem(
                         name = "日历读取",
-                        description = "读取系统日历事件用于日程显示",
+                        description = "读取系统日历账户和事件，用于日程显示与数据同步",
                         granted = hasCalendar,
                         onAction = { permLauncher.launch(Manifest.permission.READ_CALENDAR) }
                     )
@@ -339,38 +348,40 @@ private fun PermissionManagementSection() {
                     // 日历写入权限
                     PermissionItem(
                         name = "日历写入",
-                        description = "同步修改系统日历事件",
+                        description = "创建和修改日历事件，用于上下班提醒和纪念日写入",
                         granted = hasWriteCalendar,
                         onAction = { permLauncher.launch(Manifest.permission.WRITE_CALENDAR) }
                     )
 
                     // 精确闹钟权限
-                    // USE_EXACT_ALARM 为普通权限，安装时自动授予，
-                    // 不会出现在系统的「权限管理」页面中。
                     if (Build.VERSION.SDK_INT >= 31) {
                         PermissionItem(
-                            name = "\u7cbe\u786e\u95f9\u949f",
-                            description = if (hasExactAlarm)
-                                "\u5df2\u6388\u6743\uff0c\u95f9\u949f\u63d0\u9192\u53ef\u7cbe\u786e\u89e6\u53d1"
+                            name = "精确闹钟",
+                            description = if (Build.VERSION.SDK_INT >= 33)
+                                "已自动授予，闹钟提醒可精确触发（安装时自动授予）"
+                            else if (hasExactAlarm)
+                                "已授予，闹钟提醒可精确触发"
                             else
-                                "\u672a\u6388\u6743\uff0c\u8bf7\u524d\u5f80\u8bbe\u7f6e\u6388\u6743",
+                                "未授予，点击前往系统设置手动开启",
                             granted = hasExactAlarm,
                             onAction = {
-                                try {
-                                    val intent = Intent(AndroidSettings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                                    context.startActivity(intent)
-                                } catch (_: Exception) { }
+                                if (needsExactAlarmAction) {
+                                    try {
+                                        val intent = Intent(AndroidSettings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) { }
+                                }
                             }
                         )
                     }
                     
                     // 电池优化白名单
                     PermissionItem(
-                        name = "\u7535\u6c60\u4f18\u5316\u514d\u8d39",
+                        name = "电池优化豁免",
                         description = if (isBatteryOptimizationIgnored)
-                            "\u5df2\u8bbe\u4e3a\u65e0\u9650\u5236\uff0c\u540e\u53f0\u8fd0\u884c\u4e0d\u53d7\u9650\u5236"
+                            "已设为无限制，后台运行不受系统省电策略影响"
                         else
-                            "\u672a\u8bbe\u7f6e\uff0c\u540e\u53f0\u53ef\u80fd\u88ab\u7cfb\u7edf\u9650\u5236",
+                            "未设置，后台运行时可能被系统省电策略限制",
                         granted = isBatteryOptimizationIgnored,
                         onAction = {
                             try {

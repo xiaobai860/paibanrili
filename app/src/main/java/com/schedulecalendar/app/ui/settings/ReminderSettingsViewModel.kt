@@ -80,7 +80,6 @@ class ReminderSettingsViewModel @Inject constructor(
             val newEnabled = !_state.value.enabled
             prefs.saveReminderEnabled(newEnabled)
             _state.update { it.copy(enabled = newEnabled) }
-            rescheduleReminders()
         }
     }
 
@@ -95,21 +94,25 @@ class ReminderSettingsViewModel @Inject constructor(
             ) == PackageManager.PERMISSION_GRANTED
 
             if (!hasReadPermission || !hasWritePermission) {
-                // 标记需要请求权限，等权限授予后再保存
                 _state.update { it.copy(pendingCalendarPermission = true) }
                 return
             }
         }
-        // 权限已授予或非日历模式，直接保存
-        saveMethod(method)
+        viewModelScope.launch {
+            prefs.saveReminderMethod(method)
+            _state.update { it.copy(method = method) }
+        }
     }
 
     /**
-     * 日历权限已授予后调用，保存方法并重新调度
+     * 日历权限已授予后调用，保存方法设置
      */
     fun onCalendarPermissionGranted() {
         _state.update { it.copy(pendingCalendarPermission = false) }
-        saveMethod("calendar")
+        viewModelScope.launch {
+            prefs.saveReminderMethod("calendar")
+            _state.update { it.copy(method = "calendar") }
+        }
     }
 
     /**
@@ -119,25 +122,11 @@ class ReminderSettingsViewModel @Inject constructor(
         _state.update { it.copy(pendingCalendarPermission = false) }
     }
 
-    private fun saveMethod(method: String) {
-        viewModelScope.launch {
-            val oldMethod = _state.value.method
-            prefs.saveReminderMethod(method)
-            _state.update { it.copy(method = method) }
-            // 切换为闹钟模式时立即清理日历事件
-            if (oldMethod == "calendar" && method == "alarm") {
-                scheduler.forceCleanupCalendarReminders()
-            }
-            rescheduleReminders()
-        }
-    }
-
     fun toggleClockIn() {
         viewModelScope.launch {
             val newValue = !_state.value.reminderClockIn
             prefs.saveReminderClockIn(newValue)
             _state.update { it.copy(reminderClockIn = newValue) }
-            rescheduleReminders()
         }
     }
 
@@ -146,7 +135,6 @@ class ReminderSettingsViewModel @Inject constructor(
             val newValue = !_state.value.reminderClockOut
             prefs.saveReminderClockOut(newValue)
             _state.update { it.copy(reminderClockOut = newValue) }
-            rescheduleReminders()
         }
     }
 
@@ -154,7 +142,6 @@ class ReminderSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             prefs.saveReminderClockInMinutes(minutes)
             _state.update { it.copy(clockInAdvanceMinutes = minutes) }
-            rescheduleReminders()
         }
     }
 
@@ -162,13 +149,28 @@ class ReminderSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             prefs.saveReminderClockOutMinutes(minutes)
             _state.update { it.copy(clockOutAdvanceMinutes = minutes) }
-            rescheduleReminders()
         }
     }
 
-    private fun rescheduleReminders() {
+    /**
+     * 退出页面时统一应用：根据当前设置执行一次调度
+     * - 总开关关闭 → 取消所有提醒
+     * - 闹钟模式 → 清理日历事件 + 重新设置闹钟
+     * - 日历模式 → 重新创建日历提醒事件
+     */
+    fun applyChanges() {
         viewModelScope.launch {
-            scheduler.scheduleUpcomingReminders()
+            val s = _state.value
+            if (!s.enabled) {
+                scheduler.cancelAllReminders()
+                scheduler.forceCleanupCalendarReminders()
+            } else if (s.method == "alarm") {
+                // 切换为闹钟模式时清理日历事件
+                scheduler.forceCleanupCalendarReminders()
+                scheduler.scheduleUpcomingReminders()
+            } else {
+                scheduler.scheduleUpcomingReminders()
+            }
         }
     }
 }
