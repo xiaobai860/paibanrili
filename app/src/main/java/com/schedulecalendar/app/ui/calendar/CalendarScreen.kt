@@ -633,17 +633,17 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
 @Composable
 private fun StatusMiniBadge(text: String, color: Color) {
     Surface(
-        shape = RoundedCornerShape(2.dp),
+        shape = RoundedCornerShape(1.5.dp),
         color = color.copy(alpha = 0.15f)
     ) {
         Text(
             text = text,
-            fontSize = 8.sp,
-            lineHeight = 8.sp,
+            fontSize = 7.sp,
+            lineHeight = 7.sp,
             style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
             fontWeight = FontWeight.Bold,
             color = color,
-            modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.dp)
+            modifier = Modifier.padding(horizontal = 1.5.dp, vertical = 0.dp)
         )
     }
 }
@@ -831,50 +831,53 @@ private fun DayCell(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
-            // ── 1. 日期数字（20dp）─────────────────────────
-            Box(Modifier.fillMaxWidth().height(dateHeight), contentAlignment = Alignment.TopCenter) {
-                Text(
-                    day.toString(), fontSize = 18.sp, lineHeight = 18.sp,
-                    style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
-                    fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium,
-                    color = cellTextFg
-                )
-                // 左侧状态角标（早退/迟到/备注）
+            // ── 1. 日期区域（含状态角标+事件指示点）───────────────
+            Box(Modifier.fillMaxWidth()) {
+                // 日期数字 Box（20dp 固定高度）
+                Box(Modifier.fillMaxWidth().height(dateHeight), contentAlignment = Alignment.TopCenter) {
+                    Text(
+                        day.toString(), fontSize = 18.sp, lineHeight = 18.sp,
+                        style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
+                        fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium,
+                        color = cellTextFg
+                    )
+                    // 右上角 假/补 角标
+                    if (badgeText != null) {
+                        val isRestBadge = isHoliday
+                        val badgeBg = if (isRestBadge) Green700.copy(alpha = 0.15f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
+                        val badgeFg = if (isRestBadge) Green700 else MaterialTheme.colorScheme.error
+                        Surface(
+                            shape = RoundedCornerShape(3.dp),
+                            color = badgeBg,
+                            modifier = Modifier.align(Alignment.TopEnd)
+                        ) {
+                            Text(badgeText, fontSize = lunarTextSize, lineHeight = lunarTextSize,
+                                style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
+                                fontWeight = FontWeight.Bold, color = badgeFg,
+                                modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.dp))
+                        }
+                    }
+                    // 底部事件指示点（日程/纪念日）
+                    if (hasCalendarEvent) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .size(3.5.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.tertiary,
+                                    CircleShape
+                                )
+                        )
+                    }
+                }
+                // 左侧状态角标（早退/迟到/备注）——允许向下溢出日期区域
                 if (statusBadges.isNotEmpty()) {
                     Column(
-                        modifier = Modifier.align(Alignment.CenterStart),
-                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                        modifier = Modifier.align(Alignment.TopStart),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
                         statusBadges.forEach { badge -> badge() }
                     }
-                }
-                // 右上角 假/补 角标
-                if (badgeText != null) {
-                    val isRestBadge = isHoliday
-                    val badgeBg = if (isRestBadge) Green700.copy(alpha = 0.15f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
-                    val badgeFg = if (isRestBadge) Green700 else MaterialTheme.colorScheme.error
-                    Surface(
-                        shape = RoundedCornerShape(3.dp),
-                        color = badgeBg,
-                        modifier = Modifier.align(Alignment.TopEnd)
-                    ) {
-                        Text(badgeText, fontSize = lunarTextSize, lineHeight = lunarTextSize,
-                            style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
-                            fontWeight = FontWeight.Bold, color = badgeFg,
-                            modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.dp))
-                    }
-                }
-                // 底部事件指示点（日程/纪念日）
-                if (hasCalendarEvent) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .size(3.5.dp)
-                            .background(
-                                MaterialTheme.colorScheme.tertiary,
-                                CircleShape
-                            )
-                    )
                 }
             }
             // ── 2. 农历间距 2dp ──────────────────────────
