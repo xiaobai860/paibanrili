@@ -2,6 +2,7 @@ package com.schedulecalendar.app.ui.settings
 
 import android.Manifest
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -68,11 +69,20 @@ fun ReminderSettingsScreen(
         }
     }
 
+    // 系统返回键也统一应用设置
+    BackHandler {
+        vm.applyChanges()
+        navController.popBackStack()
+    }
+
     Scaffold(
         topBar = {
             ScheduleTopBar(
                 title = "上下班提醒",
-                onBack = { navController.popBackStack() }
+                onBack = {
+                    vm.applyChanges()
+                    navController.popBackStack()
+                }
             )
         }
     ) { padding ->

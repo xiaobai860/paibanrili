@@ -61,6 +61,8 @@ class AppPreferences @Inject constructor(
         val KEY_ACCOUNTS_INITIALIZED     = stringPreferencesKey("accounts_initialized")
         // ── 长按快捷方式开关 ──
         val KEY_SHORTCUT_ENABLED = stringPreferencesKey("shortcut_enabled")
+        // ── 首次启动权限申请 ──
+        val KEY_INITIAL_PERMISSIONS_DONE = stringPreferencesKey("initial_permissions_done")
     }
 
     // ── 薪资配置 ───────────────────────────────────
@@ -264,6 +266,14 @@ class AppPreferences @Inject constructor(
         context.dataStore.data.first()[KEY_ACCOUNTS_INITIALIZED] == "true"
     suspend fun setAccountsInitialized() = context.dataStore.edit {
         it[KEY_ACCOUNTS_INITIALIZED] = "true"
+    }
+
+    // ── 首次启动权限申请 ────────────────────────────
+    /** 是否已完成首次权限申请（默认 false） */
+    suspend fun isInitialPermissionsDone(): Boolean =
+        context.dataStore.data.first()[KEY_INITIAL_PERMISSIONS_DONE] == "true"
+    suspend fun setInitialPermissionsDone() = context.dataStore.edit {
+        it[KEY_INITIAL_PERMISSIONS_DONE] = "true"
     }
 
     // ── 长按快捷方式开关 ────────────────────────────
