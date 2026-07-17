@@ -795,7 +795,7 @@ private fun DayCell(
     }
 
     // ── 布局常量 ──────────────────────────────────────────────
-    val dateHeight = 20.dp; val lunarGap = 2.dp; val lunarHeight = 12.dp
+    val dateHeight = 28.dp; val lunarGap = 2.dp; val lunarHeight = 12.dp
     val dataGap = 3.dp; val dataRowHeight = 12.dp; val dataRowGap = 1.dp
     val rowTextSize = 10.sp; val lunarTextSize = MaterialTheme.typography.labelSmall.fontSize
 
@@ -832,11 +832,11 @@ private fun DayCell(
             verticalArrangement = Arrangement.Top
         ) {
             // ── 1. 日期区域（含状态角标+事件指示点）───────────────
-            Box(Modifier.fillMaxWidth()) {
-                // 日期数字 Box（20dp 固定高度）
+            Box(Modifier.fillMaxWidth().height(dateHeight)) {
+                // 日期数字 Box（28dp 固定高度）
                 Box(Modifier.fillMaxWidth().height(dateHeight), contentAlignment = Alignment.TopCenter) {
                     Text(
-                        day.toString(), fontSize = 18.sp, lineHeight = 18.sp,
+                        day.toString(), fontSize = 19.sp, lineHeight = 19.sp,
                         style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
                         fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium,
                         color = cellTextFg
