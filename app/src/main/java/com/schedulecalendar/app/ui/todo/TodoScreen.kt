@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
@@ -349,7 +350,7 @@ private fun TodoTab(
                             if (isClockIn) vm.unfillMissedClockIn(todo.date)
                             else vm.unfillMissedClockOut(todo.date)
                         },
-                        actionIcon = Icons.Default.Undo
+                        actionIcon = Icons.AutoMirrored.Filled.Undo
                     )
                 }
             }
@@ -387,7 +388,7 @@ private fun TodoTab(
                             if (isEarly) vm.unconfirmEarlyOvertime(todo.date)
                             else vm.unconfirmLateOvertime(todo.date)
                         },
-                        actionIcon = Icons.Default.Undo
+                        actionIcon = Icons.AutoMirrored.Filled.Undo
                     )
                 }
             }
@@ -408,7 +409,7 @@ private fun TodoTab(
                             if (isEarly) vm.unignoreEarlyArrival(todo.date)
                             else vm.unignoreLateLeave(todo.date)
                         },
-                        actionIcon = Icons.Default.Undo
+                        actionIcon = Icons.AutoMirrored.Filled.Undo
                     )
                 }
             }
@@ -856,7 +857,7 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Default.EventNote, null,
+                        Icons.AutoMirrored.Filled.EventNote, null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(48.dp)
                     )
@@ -948,9 +949,7 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
                         CalendarEventRow(
                             event = event,
                             onClick = {
-                                android.util.Log.d("NavDebug", "CalendarEventRow clicked: eventId=${event.id}, title=${event.title}")
                                 vm.selectEvent(event)
-                                android.util.Log.d("NavDebug", "selectEvent completed, showEditDialog=${vm.state.value.showEditDialog}")
                             },
                             onLongClick = { categoryTarget = event }
                         )
@@ -1006,12 +1005,9 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
         while (true) {
             val id = pendingEditEventId
             if (id != null) {
-                android.util.Log.d("NavDebug", "pendingEditEventId changed, id=$id, will navigate after 200ms")
                 kotlinx.coroutines.delay(200)
-                android.util.Log.d("NavDebug", "Navigating to EditCalendarEvent($id) now")
                 pendingEditEventId = null
                 navController.navigate(RouteEditCalendarEvent(id))
-                android.util.Log.d("NavDebug", "navigate() called, currentBackStack=${navController.currentBackStackEntry?.destination?.route}")
             }
             kotlinx.coroutines.delay(100)
         }
@@ -1031,9 +1027,7 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
 
     // ── 详情/编辑弹窗 ─────────────────────────────────────
     eventState.selectedEvent?.let { event ->
-        android.util.Log.d("NavDebug", "selectedEvent exists: id=${event.id}, showEditDialog=${eventState.showEditDialog}, showDeleteDialog=${eventState.showDeleteDialog}")
         if (eventState.showEditDialog) {
-            android.util.Log.d("NavDebug", "Rendering CalendarEventDetailDialog for event ${event.id}")
             CalendarEventDetailDialog(
                 event = event,
                 navController = navController,
@@ -1289,7 +1283,6 @@ private fun CalendarEventDetailDialog(
     onNavigateToAccountSettings: () -> Unit,
     onDelete: () -> Unit
 ) {
-    android.util.Log.d("NavDebug", "CalendarEventDetailDialog composed for event ${event.id}")
     val timeFormat = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
     val startStr = remember(event.dtStart) { timeFormat.format(java.util.Date(event.dtStart)) }
     val endStr = remember(event.dtEnd) { timeFormat.format(java.util.Date(event.dtEnd)) }
@@ -1383,7 +1376,7 @@ private fun CalendarEventDetailDialog(
 
             if (!event.description.isNullOrEmpty()) {
                 Row(verticalAlignment = Alignment.Top) {
-                    Icon(Icons.Default.Notes, null,
+                    Icon(Icons.AutoMirrored.Filled.Notes, null,
                         tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp).padding(top = 2.dp))
                     Spacer(Modifier.width(12.dp))
                     Text(event.description, style = MaterialTheme.typography.bodyMedium,
@@ -1410,11 +1403,8 @@ private fun CalendarEventDetailDialog(
                 }
                 Button(
                     onClick = {
-                        android.util.Log.d("NavDebug", "Edit button clicked for event ${event.id}")
                         onDismiss()
-                        android.util.Log.d("NavDebug", "onDismiss() completed")
                         onNavigateToEdit()
-                        android.util.Log.d("NavDebug", "onNavigateToEdit() completed")
                     },
                     modifier = Modifier.weight(1f)
                 ) {

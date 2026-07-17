@@ -11,7 +11,6 @@ import com.schedulecalendar.app.data.calendar.CalendarAccountInfo
 import com.schedulecalendar.app.data.calendar.CalendarEventInfo
 import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.data.prefs.AppPreferences
-import android.util.Log
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -130,7 +129,6 @@ class CalendarEventViewModel @Inject constructor(
                         calendarRepo.getAllAccounts()
                     }
                 } catch (e: SecurityException) {
-                    Log.e("CalendarEventVM", "init loadAccounts SecurityException", e)
                     emptyList()
                 }
                 _accounts.value = accountsList
@@ -171,7 +169,6 @@ class CalendarEventViewModel @Inject constructor(
                     calendarRepo.getAllAccounts()
                 }
             } catch (e: SecurityException) {
-                Log.e("CalendarEventVM", "loadAccounts SecurityException", e)
                 emptyList()
             }
             _accounts.value = accountsList
@@ -271,10 +268,8 @@ class CalendarEventViewModel @Inject constructor(
                 rebuildCategoryMapping()
                 _state.update { it.copy(isLoading = false) }
             } catch (e: SecurityException) {
-                Log.e("CalendarEventVM", "loadEvents SecurityException", e)
                 _state.update { it.copy(isLoading = false) }
             } catch (e: Exception) {
-                Log.e("CalendarEventVM", "loadEvents failed", e)
                 _state.update { it.copy(isLoading = false) }
             }
         }
@@ -313,7 +308,6 @@ class CalendarEventViewModel @Inject constructor(
         if (!_state.value.hasPermission) {
             checkPermission()
             if (!_state.value.hasPermission) {
-                Log.w("CalendarEventVM", "selectEvent skipped: no permission")
                 return
             }
         }
@@ -358,7 +352,6 @@ class CalendarEventViewModel @Inject constructor(
         if (!_state.value.hasPermission) {
             checkPermission()
             if (!_state.value.hasPermission) {
-                Log.w("CalendarEventVM", "loadEventById($eventId) skipped: no permission")
                 _isSingleLoading.value = false
                 return
             }
@@ -370,13 +363,10 @@ class CalendarEventViewModel @Inject constructor(
                     calendarRepo.getEventById(eventId)
                 }
             } catch (e: SecurityException) {
-                Log.e("CalendarEventVM", "loadEventById($eventId) SecurityException", e)
                 null
             } catch (e: Exception) {
-                Log.e("CalendarEventVM", "loadEventById($eventId) failed", e)
                 null
             }
-            Log.d("CalendarEventVM", "loadEventById($eventId) -> ${event?.title ?: "null"}")
             _singleEvent.value = event
             _isSingleLoading.value = false
         }
@@ -405,7 +395,6 @@ class CalendarEventViewModel @Inject constructor(
                     calendarId, rrule, reminderMinutes, colorHex
                 )
             }
-            Log.d("CalendarEventVM", "createEvent result=$result")
             val success = result > 0
             if (success) loadEvents()
             onResult(success)
