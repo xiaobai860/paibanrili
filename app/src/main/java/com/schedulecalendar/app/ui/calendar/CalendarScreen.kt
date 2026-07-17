@@ -100,12 +100,21 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
         }
     }
 
-    // 处理小组件点击日期导航
+    // 处理小组件点击日期导航 → 进入日历主页并选中该日期
     LaunchedEffect(Unit) {
         val activity = context as? MainActivity
         val date = activity?.consumeNavigateDate()
         if (date != null) {
-            navController.navigate(RouteScheduleDetail(date))
+            val parts = date.split("-")
+            if (parts.size == 3) {
+                val year = parts[0].toIntOrNull() ?: LocalDate.now().year
+                val month = parts[1].toIntOrNull() ?: LocalDate.now().monthValue
+                vm.goToMonth(year, month)
+                vm.onDayClick(date)
+            }
+            navController.navigate(RouteCalendar) {
+                launchSingleTop = true
+            }
         }
     }
 
