@@ -47,7 +47,7 @@ data class CalendarEventState(
 class CalendarEventViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val calendarRepo: CalendarEventRepository,
-    private val prefs: AppPreferences
+    val prefs: AppPreferences
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CalendarEventState())
@@ -64,6 +64,9 @@ class CalendarEventViewModel @Inject constructor(
 
     /** 纪念日专用日历ID */
     private var anniversaryCalendarId: Long? = null
+
+    /** 日程专用日历ID */
+    private var scheduleCalendarId: Long? = null
 
     /** 原始事件列表（已过滤禁用账户，供日程和纪念日标签页使用） */
     private val _rawEvents = MutableStateFlow<List<CalendarEventInfo>>(emptyList())
@@ -175,6 +178,19 @@ class CalendarEventViewModel @Inject constructor(
             updateAppCalendarIds(accountsList)
             rebuildCategoryMapping()
         }
+    }
+
+    /**
+     * 获取日程专用日历ID
+     * 供 AddCalendarEventScreen 创建日程时使用
+     */
+    suspend fun getScheduleCalendarId(): Long? {
+        if (scheduleCalendarId == null) {
+            scheduleCalendarId = withContext(Dispatchers.IO) {
+                calendarRepo.getOrCreateLocalCalendarId()
+            }
+        }
+        return scheduleCalendarId
     }
 
     /**

@@ -68,6 +68,19 @@ fun AddCalendarEventScreen(
     val accounts by vm.accounts.collectAsStateWithLifecycle()
     var isCreating by remember { mutableStateOf(false) }
 
+    // 日程专用日历ID（默认选中）
+    var scheduleCalId by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(Unit) {
+        scheduleCalId = vm.getScheduleCalendarId()
+        selectedAccountId = scheduleCalId
+    }
+
+    // 过滤已禁用的日历账户
+    val disabledIds by vm.prefs.disabledAccountIdsFlow.collectAsStateWithLifecycle(initialValue = emptySet())
+    val visibleAccounts = remember(accounts, disabledIds) {
+        accounts.filter { it.id !in disabledIds }
+    }
+
     // 权限
     var hasWritePermission by remember {
         mutableStateOf(
@@ -144,9 +157,9 @@ fun AddCalendarEventScreen(
             EventReminderSelector(selected = reminderTime, onSelected = { reminderTime = it })
 
             // 日历账户
-            if (accounts.isNotEmpty()) {
+            if (visibleAccounts.isNotEmpty()) {
                 EventAccountSelector(
-                    accounts = accounts,
+                    accounts = visibleAccounts,
                     selectedId = selectedAccountId,
                     onSelected = { selectedAccountId = it }
                 )
@@ -206,7 +219,7 @@ fun AddCalendarEventScreen(
                         dtEnd = endTime,
                         allDay = isAllDay,
                         location = location.ifBlank { null },
-                        calendarId = selectedAccountId,
+                        calendarId = selectedAccountId ?: scheduleCalId,
                         rrule = repeatRule.rrule,
                         reminderMinutes = if (reminderTime.minutes >= 0) reminderTime.minutes else null
                     ) { success ->
