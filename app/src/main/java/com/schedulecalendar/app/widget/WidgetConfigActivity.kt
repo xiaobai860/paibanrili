@@ -10,8 +10,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -30,9 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import com.schedulecalendar.app.ui.theme.ScheduleCalendarTheme
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 // ── 配置持久化键 ──────────────────────────────────────────────────────
 const val WIDGET_CONFIG_PREFS = "widget_config_prefs"
@@ -48,40 +44,6 @@ const val DISPLAY_MODE_SHIFT_HOLIDAY  = "shift_holiday"     // 当天班次 + �
 // ── 从设置页面打开时传递的小组件类型 ─────────────────────────────────
 const val WIDGET_TYPE_CALENDAR = "calendar"
 const val WIDGET_TYPE_SCHEDULE = "schedule"
-
-// ── HSV / Hex 颜色转换工具 ───────────────────────────────────────────
-
-/** HSV → "#AARRGGBB"（alpha 固定 FF） */
-private fun hsvToHex(hue: Float, sat: Float, value: Float): String {
-    val argb = android.graphics.Color.HSVToColor(floatArrayOf(
-        hue.coerceIn(0f, 360f), sat.coerceIn(0f, 1f), value.coerceIn(0f, 1f)
-    ))
-    return "#${(argb.toLong() and 0xFFFFFFFFL).toString(16).padStart(8, '0').uppercase()}"
-}
-
-/** "#AARRGGBB" → HSV 浮点数组 */
-private fun hexToHsv(hex: String): FloatArray {
-    val h = hex.removePrefix("#")
-    val r = h.substring(h.length - 6, h.length - 4).toIntOrNull(16) ?: 0x33
-    val g = h.substring(h.length - 4, h.length - 2).toIntOrNull(16) ?: 0x33
-    val b = h.substring(h.length - 2).toIntOrNull(16) ?: 0x33
-    val hsv = FloatArray(3)
-    android.graphics.Color.RGBToHSV(r, g, b, hsv)
-    return hsv
-}
-
-/** ARGB int → Compose Color */
-private fun argbToColor(argb: Int): Color {
-    val a = ((argb shr 24) and 0xFF) / 255f
-    val r = ((argb shr 16) and 0xFF) / 255f
-    val g = ((argb shr 8) and 0xFF) / 255f
-    val b = (argb and 0xFF) / 255f
-    return Color(r, g, b, a)
-}
-
-/** HSV → Compose Color */
-private fun hsvToColor(hue: Float, sat: Float, value: Float): Color =
-    argbToColor(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, value)))
 
 // ── 配置 Activity ────────────────────────────────────────────────────
 
@@ -122,14 +84,16 @@ class WidgetConfigActivity : ComponentActivity() {
     }
 
     private fun finishConfig(appWidgetId: Int) {
-        // 始终更新所有小组件
-        val ctx = this
-        CoroutineScope(Dispatchers.Main).launch {
-            GlanceAppWidgetManager(ctx).getGlanceIds(CalendarGlanceWidget::class.java).forEach { id ->
-                CalendarGlanceWidget().update(ctx, id)
-            }
-            GlanceAppWidgetManager(ctx).getGlanceIds(ScheduleGlanceWidget::class.java).forEach { id ->
-                ScheduleGlanceWidget().update(ctx, id)
+        val appCtx = applicationContext
+        // runBlocking 保证 finish() 前同步完成更新，防止国产 ROM 销毁 Activity 后 IO 协程被丢弃
+        runBlocking {
+            runCatching {
+                CalendarGlanceWidget().let { w ->
+                    GlanceAppWidgetManager(appCtx).getGlanceIds(w.javaClass).forEach { w.update(appCtx, it) }
+                }
+                ScheduleGlanceWidget().let { w ->
+                    GlanceAppWidgetManager(appCtx).getGlanceIds(w.javaClass).forEach { w.update(appCtx, it) }
+                }
             }
         }
         if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
@@ -155,29 +119,8 @@ private fun WidgetConfigScreen(
 ) {
     val context = LocalContext.current
     val prefs = context.getSharedPreferences(WIDGET_CONFIG_PREFS, Context.MODE_PRIVATE)
-    val savedTextColor = prefs.getString(KEY_CFG_TEXT_COLOR, "#FF333333") ?: "#FF333333"
-    val savedBgColor = prefs.getString(KEY_CFG_BG_COLOR, "#FFF5F5F5") ?: "#FFF5F5F5"
     val savedTransparency = prefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 1.0f)
-
-    // 文字颜色 HSV state
-    val textHsv = remember(savedTextColor) { hexToHsv(savedTextColor) }
-    var textHue by remember { mutableFloatStateOf(textHsv[0]) }
-    var textSat by remember { mutableFloatStateOf(textHsv[1]) }
-    var textVal by remember { mutableFloatStateOf(textHsv[2]) }
-
-    // 背景颜色 HSV state
-    val bgHsv = remember(savedBgColor) { hexToHsv(savedBgColor) }
-    var bgHue by remember { mutableFloatStateOf(bgHsv[0]) }
-    var bgSat by remember { mutableFloatStateOf(bgHsv[1]) }
-    var bgVal by remember { mutableFloatStateOf(bgHsv[2]) }
-
     var bgTransparency by remember { mutableFloatStateOf(savedTransparency) }
-
-    val textColor = remember(textHue, textSat, textVal) { hsvToColor(textHue, textSat, textVal) }
-    val textColorHex = remember(textHue, textSat, textVal) { hsvToHex(textHue, textSat, textVal) }
-
-    val bgColor = remember(bgHue, bgSat, bgVal) { hsvToColor(bgHue, bgSat, bgVal) }
-    val bgColorHex = remember(bgHue, bgSat, bgVal) { hsvToHex(bgHue, bgSat, bgVal) }
 
     val savedMode = prefs.getString(KEY_CFG_DISPLAY_MODE, DISPLAY_MODE_SHIFT_TOMORROW)
         ?: DISPLAY_MODE_SHIFT_TOMORROW
@@ -187,6 +130,10 @@ private fun WidgetConfigScreen(
         DISPLAY_MODE_SHIFT_TOMORROW to "当天班次 + 明天班次",
         DISPLAY_MODE_SHIFT_HOLIDAY  to "当天班次 + 法定节假日倒计时"
     )
+
+    // 默认颜色（不再支持配置，写死为默认值）
+    val defaultTextColor = Color(0xFF333333)
+    val defaultBgColor = Color(0xFFF5F5F5)
 
     Scaffold(
         topBar = {
@@ -206,12 +153,13 @@ private fun WidgetConfigScreen(
             ) {
                 Button(
                     onClick = {
+                        // 同步写入（含默认颜色 + 透明度 + 显示模式）
                         prefs.edit()
-                            .putString(KEY_CFG_TEXT_COLOR, textColorHex)
-                            .putString(KEY_CFG_BG_COLOR, bgColorHex)
+                            .putString(KEY_CFG_TEXT_COLOR, "#FF333333")
+                            .putString(KEY_CFG_BG_COLOR, "#FFF5F5F5")
                             .putFloat(KEY_CFG_BG_TRANSPARENCY, bgTransparency)
                             .putString(KEY_CFG_DISPLAY_MODE, selectedMode)
-                            .apply()
+                            .commit()
                         onDone()
                     },
                     modifier = Modifier
@@ -234,12 +182,11 @@ private fun WidgetConfigScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // ── 预览卡片 ──
-            val previewBg = bgColor.copy(alpha = bgTransparency)
-            val previewText = textColor
+            val previewBg = defaultBgColor.copy(alpha = bgTransparency)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 colors = CardDefaults.cardColors(containerColor = previewBg),
                 border = BorderStroke(0.dp, Color.Transparent)
             ) {
@@ -255,44 +202,22 @@ private fun WidgetConfigScreen(
                         text = "预览效果",
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
-                        color = previewText
+                        color = defaultTextColor
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = "7月17日 白班",
                         fontSize = 11.sp,
-                        color = previewText.copy(alpha = 0.7f)
+                        color = defaultTextColor.copy(alpha = 0.7f)
                     )
                 }
             }
-
-            // ── 字体颜色 ──
-            ColorSliderSection(
-                label = "字体颜色",
-                hexColor = textColorHex,
-                color = textColor,
-                hue = textHue, saturation = textSat, value = textVal,
-                onHueChanged = { textHue = (it * 10).toInt() / 10f },
-                onSatChanged = { textSat = (it * 20).toInt() / 20f },
-                onValChanged = { textVal = (it * 20).toInt() / 20f }
-            )
-
-            // ── 背景颜色 ──
-            ColorSliderSection(
-                label = "背景颜色",
-                hexColor = bgColorHex,
-                color = bgColor,
-                hue = bgHue, saturation = bgSat, value = bgVal,
-                onHueChanged = { bgHue = (it * 10).toInt() / 10f },
-                onSatChanged = { bgSat = (it * 20).toInt() / 20f },
-                onValChanged = { bgVal = (it * 20).toInt() / 20f }
-            )
 
             // ── 背景透明度 ──
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                 ),
@@ -347,7 +272,7 @@ private fun WidgetConfigScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                     ),
@@ -409,175 +334,4 @@ private fun WidgetConfigScreen(
     }
 }
 
-// ── 颜色滑块选择区段（色相 + 饱和度 + 亮度） ─────────────────────────
 
-@Composable
-private fun ColorSliderSection(
-    label: String,
-    hexColor: String,
-    color: Color,
-    hue: Float,
-    saturation: Float,
-    value: Float,
-    onHueChanged: (Float) -> Unit,
-    onSatChanged: (Float) -> Unit,
-    onValChanged: (Float) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-        ),
-        border = BorderStroke(0.dp, Color.Transparent)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            // 标题行
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(color)
-                            .border(
-                                0.5.dp,
-                                MaterialTheme.colorScheme.outline,
-                                RoundedCornerShape(4.dp)
-                            )
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = hexColor.lowercase(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            // 色相
-            GradientSlider(
-                label = "色相",
-                value = hue,
-                onValueChange = onHueChanged,
-                valueRange = 0f..360f,
-                steps = 35,
-                gradientColors = listOf(
-                    Color.Red, Color.Yellow, Color.Green, Color.Cyan,
-                    Color.Blue, Color.Magenta, Color.Red
-                ),
-                thumbColor = hsvToColor(hue, saturation, value)
-            )
-
-            Spacer(Modifier.height(6.dp))
-
-            // 饱和度
-            GradientSlider(
-                label = "饱和度",
-                value = saturation,
-                onValueChange = onSatChanged,
-                valueRange = 0f..1f,
-                steps = 19,
-                gradientColors = null,
-                gradientStart = hsvToColor(hue, 0f, value),
-                gradientEnd = hsvToColor(hue, 1f, value),
-                thumbColor = hsvToColor(hue, saturation, value)
-            )
-
-            Spacer(Modifier.height(6.dp))
-
-            // 亮度
-            GradientSlider(
-                label = "亮度",
-                value = value,
-                onValueChange = onValChanged,
-                valueRange = 0f..1f,
-                steps = 19,
-                gradientColors = null,
-                gradientStart = hsvToColor(hue, saturation, 0f),
-                gradientEnd = hsvToColor(hue, saturation, 1f),
-                thumbColor = hsvToColor(hue, saturation, value)
-            )
-        }
-    }
-}
-
-// ── 渐变背景滑块 ──────────────────────────────────────────────────────
-
-@Composable
-private fun GradientSlider(
-    label: String,
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    steps: Int,
-    gradientColors: List<Color>?,
-    gradientStart: Color = Color.Transparent,
-    gradientEnd: Color = Color.Transparent,
-    thumbColor: Color
-) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            val display = if (valueRange.endInclusive > 2f) {
-                "${value.toInt()}°"
-            } else {
-                "${(value * 100).toInt()}%"
-            }
-            Text(
-                text = display,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.height(2.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(26.dp)
-                .clip(RoundedCornerShape(6.dp))
-        ) {
-            Canvas(Modifier.fillMaxSize()) {
-                if (gradientColors != null) {
-                    drawRect(brush = Brush.horizontalGradient(gradientColors))
-                } else {
-                    drawRect(
-                        brush = Brush.horizontalGradient(listOf(gradientStart, gradientEnd))
-                    )
-                }
-            }
-            Slider(
-                value = value,
-                onValueChange = onValueChange,
-                valueRange = valueRange,
-                steps = steps,
-                modifier = Modifier.fillMaxSize(),
-                colors = SliderDefaults.colors(
-                    thumbColor = thumbColor,
-                    activeTrackColor = Color.Transparent,
-                    inactiveTrackColor = Color.Transparent,
-                )
-            )
-        }
-    }
-}
