@@ -139,7 +139,7 @@ class CalendarViewModel @Inject constructor(
             // 计算日历网格覆盖的完整日期范围（含跨月填充日期）
             val ym = YearMonth.of(s.year, s.month)
             val daysInMonth = ym.lengthOfMonth()
-            val firstDow = LocalDate.of(s.year, s.month, 1).dayOfWeek.value % 7  // 0=Sun..6=Sat
+            val firstDow = (LocalDate.of(s.year, s.month, 1).dayOfWeek.value + 6) % 7  // 周一=0..周日=6
             val totalCells = firstDow + daysInMonth
             val totalRows = (totalCells + 6) / 7
             val remainingInLastRow = totalRows * 7 - totalCells
@@ -807,10 +807,10 @@ class CalendarViewModel @Inject constructor(
         val today = LocalDate.now()
         val ym = YearMonth.of(year, month)
         val daysInMonth = ym.lengthOfMonth()
-        val firstDow = LocalDate.of(year, month, 1).dayOfWeek.value % 7  // 0=Sun..6=Sat
+        val firstDow = (LocalDate.of(year, month, 1).dayOfWeek.value + 6) % 7  // 周一=0..周日=6
 
         val shiftMap = allShifts.associateBy { it.id }
-        val statusMap = allShiftStatuses.associateBy { it.id }
+        val statusMap = (BUILTIN_STATUSES + allShiftStatuses).associateBy { it.id }
 
         val days = (1..daysInMonth).map { d ->
             val dateStr = "%04d-%02d-%02d".format(year, month, d)
