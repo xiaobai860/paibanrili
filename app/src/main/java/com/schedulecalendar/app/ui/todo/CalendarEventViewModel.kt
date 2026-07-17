@@ -105,7 +105,8 @@ class CalendarEventViewModel @Inject constructor(
                         val isAnniversaryCal = anniversaryCalendarId != null && event.calendarId == anniversaryCalendarId
                         val isLegacyAnniversary = event.title.startsWith("纪念日: ") &&
                             event.rrule?.contains("FREQ=YEARLY") == true
-                        isAnniversaryCal || isLegacyAnniversary
+                        // 保留非纪念日事件（过滤掉纪念日事件）
+                        !(isAnniversaryCal || isLegacyAnniversary)
                     } else {
                         // 外部账户：按分类过滤
                         val category = categories[event.calendarId]

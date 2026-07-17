@@ -25,6 +25,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
+import com.schedulecalendar.app.domain.model.HolidayData
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -76,7 +77,7 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
     }
 }
 
-// ── 打卡动作回调 ────────────────────────────────────────────────────
+// ── 打卡动作回调（始终可点击，更新打卡时间） ─────────────────────────
 
 class ClockInAction : ActionCallback {
     override suspend fun onAction(
@@ -93,14 +94,18 @@ class ClockInAction : ActionCallback {
 
         val editor = prefs.edit()
         if (savedDate != todayStr) {
-            // 新的一天，记录上班打卡
+            // 新的一天 → 上班打卡
             editor.putString(KEY_CLOCK_IN_DATE, todayStr)
             editor.putString(KEY_CLOCK_IN_TIME, currentTime)
             editor.remove(KEY_CLOCK_OUT_TIME)
         } else {
-            // 同一天，记录下班打卡
             val clockInTime = prefs.getString(KEY_CLOCK_IN_TIME, "") ?: ""
-            if (clockInTime.isNotEmpty()) {
+            val clockOutTime = prefs.getString(KEY_CLOCK_OUT_TIME, "") ?: ""
+            if (clockOutTime.isEmpty() && clockInTime.isNotEmpty()) {
+                // 已打卡上班 → 下班打卡
+                editor.putString(KEY_CLOCK_OUT_TIME, currentTime)
+            } else {
+                // 已打卡下班 → 更新下班时间（可重复点击）
                 editor.putString(KEY_CLOCK_OUT_TIME, currentTime)
             }
         }
@@ -113,6 +118,41 @@ class ClockInAction : ActionCallback {
 }
 
 // ── 小组件 UI 内容 ─────────────────────────────────────────────────
+
+/** 将十六进制颜色字符串转为 Glance ColorProvider */
+private fun parseShiftColor(hex: String): ColorProvider {
+    val h = hex.removePrefix("#")
+    val color = if (h.length >= 6) {
+        val r = h.substring(0, 2).toIntOrNull(16) ?: 0x05
+        val g = h.substring(2, 4).toIntOrNull(16) ?: 0x96
+        val b = h.substring(4, 6).toIntOrNull(16) ?: 0x69
+        Color(r / 255f, g / 255f, b / 255f, 1f)
+    } else Color(0xFF059669)
+    return cp(color)
+}
+
+/** 计算下一个法定节假日天数 */
+private fun getHolidayCountdownText(): String {
+    val today = LocalDate.now()
+    val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+
+    // 检查当天是否是法定节假日
+    if (HolidayData.isLegalHoliday(todayStr)) {
+        val name = HolidayData.getHolidayName(todayStr)
+        return if (name != null && name !in listOf("春节补班", "劳动节补班", "端午节补班", "中秋节补班", "国庆节补班"))
+            "\u4eca\u5929${name}\u5c31\u662f\uff01" else "\u4eca\u65e5\u505c\u5de5"
+    }
+
+    // 查找下一个最近法定节假日首日
+    val (holidayName, daysUntil) = HolidayData.getNextHolidayCountdown(todayStr)
+    return if (daysUntil > 0) {
+        "\u8ddd${holidayName}\u8fd8\u6709${daysUntil}\u5929"
+    } else if (daysUntil == 0) {
+        "\u4eca\u5929${holidayName}\u5c31\u662f\uff01"
+    } else {
+        ""
+    }
+}
 
 @Composable
 private fun ClockInWidgetContent() {
@@ -131,22 +171,18 @@ private fun ClockInWidgetContent() {
     val actualStart = if (savedDate == todayStr) clockPrefs.getString(KEY_CLOCK_IN_TIME, "") ?: "" else ""
     val actualEnd = if (savedDate == todayStr) clockPrefs.getString(KEY_CLOCK_OUT_TIME, "") ?: "" else ""
 
-    // 判断按钮状态
+    // 判断打卡状态
     val hasClockIn = actualStart.isNotEmpty()
     val hasClockOut = actualEnd.isNotEmpty()
-    val buttonState = when {
-        hasClockOut -> "done"
-        hasClockIn -> "clock_out"
-        else -> "clock_in"
-    }
 
-    val shiftHex = data.shiftColor.removePrefix("#")
-    val shiftColor = if (shiftHex.length >= 6) {
-        val r = shiftHex.substring(0, 2).toIntOrNull(16) ?: 0x05
-        val g = shiftHex.substring(2, 4).toIntOrNull(16) ?: 0x96
-        val b = shiftHex.substring(4, 6).toIntOrNull(16) ?: 0x69
-        Color(r / 255f, g / 255f, b / 255f, 1f)
-    } else Color(0xFF059669)
+    // 读取配置的显示模式
+    val configPrefs = context.getSharedPreferences(WIDGET_CONFIG_PREFS, Context.MODE_PRIVATE)
+    val displayMode = configPrefs.getString(
+        KEY_CFG_DISPLAY_MODE, DISPLAY_MODE_SHIFT_TOMORROW
+    ) ?: DISPLAY_MODE_SHIFT_TOMORROW
+
+    // 解析班次颜色
+    val shiftColor = parseShiftColor(data.shiftColor)
 
     // 显示时间：已打卡显示实际时间，否则显示班次时间
     val displayStart = actualStart.ifEmpty { data.startTime }
@@ -156,12 +192,15 @@ private fun ClockInWidgetContent() {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(cp(Color(0xFFF8FAFC)))
-            .padding(8.dp),
+            .padding(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 左侧 3/4：班次信息
+        // ── 左侧：班次信息（点击跳转主页面） ──
         Column(
-            modifier = GlanceModifier.defaultWeight().padding(end = 8.dp),
+            modifier = GlanceModifier
+                .defaultWeight()
+                .padding(end = 6.dp)
+                .clickable(actionRunCallback<OpenAppAction>()),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 当天班次名称
@@ -169,7 +208,7 @@ private fun ClockInWidgetContent() {
                 Text(
                     text = data.shiftName,
                     style = TextStyle(
-                        color = cp(shiftColor),
+                        color = shiftColor,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     ),
@@ -186,50 +225,80 @@ private fun ClockInWidgetContent() {
             // 上下班时间
             if (data.startTime.isNotEmpty() || data.endTime.isNotEmpty()) {
                 val timeColor = when {
-                    hasClockIn && !hasClockOut -> Color(0xFFF59E0B)
-                    hasClockOut -> Color(0xFF10B981)
-                    else -> Color(0xFF6B7280)
+                    hasClockIn && !hasClockOut -> cp(Color(0xFFF59E0B))
+                    hasClockOut -> cp(Color(0xFF10B981))
+                    else -> cp(Color(0xFF9E9E9E))
                 }
                 Text(
                     text = "$displayStart \u2013 $displayEnd",
-                    style = TextStyle(color = cp(timeColor), fontSize = 12.sp),
+                    style = TextStyle(color = timeColor, fontSize = 12.sp),
                     maxLines = 1
                 )
             }
 
-            // 明天班次
-            if (data.tomorrowShiftName.isNotEmpty()) {
-                Text(
-                    text = "\u660e\u5929\uff1a${data.tomorrowShiftName}",
-                    style = TextStyle(color = cp(Color(0xFF9CA3AF)), fontSize = 10.sp),
-                    maxLines = 1
-                )
+            // 第二行：根据显示模式展示不同内容
+            when (displayMode) {
+                DISPLAY_MODE_SHIFT_HOLIDAY -> {
+                    // 模式：法定节假日倒计时
+                    val countdownText = getHolidayCountdownText()
+                    if (countdownText.isNotEmpty()) {
+                        Text(
+                            text = countdownText,
+                            style = TextStyle(
+                                color = cp(Color(0xFFDC2626)),
+                                fontSize = 10.sp
+                            ),
+                            maxLines = 1
+                        )
+                    }
+                }
+                else -> {
+                    // 模式：明天班次（默认）
+                    if (data.tomorrowShiftName.isNotEmpty()) {
+                        Text(
+                            text = "\u660e\u5929\uff1a${data.tomorrowShiftName}",
+                            style = TextStyle(
+                                color = cp(Color(0xFF9E9E9E)),
+                                fontSize = 10.sp
+                            ),
+                            maxLines = 1
+                        )
+                    }
+                }
             }
         }
 
-        // 右侧 1/4：打卡按钮
-        val (btnText, btnColor) = when (buttonState) {
-            "clock_in" -> "\u4e0a\u73ed\n\u6253\u5361" to Color(0xFF059669)
-            "clock_out" -> "\u4e0b\u73ed\n\u6253\u5361" to Color(0xFFF59E0B)
-            else -> "\u5df2\n\u5b8c\u6210" to Color(0xFF9CA3AF)
+        // ── 右侧：打卡按钮（缩小宽度，始终可点击） ──
+        val btnText: String
+        val btnColor: ColorProvider
+        when {
+            !hasClockIn -> {
+                btnText = "\u4e0a\u73ed\n\u6253\u5361"
+                btnColor = cp(Color(0xFF059669))
+            }
+            !hasClockOut -> {
+                btnText = "\u4e0b\u73ed\n\u6253\u5361"
+                btnColor = cp(Color(0xFFF59E0B))
+            }
+            else -> {
+                btnText = actualEnd.take(5)
+                btnColor = cp(Color(0xFF9CA3AF))
+            }
         }
 
         Box(
             modifier = GlanceModifier
-                .width(56.dp)
-                .height(56.dp)
-                .background(cp(btnColor))
-                .clickable(
-                    if (buttonState != "done") actionRunCallback<ClockInAction>()
-                    else actionRunCallback<OpenAppAction>()
-                ),
+                .width(40.dp)
+                .height(40.dp)
+                .background(btnColor)
+                .clickable(actionRunCallback<ClockInAction>()),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = btnText,
                 style = TextStyle(
                     color = cp(Color.White),
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 maxLines = 2
@@ -252,7 +321,6 @@ class OpenAppAction : ActionCallback {
     }
 }
 
-/** 创建 ColorProvider 的辅助函数 */
 private fun cp(color: Color): ColorProvider = object : ColorProvider {
     override fun getColor(context: Context): Color = color
 }
