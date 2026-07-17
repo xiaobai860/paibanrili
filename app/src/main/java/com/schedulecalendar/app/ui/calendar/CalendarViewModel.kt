@@ -844,8 +844,14 @@ class CalendarViewModel @Inject constructor(
         val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
         val tomorrow = today.plusDays(1)
         val tomorrowStr = "%04d-%02d-%02d".format(tomorrow.year, tomorrow.monthValue, tomorrow.dayOfMonth)
-        val todayShift = schedules[todayStr]?.shiftId?.let { id -> shifts.find { it.id == id } }
+        val todayRecord = schedules[todayStr]
+        val todayShift = todayRecord?.shiftId?.let { id -> shifts.find { it.id == id } }
         val tomorrowShift = schedules[tomorrowStr]?.shiftId?.let { id -> shifts.find { it.id == id } }
+
+        // 读取附加状态名
+        val statusName = todayRecord?.appliedStatus?.let { applied ->
+            (BUILTIN_STATUSES + state.value.allShiftStatuses).find { it.id == applied.statusId }?.name
+        } ?: ""
 
         // 读取打卡状态
         val clockPrefs = context.getSharedPreferences("clock_in_widget_prefs", Context.MODE_PRIVATE)
@@ -860,7 +866,8 @@ class CalendarViewModel @Inject constructor(
             tomorrowShiftName = tomorrowShift?.name ?: "",
             actualStartTime = actualStart,
             actualEndTime = actualEnd,
-            shiftColor = todayShift?.color ?: "#059669"
+            shiftColor = todayShift?.color ?: "#059669",
+            statusName = statusName
         )
         ScheduleGlanceWidget.updateWidgetData(context, widgetData)
     }

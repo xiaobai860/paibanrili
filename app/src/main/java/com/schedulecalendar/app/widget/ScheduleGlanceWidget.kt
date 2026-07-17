@@ -26,6 +26,7 @@ import androidx.glance.layout.*
 import androidx.glance.state.GlanceStateDefinition
 import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.text.FontWeight
+import androidx.glance.text.TextAlign
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
@@ -43,7 +44,8 @@ data class ClockInWidgetData(
     val tomorrowShiftName: String = "",
     val actualStartTime: String = "",
     val actualEndTime: String = "",
-    val shiftColor: String = "#059669"
+    val shiftColor: String = "#059669",
+    val statusName: String = ""
 )
 
 // ── Glance 状态键 ──────────────────────────────────────────────────
@@ -119,6 +121,10 @@ class ClockInAction : ActionCallback {
         // 刷新小组件
         val widget = ScheduleGlanceWidget()
         widget.update(context, glanceId)
+        // 同时刷新日历小组件
+        CalendarGlanceWidget().let { w ->
+            GlanceAppWidgetManager(context).getGlanceIds(w.javaClass).forEach { w.update(context, it) }
+        }
 
         // Toast提示
         val isClockIn = savedDate != todayStr
@@ -199,8 +205,9 @@ private fun ClockInWidgetContent() {
     ) ?: DISPLAY_MODE_SHIFT_TOMORROW
     val textHex = configPrefs.getString(KEY_CFG_TEXT_COLOR, "#FF333333") ?: "#FF333333"
     val bgHex = configPrefs.getString(KEY_CFG_BG_COLOR, "#FFFFFFFF") ?: "#FFFFFFFF"
-    val bgAlpha = configPrefs.getFloat(KEY_CFG_SCHEDULE_BG_TRANSPARENCY,
-        configPrefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 1.0f))
+    val bgTransparency = configPrefs.getFloat(KEY_CFG_SCHEDULE_BG_TRANSPARENCY,
+        configPrefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 0.0f))
+    val bgAlpha = 1.0f - bgTransparency  // 0%=不透明，100%=全透明
     val utc = hexToWidgetColor(textHex, Color(0xFF333333))
     val ubg = hexToWidgetColor(bgHex, Color.White).copy(alpha = bgAlpha)
     // 检测深色模式
@@ -219,22 +226,28 @@ private fun ClockInWidgetContent() {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(ubg))
-            .cornerRadius(12.dp)
-            .padding(8.dp),
+            .cornerRadius(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // ── 左侧：班次信息（点击跳转主页面） ──
         Column(
             modifier = GlanceModifier
                 .defaultWeight()
-                .padding(end = 6.dp)
+                .padding(start = 8.dp, end = 4.dp)
                 .clickable(actionRunCallback<OpenAppAction>()),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 当天班次名称
-            if (data.shiftName.isNotEmpty()) {
+            // 第一行：班次名 + 附加状态（同一行）
+            val shiftDisplayName = buildString {
+                if (data.shiftName.isNotEmpty()) append(data.shiftName)
+                if (data.statusName.isNotEmpty()) {
+                    if (isNotEmpty()) append(" · ")
+                    append(data.statusName)
+                }
+            }
+            if (shiftDisplayName.isNotEmpty()) {
                 Text(
-                    text = data.shiftName,
+                    text = shiftDisplayName,
                     style = TextStyle(
                         color = shiftColor,
                         fontSize = 15.sp,
@@ -250,7 +263,7 @@ private fun ClockInWidgetContent() {
                 )
             }
 
-            // 上下班时间
+            // 第二行：上下班时间
             if (data.startTime.isNotEmpty() || data.endTime.isNotEmpty()) {
                 val timeColor = when {
                     hasClockIn && !hasClockOut -> pickColor(Color(0xFFF59E0B), Color(0xFFFBBF24), isDark)
@@ -264,10 +277,9 @@ private fun ClockInWidgetContent() {
                 )
             }
 
-            // 第二行：根据显示模式展示不同内容
+            // 第三行：根据显示模式展示不同内容
             when (displayMode) {
                 DISPLAY_MODE_SHIFT_HOLIDAY -> {
-                    // 模式：法定节假日倒计时
                     val countdownText = getHolidayCountdownText()
                     if (countdownText.isNotEmpty()) {
                         Text(
@@ -281,7 +293,6 @@ private fun ClockInWidgetContent() {
                     }
                 }
                 else -> {
-                    // 模式：明天班次（默认）
                     if (data.tomorrowShiftName.isNotEmpty()) {
                         Text(
                             text = "\u660e\u5929\uff1a${data.tomorrowShiftName}",
@@ -296,23 +307,27 @@ private fun ClockInWidgetContent() {
             }
         }
 
-        // ── 右侧：打卡按钮（柔和色调 + 圆角） ──
-        val btnText: String
+        // ── 右侧：打卡按钮 ──
+        val btnLabel: String   // 上班卡 / 下班卡
+        val btnTime: String    // 时间（未打卡显示班次时间）
         val btnBgColor: ColorProvider
         val btnTextColor: ColorProvider
         when {
             !hasClockIn -> {
-                btnText = "\u4e0a\u73ed\n\u6253\u5361"
+                btnLabel = "\u4e0a\u73ed\u5361"
+                btnTime = ""
                 btnBgColor = pickColor(Color(0xFF059669).copy(alpha = 0.12f * bgAlpha), Color(0xFF059669).copy(alpha = 0.22f), isDark)
                 btnTextColor = pickColor(Color(0xFF059669), Color(0xFF4ADE80), isDark)
             }
             !hasClockOut -> {
-                btnText = "\u4e0b\u73ed\n\u6253\u5361"
+                btnLabel = "\u4e0b\u73ed\u5361"
+                btnTime = actualStart.take(5)
                 btnBgColor = pickColor(Color(0xFFF59E0B).copy(alpha = 0.12f * bgAlpha), Color(0xFFF59E0B).copy(alpha = 0.22f), isDark)
                 btnTextColor = pickColor(Color(0xFFD97706), Color(0xFFFBBF24), isDark)
             }
             else -> {
-                btnText = actualEnd.take(5)
+                btnLabel = "\u4e0b\u73ed\u5361"
+                btnTime = actualEnd.take(5)
                 btnBgColor = pickColor(Color(0xFF9CA3AF).copy(alpha = 0.10f * bgAlpha), Color(0xFF9CA3AF).copy(alpha = 0.18f), isDark)
                 btnTextColor = pickColor(Color(0xFF6B7280), Color(0xFF9CA3AF), isDark)
             }
@@ -320,22 +335,54 @@ private fun ClockInWidgetContent() {
 
         Box(
             modifier = GlanceModifier
-                .width(44.dp)
-                .height(44.dp)
+                .width(40.dp)
+                .height(40.dp)
                 .background(btnBgColor)
-                .cornerRadius(12.dp)
+                .cornerRadius(10.dp)
                 .clickable(actionRunCallback<ClockInAction>()),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = btnText,
-                style = TextStyle(
-                    color = btnTextColor,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                ),
-                maxLines = 2
-            )
+            if (btnTime.isEmpty()) {
+                // 未打卡：单行居中显示"上班卡"
+                Text(
+                    text = btnLabel,
+                    style = TextStyle(
+                        color = btnTextColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    ),
+                    maxLines = 1
+                )
+            } else {
+                // 已打卡：两行居中显示"下班卡" + 时间
+                Column(
+                    modifier = GlanceModifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = btnLabel,
+                        style = TextStyle(
+                            color = btnTextColor,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        ),
+                        maxLines = 1
+                    )
+                    Text(
+                        text = btnTime,
+                        style = TextStyle(
+                            color = btnTextColor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center
+                        ),
+                        maxLines = 1
+                    )
+                }
+            }
         }
     }
 }
