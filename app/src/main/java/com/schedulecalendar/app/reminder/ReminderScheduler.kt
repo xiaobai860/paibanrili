@@ -55,8 +55,9 @@ class ReminderScheduler @Inject constructor(
 
         /** 日历提醒事件标题前缀，用于管理和清理 */
         const val CALENDAR_REMINDER_PREFIX = "[上下班提醒] "
-        /** 日历提醒事件保留窗口：今天前后各 3 天 */
-        private const val REMINDER_WINDOW_DAYS = 3
+        /** 日历提醒事件保留窗口：前 3 天 ~ 后 5 天 */
+        private const val REMINDER_PAST_DAYS = 3
+        private const val REMINDER_FUTURE_DAYS = 5
     }
 
     private val alarmManager: AlarmManager by lazy {
@@ -90,7 +91,7 @@ class ReminderScheduler @Inject constructor(
      * - "alarm"：使用 AlarmManager.setAlarmClock() 精确闹钟
      * - "calendar"：创建系统日历事件并设置提醒，由系统日历应用触发通知
      *
-     * 日历提醒事件保留窗口为今天前后各 3 天（共 7 天），
+     * 日历提醒事件保留窗口为前 3 天到后 5 天（共 9 天），
      * 超过窗口的旧事件会自动清理，避免污染系统日历。
      */
     suspend fun scheduleUpcomingReminders() {
@@ -121,8 +122,8 @@ class ReminderScheduler @Inject constructor(
             cancelAllReminders()
             // 清理窗口外的旧日历事件
             cleanupCalendarReminders()
-            // 创建今天-3天 到 今天+3天 的日历提醒事件
-            for (dayOffset in -REMINDER_WINDOW_DAYS..REMINDER_WINDOW_DAYS) {
+            // 创建今天-3天 到 今天+5天 的日历提醒事件
+            for (dayOffset in -REMINDER_PAST_DAYS..REMINDER_FUTURE_DAYS) {
                 val date = today.plusDays(dayOffset.toLong())
                 val record = getShiftForDate(date.toString()) ?: continue
                 val shiftTimes = getShiftTimes(record.shiftId) ?: continue
@@ -150,7 +151,7 @@ class ReminderScheduler @Inject constructor(
             // 闹钟提醒模式：使用 AlarmManager
             // 清理可能残留的日历提醒事件
             cleanupCalendarReminders()
-            for (dayOffset in 0..6) {
+            for (dayOffset in -REMINDER_PAST_DAYS..REMINDER_FUTURE_DAYS) {
                 val date = today.plusDays(dayOffset.toLong())
                 val record = getShiftForDate(date.toString()) ?: continue
                 val shiftTimes = getShiftTimes(record.shiftId) ?: continue
@@ -279,7 +280,7 @@ class ReminderScheduler @Inject constructor(
      */
     fun cancelAllReminders() {
         val today = LocalDate.now()
-        for (dayOffset in -7..7) {
+        for (dayOffset in -(REMINDER_PAST_DAYS + 4)..(REMINDER_FUTURE_DAYS + 4)) {
             val date = today.plusDays(dayOffset.toLong())
             for (isClockIn in listOf(true, false)) {
                 val requestCode = (date.toEpochDay().toInt() * 10) + (if (isClockIn) 1 else 2)
