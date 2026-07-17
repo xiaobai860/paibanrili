@@ -127,7 +127,10 @@ private fun CalendarWidgetContent() {
     val sfs = if (isLarge) 8.sp else 7.sp
     val stfs = if (isLarge) 7.sp else 6.sp
     val lfs = 7.sp
-    val showLunar = isLarge  // 4行高度(4x3/4x4)显示农历，3行高度(3x3/3x4)不显示
+    // 农历显示条件：物理高度足够 AND (月份行数≤4 OR 每行高度≥50dp)
+    // 确保3行小组件不显示(防裁切)，4行小组件始终显示(空间充裕)
+    val heightPerRow = (ws.height - 34.dp) / data.totalRows.coerceAtLeast(1)
+    val showLunar = isLarge && (data.totalRows <= 4 || heightPerRow >= 50.dp)
     val headerFs = if (isLarge) 17.sp else 14.sp
     val refreshSize = if (isLarge) 28.dp else 24.dp
     val refreshIconFs = if (isLarge) 18.sp else 15.sp
