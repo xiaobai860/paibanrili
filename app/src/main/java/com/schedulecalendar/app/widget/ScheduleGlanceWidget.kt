@@ -180,6 +180,11 @@ private fun ClockInWidgetContent() {
     val displayMode = configPrefs.getString(
         KEY_CFG_DISPLAY_MODE, DISPLAY_MODE_SHIFT_TOMORROW
     ) ?: DISPLAY_MODE_SHIFT_TOMORROW
+    val textHex = configPrefs.getString(KEY_CFG_TEXT_COLOR, "#FF333333") ?: "#FF333333"
+    val bgHex = configPrefs.getString(KEY_CFG_BG_COLOR, "#FFF5F5F5") ?: "#FFF5F5F5"
+    val bgAlpha = configPrefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 1.0f)
+    val utc = hexToWidgetColor(textHex, Color(0xFF333333))
+    val ubg = hexToWidgetColor(bgHex, Color(0xFFF5F5F5)).copy(alpha = bgAlpha)
 
     // 解析班次颜色
     val shiftColor = parseShiftColor(data.shiftColor)
@@ -191,7 +196,7 @@ private fun ClockInWidgetContent() {
     Row(
         modifier = GlanceModifier
             .fillMaxSize()
-            .background(cp(Color(0xFFF8FAFC)))
+            .background(cp(ubg))
             .padding(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -217,7 +222,7 @@ private fun ClockInWidgetContent() {
             } else {
                 Text(
                     text = "\u4eca\u65e5\u65e0\u6392\u73ed",
-                    style = TextStyle(color = cp(Color(0xFF9E9E9E)), fontSize = 13.sp),
+                    style = TextStyle(color = cp(utc.copy(alpha = 0.6f)), fontSize = 13.sp),
                     maxLines = 1
                 )
             }
@@ -227,7 +232,7 @@ private fun ClockInWidgetContent() {
                 val timeColor = when {
                     hasClockIn && !hasClockOut -> cp(Color(0xFFF59E0B))
                     hasClockOut -> cp(Color(0xFF10B981))
-                    else -> cp(Color(0xFF9E9E9E))
+                    else -> cp(utc.copy(alpha = 0.6f))
                 }
                 Text(
                     text = "$displayStart \u2013 $displayEnd",
@@ -258,7 +263,7 @@ private fun ClockInWidgetContent() {
                         Text(
                             text = "\u660e\u5929\uff1a${data.tomorrowShiftName}",
                             style = TextStyle(
-                                color = cp(Color(0xFF9E9E9E)),
+                                color = cp(utc.copy(alpha = 0.6f)),
                                 fontSize = 10.sp
                             ),
                             maxLines = 1
@@ -323,4 +328,15 @@ class OpenAppAction : ActionCallback {
 
 private fun cp(color: Color): ColorProvider = object : ColorProvider {
     override fun getColor(context: Context): Color = color
+}
+
+private fun hexToWidgetColor(hex: String, fallback: Color): Color {
+    return runCatching {
+        val h = hex.removePrefix("#")
+        val a = if (h.length == 8) h.substring(0, 2).toInt(16) / 255f else 1f
+        val r = h.substring(h.length - 6, h.length - 4).toInt(16) / 255f
+        val g = h.substring(h.length - 4, h.length - 2).toInt(16) / 255f
+        val b = h.substring(h.length - 2).toInt(16) / 255f
+        Color(r, g, b, a)
+    }.getOrElse { fallback }
 }

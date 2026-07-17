@@ -12,7 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.*
-import androidx.navigation.NavGraph.Companion.findStartDestination
+
 import androidx.navigation.compose.*
 import com.schedulecalendar.app.ui.calendar.CalendarScreen
 import com.schedulecalendar.app.ui.detail.DisplaySchemesScreen
@@ -74,7 +74,9 @@ fun AppNavHost() {
                             selected = selected,
                             onClick  = {
                                 navController.navigate(tab.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    popUpTo(navController.graph.startDestinationRoute ?: return@navigate) {
+                                        saveState = true
+                                    }
                                     launchSingleTop = true
                                     restoreState    = true
                                 }
