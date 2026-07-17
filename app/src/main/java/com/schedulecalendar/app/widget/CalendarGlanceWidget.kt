@@ -34,13 +34,9 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
 import com.schedulecalendar.app.MainActivity
-import com.schedulecalendar.app.data.db.AppDatabase
-import com.schedulecalendar.app.data.repository.toDomain
-import com.schedulecalendar.app.domain.model.BUILTIN_STATUSES
 import com.schedulecalendar.app.domain.model.HolidayData
 import com.schedulecalendar.app.domain.model.LunarCalendar
 import java.time.LocalDate
-import java.time.YearMonth
 
 data class CalendarWidgetDay(
     val day: Int = 0, val dateStr: String = "",
@@ -88,57 +84,12 @@ class OpenDateAction : ActionCallback {
     }
 }
 
-/** 小组件刷新动作回调：从数据库重新拉取数据并更新 */
+/** 小组件刷新动作回调：触发 UI 重渲染（数据同步由 APP ViewModel 负责） */
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        try {
-            // 默认刷新当前月份
-            val today = LocalDate.now()
-            val year = today.year
-            val month = today.monthValue
-
-            // 从数据库拉取最新数据
-            val db = androidx.room.Room.databaseBuilder(
-                context.applicationContext, AppDatabase::class.java, "schedule_calendar.db"
-            ).build()
-            val allShifts = db.shiftDao().getAll().map { it.toDomain() }
-            val yearMonth = "%04d-%02d".format(year, month)
-            val schedules = db.scheduleRecordDao().getByMonth(yearMonth).map { it.toDomain() }
-                .associateBy { it.date }
-            val allShiftStatuses = db.shiftStatusDao().getAll().map { it.toDomain() }
-            db.close()
-
-            val shiftMap = allShifts.associateBy { it.id }
-            val statusMap = (BUILTIN_STATUSES + allShiftStatuses).associateBy { it.id }
-            val ym = YearMonth.of(year, month)
-            val daysInMonth = ym.lengthOfMonth()
-            // 周一=0 ... 周日=6（与 widget 星期标签对齐）
-            val firstDow = (LocalDate.of(year, month, 1).dayOfWeek.value + 6) % 7
-
-            val days = (1..daysInMonth).map { d ->
-                val dateStr = "%04d-%02d-%02d".format(year, month, d)
-                val record = schedules[dateStr]
-                val shift = record?.shiftId?.let { shiftMap[it] }
-                val appliedSt = record?.appliedStatus?.let { statusMap[it.statusId] }
-                CalendarWidgetDay(
-                    day = d,
-                    dateStr = dateStr,
-                    shiftName = shift?.name ?: "",
-                    shiftColor = shift?.color ?: "",
-                    statusName = appliedSt?.name ?: ""
-                )
-            }
-            val totalCells = firstDow + daysInMonth
-            val totalRows = (totalCells + 6) / 7
-            val newData = CalendarWidgetInfo(
-                year = year, month = month, days = days,
-                weekStartOffset = firstDow, totalRows = totalRows
-            )
-            CalendarGlanceWidget.updateWidgetData(context, newData)
-        } catch (_: Exception) {
-            // 数据刷新失败时仍尝试刷新 UI
-            CalendarGlanceWidget().update(context, glanceId)
-        }
+        // 仅触发 UI 重渲染，从 Glance DataStore 状态中重新加载已有数据
+        // 数据同步由 CalendarViewModel.syncCalendarWidget 负责，确保数据源一致
+        CalendarGlanceWidget().update(context, glanceId)
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, "\u5237\u65b0\u6210\u529f", Toast.LENGTH_SHORT).show()
         }
@@ -176,7 +127,7 @@ private fun CalendarWidgetContent() {
     val sfs = if (isLarge) 8.sp else 7.sp
     val stfs = if (isLarge) 7.sp else 6.sp
     val lfs = 7.sp
-    val showLunar = isLarge && data.totalRows >= 4
+    val showLunar = isLarge
     val headerFs = if (isLarge) 17.sp else 14.sp
     val refreshSize = if (isLarge) 28.dp else 24.dp
     val refreshIconFs = if (isLarge) 18.sp else 15.sp
@@ -291,7 +242,7 @@ private fun CalendarDayCellContent(
         contentAlignment = Alignment.TopCenter) {
         Column(modifier = GlanceModifier.fillMaxWidth().padding(vertical = if (isLarge) 2.dp else 1.dp),
             horizontalAlignment = Alignment.CenterHorizontally) {
-            // Date number + holiday badge in Row
+            // 1. 日期数字 + 假期标记
             Row(verticalAlignment = Alignment.Top) {
                 val dayColor = if (isToday) Color(0xFF2E7D32) else textColor
                 val dayColorD = if (isToday) Color(0xFF4ADE80) else textColorDark
@@ -304,7 +255,7 @@ private fun CalendarDayCellContent(
                             fontWeight = FontWeight.Bold))
                 }
             }
-            // Lunar/festival (only when totalRows >= 4, above shift name)
+            // 2. 农历/节假日（仅 isLarge 时显示，确保不挤占班次空间）
             if (showLunar && year > 0 && month > 0) {
                 val holidayName = if (isLegalHoliday) HolidayData.getHolidayName(dateStr) else null
                 val festivalInfo = runCatching { HolidayData.getFullFestivalInfo(dateStr) }.getOrDefault(emptyList())
@@ -321,6 +272,7 @@ private fun CalendarDayCellContent(
                     Text(text = displayText, style = TextStyle(color = if (isDark) ColorProvider(txtColorD) else ColorProvider(txtColor), fontSize = lunarFontSize), maxLines = 1)
                 }
             }
+            // 3. 班次名称
             if (hasShift) {
                 val shiftHex = day.shiftColor.removePrefix("#")
                 val shiftColor = if (shiftHex.length >= 6) {
@@ -331,6 +283,7 @@ private fun CalendarDayCellContent(
                 } else Color(0xFF3B82F6)
                 Text(text = day.shiftName, style = TextStyle(color = if (isDark) ColorProvider(shiftColor.copy(alpha = 0.85f)) else ColorProvider(shiftColor), fontSize = shiftFontSize), maxLines = 1)
             }
+            // 4. 附加状态名称
             if (hasStatus) Text(text = day.statusName, style = TextStyle(color = if (isDark) ColorProvider(Color(0xFFFB923C)) else ColorProvider(Color(0xFFF97316)), fontSize = statusFontSize), maxLines = 1)
         }
     }
