@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.appwidget.GlanceAppWidgetManager
@@ -124,7 +126,7 @@ private fun WidgetConfigScreen(
     val prefs = context.getSharedPreferences(WIDGET_CONFIG_PREFS, Context.MODE_PRIVATE)
     // 读取各自独立的透明度
     val calendarTransparencyKey = if (isScheduleWidget) KEY_CFG_SCHEDULE_BG_TRANSPARENCY else KEY_CFG_CALENDAR_BG_TRANSPARENCY
-    val savedTransparency = prefs.getFloat(calendarTransparencyKey, 1.0f)
+    val savedTransparency = prefs.getFloat(calendarTransparencyKey, 0.0f)  // 默认0%=不透明
     var bgTransparency by remember { mutableFloatStateOf(savedTransparency) }
 
     val savedMode = prefs.getString(KEY_CFG_DISPLAY_MODE, DISPLAY_MODE_SHIFT_TOMORROW)
@@ -188,35 +190,15 @@ private fun WidgetConfigScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // ── 预览卡片 ──
-            val previewBg = defaultBgColor.copy(alpha = bgTransparency)
+            val previewAlpha = 1.0f - bgTransparency  // 透明度滑块：0%=不透明，100%=全透明
+            val previewBg = defaultBgColor.copy(alpha = previewAlpha)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                colors = CardDefaults.cardColors(containerColor = previewBg),
-                border = BorderStroke(0.dp, Color.Transparent)
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                colors = CardDefaults.cardColors(containerColor = previewBg)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 64.dp)
-                        .padding(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "预览效果",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = defaultTextColor
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = "7月17日 白班",
-                        fontSize = 11.sp,
-                        color = defaultTextColor.copy(alpha = 0.7f)
-                    )
-                }
+                PreviewContent(isScheduleWidget, defaultTextColor)
             }
 
             // ── 背景透明度 ──
@@ -253,9 +235,10 @@ private fun WidgetConfigScreen(
                             .height(28.dp)
                             .clip(RoundedCornerShape(6.dp))
                     ) {
+                        // 渐变条：左=不透明，右=全透明
                         Canvas(Modifier.fillMaxSize()) {
                             drawRect(
-                                brush = Brush.horizontalGradient(listOf(Color.Transparent, Color.Black))
+                                brush = Brush.horizontalGradient(listOf(Color.Black, Color.Transparent))
                             )
                         }
                         Slider(
@@ -340,4 +323,76 @@ private fun WidgetConfigScreen(
     }
 }
 
-
+// ── 预览内容 ──
+@Composable
+private fun PreviewContent(isSchedule: Boolean, textColor: Color) {
+    if (isSchedule) {
+        // 快捷打卡预览
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f).padding(end = 6.dp)
+            ) {
+                Text("白班", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF059669))
+                Text("08:00 – 17:00", fontSize = 11.sp, color = textColor.copy(alpha = 0.6f))
+                Text("明天：休息", fontSize = 9.sp, color = textColor.copy(alpha = 0.4f))
+            }
+            Box(
+                modifier = Modifier
+                    .width(44.dp).height(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF059669).copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("上班卡", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF059669))
+            }
+        }
+    } else {
+        // 日历预览
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("2026年7月", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = textColor)
+                Text("↻", fontSize = 14.sp, color = textColor.copy(alpha = 0.5f))
+            }
+            Spacer(Modifier.height(3.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                listOf("一","二","三","四","五","六","日").forEach {
+                    Text(it, fontSize = 7.sp, color = textColor.copy(alpha = 0.45f),
+                        modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                }
+            }
+            Spacer(Modifier.height(1.dp))
+            Column(modifier = Modifier.fillMaxWidth()) {
+                repeat(3) { row ->
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        repeat(7) { col ->
+                            val dayNum = row * 7 + col - 2
+                            val isToday = dayNum == 18
+                            Box(
+                                modifier = Modifier.weight(1f).padding(0.5.dp).height(16.dp)
+                                    .then(if (isToday) Modifier.background(
+                                        Color(0xFF2E7D32).copy(alpha = 0.3f), RoundedCornerShape(3.dp)
+                                    ) else Modifier),
+                                contentAlignment = Alignment.TopCenter
+                            ) {
+                                if (dayNum in 1..31) {
+                                    Text("$dayNum", fontSize = 6.sp,
+                                        color = if (isToday) Color(0xFF2E7D32) else textColor.copy(alpha = 0.65f),
+                                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

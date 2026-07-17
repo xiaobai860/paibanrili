@@ -107,8 +107,9 @@ private fun CalendarWidgetContent() {
     val cfgPrefs = context.getSharedPreferences(WIDGET_CONFIG_PREFS, Context.MODE_PRIVATE)
     val textHex = cfgPrefs.getString(KEY_CFG_TEXT_COLOR, "#FF333333") ?: "#FF333333"
     val bgHex = cfgPrefs.getString(KEY_CFG_BG_COLOR, "#FFFFFFFF") ?: "#FFFFFFFF"
-    val bgAlpha = cfgPrefs.getFloat(KEY_CFG_CALENDAR_BG_TRANSPARENCY,
-        cfgPrefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 1.0f))
+    val bgTransparency = cfgPrefs.getFloat(KEY_CFG_CALENDAR_BG_TRANSPARENCY,
+        cfgPrefs.getFloat(KEY_CFG_BG_TRANSPARENCY, 0.0f))
+    val bgAlpha = 1.0f - bgTransparency  // 0%=不透明，100%=全透明
     val utc = hexToWidgetColor(textHex, Color(0xFF333333))
     val ubg = hexToWidgetColor(bgHex, Color.White).copy(alpha = bgAlpha)
     // 深色模式文字
