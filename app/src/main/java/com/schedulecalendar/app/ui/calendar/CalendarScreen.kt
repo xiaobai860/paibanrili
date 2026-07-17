@@ -171,12 +171,18 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             if (pendingCount > 0) {
                                 Spacer(Modifier.width(6.dp))
                                 Text(
-                                    text = "${pendingCount}项待办",
+                                    text = "${pendingCount}条待办待处理",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = HolidayRed,
                                     modifier = Modifier.clickable {
-                                        navController.navigate(RouteTodo)
+                                        navController.navigate(RouteTodo) {
+                                            popUpTo(navController.graph.startDestinationId) {
+                                                saveState = true
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
                                     }
                                 )
                             }
@@ -354,12 +360,12 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 EnterTransition.None togetherWith ExitTransition.None
                             } else {
                                 val slideForward = targetState > initialState
-                                (slideInHorizontally(tween(200)) { fullWidth ->
+                                (slideInHorizontally(tween(300)) { fullWidth ->
                                     if (slideForward) fullWidth else -fullWidth
-                                } + fadeIn(tween(200))) togetherWith
-                                (slideOutHorizontally(tween(200)) { fullWidth ->
+                                } + fadeIn(tween(300))) togetherWith
+                                (slideOutHorizontally(tween(300)) { fullWidth ->
                                     if (slideForward) -fullWidth else fullWidth
-                                } + fadeOut(tween(150)))
+                                } + fadeOut(tween(200)))
                             }
                         },
                         label = "month_transition"
