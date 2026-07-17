@@ -11,11 +11,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.schedulecalendar.app.ui.navigation.AppNavHost
+import com.schedulecalendar.app.ui.settings.WidgetSettingsViewModel
 import com.schedulecalendar.app.ui.theme.ScheduleCalendarTheme
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var appPreferences: com.schedulecalendar.app.data.prefs.AppPreferences
 
     companion object {
         const val ACTION_CLOCK_IN = "com.schedulecalendar.app.ACTION_CLOCK_IN"
@@ -37,6 +44,13 @@ class MainActivity : ComponentActivity() {
 
         // 处理快捷方式Intent
         handleShortcutIntent(intent)
+
+        // 应用启动时恢复动态快捷方式
+        CoroutineScope(Dispatchers.Main).launch {
+            if (appPreferences.isShortcutEnabled()) {
+                WidgetSettingsViewModel.updateDynamicShortcuts(this@MainActivity, true)
+            }
+        }
 
         setContent {
             ScheduleCalendarTheme {

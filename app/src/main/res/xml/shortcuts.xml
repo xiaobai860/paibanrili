@@ -1,32 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <!-- 上班打卡快捷方式 -->
-    <shortcut
-        android:shortcutId="clock_in"
-        android:enabled="true"
-        android:icon="@mipmap/ic_launcher"
-        android:shortcutShortLabel="@string/shortcut_clock_in_short"
-        android:shortcutLongLabel="@string/shortcut_clock_in_long"
-        android:shortcutDisabledMessage="@string/shortcut_clock_in_disabled">
-        <intent
-            android:action="com.schedulecalendar.app.ACTION_CLOCK_IN"
-            android:targetPackage="com.schedulecalendar.app"
-            android:targetClass="com.schedulecalendar.app.MainActivity" />
-    </shortcut>
-
-    <!-- 下班打卡快捷方式 -->
-    <shortcut
-        android:shortcutId="clock_out"
-        android:enabled="true"
-        android:icon="@mipmap/ic_launcher"
-        android:shortcutShortLabel="@string/shortcut_clock_out_short"
-        android:shortcutLongLabel="@string/shortcut_clock_out_long"
-        android:shortcutDisabledMessage="@string/shortcut_clock_out_disabled">
-        <intent
-            android:action="com.schedulecalendar.app.ACTION_CLOCK_OUT"
-            android:targetPackage="com.schedulecalendar.app"
-            android:targetClass="com.schedulecalendar.app.MainActivity" />
-    </shortcut>
-
+    <!-- 快捷方式已移至动态管理，详见 WidgetSettingsViewModel.updateDynamicShortcuts() -->
 </shortcuts>

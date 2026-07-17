@@ -41,10 +41,7 @@
                 <action android:name="com.schedulecalendar.app.ACTION_CLOCK_OUT"/>
             </intent-filter>
 
-            <!-- 静态快捷方式元数据 -->
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
+            <!-- 快捷方式已移至动态管理 -->
         </activity>
 
         <!-- 文件分享 FileProvider -->

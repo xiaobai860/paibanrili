@@ -2,7 +2,9 @@ package com.schedulecalendar.app.ui.settings
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -197,19 +199,40 @@ class WidgetSettingsViewModel @Inject constructor(
     fun toggleShortcut(context: Context, enabled: Boolean) {
         viewModelScope.launch {
             prefs.saveShortcutEnabled(enabled)
+            updateDynamicShortcuts(context, enabled)
+        }
+    }
+
+    companion object {
+        /** 更新动态快捷方式 */
+        fun updateDynamicShortcuts(context: Context, enabled: Boolean) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return
             try {
                 val shortcutManager = context.getSystemService(Context.SHORTCUT_SERVICE) as ShortcutManager
-                val ids = listOf("clock_in", "clock_out")
                 if (enabled) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
-                        shortcutManager.enableShortcuts(ids)
+                    val clockInIntent = Intent(context, com.schedulecalendar.app.MainActivity::class.java).apply {
+                        action = com.schedulecalendar.app.MainActivity.ACTION_CLOCK_IN
                     }
+                    val clockOutIntent = Intent(context, com.schedulecalendar.app.MainActivity::class.java).apply {
+                        action = com.schedulecalendar.app.MainActivity.ACTION_CLOCK_OUT
+                    }
+                    val clockInShortcut = ShortcutInfo.Builder(context, "clock_in")
+                        .setShortLabel(context.getString(com.schedulecalendar.app.R.string.shortcut_clock_in_short))
+                        .setLongLabel(context.getString(com.schedulecalendar.app.R.string.shortcut_clock_in_long))
+                        .setIcon(Icon.createWithResource(context, com.schedulecalendar.app.R.mipmap.ic_launcher))
+                        .setIntent(clockInIntent)
+                        .build()
+                    val clockOutShortcut = ShortcutInfo.Builder(context, "clock_out")
+                        .setShortLabel(context.getString(com.schedulecalendar.app.R.string.shortcut_clock_out_short))
+                        .setLongLabel(context.getString(com.schedulecalendar.app.R.string.shortcut_clock_out_long))
+                        .setIcon(Icon.createWithResource(context, com.schedulecalendar.app.R.mipmap.ic_launcher))
+                        .setIntent(clockOutIntent)
+                        .build()
+                    shortcutManager.setDynamicShortcuts(listOf(clockInShortcut, clockOutShortcut))
                 } else {
-                    shortcutManager.disableShortcuts(ids)
+                    shortcutManager.removeAllDynamicShortcuts()
                 }
-            } catch (e: Exception) {
-                // 部分设备可能不支持动态管理快捷方式
-            }
+            } catch (_: Exception) { }
         }
     }
 }
