@@ -161,6 +161,26 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 )
                             }
 
+                            // 待办提醒红色小字
+                            val pendingCount = state.todos.count { todo ->
+                                todo.type in listOf(
+                                    TodoType.MISSED_CLOCK_IN, TodoType.MISSED_CLOCK_OUT,
+                                    TodoType.PENDING_EARLY_OT, TodoType.PENDING_LATE_OT
+                                )
+                            }
+                            if (pendingCount > 0) {
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "${pendingCount}项待办",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = HolidayRed,
+                                    modifier = Modifier.clickable {
+                                        navController.navigate(RouteTodo)
+                                    }
+                                )
+                            }
+
                             Spacer(Modifier.width(8.dp))
 
                             // 返回今日按钮：非当前月或选中日期非今天时显示（null视为今天）
@@ -836,7 +856,7 @@ private fun DayCell(
                 // 日期数字 Box（28dp 固定高度）
                 Box(Modifier.fillMaxWidth().height(dateHeight), contentAlignment = Alignment.TopCenter) {
                     Text(
-                        day.toString(), fontSize = 19.sp, lineHeight = 19.sp,
+                        day.toString(), fontSize = 20.sp, lineHeight = 20.sp,
                         style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
                         fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium,
                         color = cellTextFg
@@ -864,7 +884,7 @@ private fun DayCell(
                                 .align(Alignment.BottomCenter)
                                 .size(3.5.dp)
                                 .background(
-                                    MaterialTheme.colorScheme.tertiary,
+                                    Green700,
                                     CircleShape
                                 )
                         )
