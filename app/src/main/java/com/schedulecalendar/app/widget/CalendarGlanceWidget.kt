@@ -79,6 +79,14 @@ class OpenDateAction : ActionCallback {
     }
 }
 
+/** 小组件刷新动作回调 */
+class RefreshWidgetAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        // 重新渲染小组件（从 Glance 状态中读取最新数据）
+        CalendarGlanceWidget().update(context, glanceId)
+    }
+}
+
 @Composable
 private fun CalendarWidgetContent() {
     val prefs = currentState<androidx.datastore.preferences.core.Preferences>()
@@ -107,12 +115,31 @@ private fun CalendarWidgetContent() {
     val lfs = 8.sp
     Box(
         modifier = GlanceModifier.fillMaxSize().background(cp(ubg))
-            .padding(if (isLarge) 6.dp else 4.dp).clickable(actionRunCallback<OpenAppAction>()),
+            .padding(if (isLarge) 6.dp else 4.dp),
         contentAlignment = Alignment.TopCenter
     ) {
-        Column(modifier = GlanceModifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = headerText, style = TextStyle(color = cp(utc), fontSize = tfs, fontWeight = FontWeight.Bold),
-                modifier = GlanceModifier.padding(bottom = 2.dp))
+        Column(modifier = GlanceModifier.fillMaxSize()) {
+            // Header: 左对齐年月 + 右侧刷新按钮
+            Row(
+                modifier = GlanceModifier.fillMaxWidth().padding(bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = headerText,
+                    style = TextStyle(color = cp(utc), fontSize = tfs, fontWeight = FontWeight.Bold)
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
+                Box(
+                    modifier = GlanceModifier.width(22.dp).height(22.dp)
+                        .clickable(actionRunCallback<RefreshWidgetAction>()),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "\u21bb",
+                        style = TextStyle(color = cp(utc), fontSize = 12.sp)
+                    )
+                }
+            }
             Row(modifier = GlanceModifier.fillMaxWidth()) {
                 weekLabels.forEachIndexed { i, label ->
                     Box(modifier = GlanceModifier.defaultWeight().padding(1.dp), contentAlignment = Alignment.Center) {
