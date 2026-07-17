@@ -25,9 +25,9 @@ data class ReminderSettingsState(
 )
 
 /**
- * 提前时间选项（分钟）
+ * 提前时间预设选项（分钟），-1 表示自定义
  */
-val ADVANCE_TIME_OPTIONS = listOf(5, 10, 15, 30, 45, 60, 90, 120)
+val ADVANCE_TIME_OPTIONS = listOf(15, 30, 60, -1)
 
 /**
  * 上下班提醒设置 ViewModel
