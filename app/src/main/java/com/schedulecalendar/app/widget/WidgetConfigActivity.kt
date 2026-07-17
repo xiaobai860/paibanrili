@@ -8,6 +8,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -55,7 +56,7 @@ private fun hsvToHex(hue: Float, sat: Float, value: Float): String {
     val argb = android.graphics.Color.HSVToColor(floatArrayOf(
         hue.coerceIn(0f, 360f), sat.coerceIn(0f, 1f), value.coerceIn(0f, 1f)
     ))
-    return "#${argb.toLong().toString(16).padStart(8, '0').uppercase()}"
+    return "#${(argb.toLong() and 0xFFFFFFFFL).toString(16).padStart(8, '0').uppercase()}"
 }
 
 /** "#AARRGGBB" → HSV 浮点数组 */
@@ -239,7 +240,8 @@ private fun WidgetConfigScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                colors = CardDefaults.cardColors(containerColor = previewBg)
+                colors = CardDefaults.cardColors(containerColor = previewBg),
+                border = BorderStroke(0.dp, Color.Transparent)
             ) {
                 Column(
                     modifier = Modifier
@@ -293,7 +295,8 @@ private fun WidgetConfigScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                )
+                ),
+                border = BorderStroke(0.dp, Color.Transparent)
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Row(
@@ -347,7 +350,8 @@ private fun WidgetConfigScreen(
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                    )
+                    ),
+                    border = BorderStroke(0.dp, Color.Transparent)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
@@ -425,7 +429,8 @@ private fun ColorSliderSection(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-        )
+        ),
+        border = BorderStroke(0.dp, Color.Transparent)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             // 标题行
