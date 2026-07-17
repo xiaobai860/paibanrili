@@ -78,15 +78,6 @@ fun SettingsScreen(navController: NavController, vm: SettingsViewModel = hiltVie
                 )
             }
 
-            // ── 自动打卡 ──────────────────────────────────────────
-            item {
-                SettingsCard(
-                    icon = Icons.Default.Schedule,
-                    title = "自动打卡",
-                    description = "自动打卡规则设置",
-                    onClick = { navController.navigate(RouteAutoClockSettings) }
-                )
-            }
 
             // ── 上下班提醒 ──────────────────────────────────
             item {
@@ -118,15 +109,6 @@ fun SettingsScreen(navController: NavController, vm: SettingsViewModel = hiltVie
                 )
             }
 
-            // ── 其它设置 ──────────────────────────────────────────
-            item {
-                SettingsCard(
-                    icon = Icons.Default.Tune,
-                    title = "其它设置",
-                    description = "其他个性化选项",
-                    onClick = { navController.navigate(RouteOtherSettings) }
-                )
-            }
 
             // ── 权限管理 ──────────────────────────────────────────
             item {

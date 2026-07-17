@@ -1,10 +1,7 @@
 package com.schedulecalendar.app.ui.todo
 
 import android.Manifest
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,20 +23,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.schedulecalendar.app.domain.model.LunarCalendar
-import com.schedulecalendar.app.reminder.AnniversaryReminderReceiver
 import com.schedulecalendar.app.ui.component.ImeAdaptiveOutlinedTextField
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import com.schedulecalendar.app.ui.component.WheelFullDatePickerDialog
 import java.util.Calendar
 
-/** 纪念日闹钟提醒提前时间 */
-private enum class AnniversaryReminder(val label: String, val advanceDays: Long) {
-    NONE("不提醒", 0),
-    DAY_OF("当天", 0),
-    ONE_DAY("提前 1 天", 1),
-    ONE_WEEK("提前 1 周", 7),
-    ONE_MONTH("提前 1 个月", 30)
-}
 
 /** 系统日历事件提醒提前时间 */
 private enum class CalendarReminderTime(val label: String, val minutes: Int) {
@@ -120,9 +108,6 @@ fun AddAnniversaryScreen(
     // 选项A：系统日历提醒（日历事件级别的 reminder，由系统日历应用弹出通知）
     var addCalendarReminder by remember { mutableStateOf(true) }
     var calendarReminderTime by remember { mutableStateOf(CalendarReminderTime.AT_TIME) }
-    // 选项B：精确闹钟提醒（AlarmManager.setAlarmClock，应用发送通知）
-    var alarmEnabled by remember { mutableStateOf(false) }
-    var alarmReminder by remember { mutableStateOf(AnniversaryReminder.DAY_OF) }
 
     // ── 日期选择弹窗 ──────────────────────────────────────────
     var showDatePicker by remember { mutableStateOf(false) }
@@ -196,39 +181,7 @@ fun AddAnniversaryScreen(
         errorMessage = null
     }
 
-    // AlarmManager
-    val alarmManager = remember { context.getSystemService(Context.ALARM_SERVICE) as AlarmManager }
 
-    /** 调度纪念日闹钟提醒 */
-    fun scheduleAnniversaryAlarm(
-        annivYear: Int, annivMonth: Int, annivDay: Int,
-        annivTitle: String, reminder: AnniversaryReminder
-    ) {
-        if (reminder == AnniversaryReminder.NONE) return
-        val triggerCal = Calendar.getInstance().apply {
-            set(annivYear, annivMonth - 1, annivDay, 9, 0, 0)
-            set(Calendar.MILLISECOND, 0)
-            add(Calendar.DAY_OF_MONTH, -reminder.advanceDays.toInt())
-        }
-        if (triggerCal.timeInMillis <= System.currentTimeMillis()) return
-
-        val intent = Intent(context, AnniversaryReminderReceiver::class.java).apply {
-            putExtra(AnniversaryReminderReceiver.EXTRA_TITLE, annivTitle)
-            putExtra(AnniversaryReminderReceiver.EXTRA_DATE, "$annivYear-%02d-%02d".format(annivMonth, annivDay))
-            action = "ANNIVERSARY_REMINDER_$annivTitle"
-        }
-        val requestCode = annivTitle.hashCode()
-        val pi = PendingIntent.getBroadcast(
-            context, requestCode, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        try {
-            alarmManager.setAlarmClock(
-                AlarmManager.AlarmClockInfo(triggerCal.timeInMillis, pi),
-                pi
-            )
-        } catch (_: Exception) { }
-    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -439,49 +392,7 @@ fun AddAnniversaryScreen(
                 }
             }
 
-            // ── 选项B：精确闹钟提醒 ──────────────────────────────
-            Column {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Alarm, null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("精确闹钟提醒", style = MaterialTheme.typography.bodyLarge)
-                        }
-                        Text(
-                            "使用 AlarmManager 精确闹钟，到时间后由应用发送通知",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = alarmEnabled,
-                        onCheckedChange = { alarmEnabled = it }
-                    )
-                }
-                // 闹钟开启时显示提前时间选择
-                if (alarmEnabled) {
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        AnniversaryReminder.entries.filter { it != AnniversaryReminder.NONE }.forEach { option ->
-                            FilterChip(
-                                selected = alarmReminder == option,
-                                onClick = { alarmReminder = option },
-                                label = { Text(option.label, style = MaterialTheme.typography.labelSmall) }
-                            )
-                        }
-                    }
-                }
-            }
+
 
             // ── 描述/备注 ─────────────────────────────────────
             ImeAdaptiveOutlinedTextField(
@@ -597,10 +508,6 @@ fun AddAnniversaryScreen(
                                 calendarId = anniversaryCalId ?: existingEvent!!.calendarId
                             )
                             vm.updateEvent(updatedEvent)
-                            // 仅当选项B开启时，调度精确闹钟提醒
-                            if (alarmEnabled && alarmReminder != AnniversaryReminder.NONE) {
-                                scheduleAnniversaryAlarm(solarY, solarM, solarD, fullTitle, alarmReminder)
-                            }
                             navController.popBackStack()
                         } else {
                             // 创建模式：写入纪念日专用日历
@@ -617,10 +524,6 @@ fun AddAnniversaryScreen(
                                 isCreating = false
                                 android.util.Log.d("Anniversary", "Create result: success=$success")
                                 if (success) {
-                                    // 仅当选项B开启时，调度精确闹钟提醒
-                                    if (alarmEnabled && alarmReminder != AnniversaryReminder.NONE) {
-                                        scheduleAnniversaryAlarm(solarY, solarM, solarD, fullTitle, alarmReminder)
-                                    }
                                     navController.popBackStack()
                                 } else {
                                     errorMessage = "创建失败，请确认设备有可用的日历账户"
