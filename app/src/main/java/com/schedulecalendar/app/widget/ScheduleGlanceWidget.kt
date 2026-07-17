@@ -3,6 +3,7 @@ package com.schedulecalendar.app.widget
 
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -26,6 +27,8 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
 import com.schedulecalendar.app.domain.model.HolidayData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -114,6 +117,13 @@ class ClockInAction : ActionCallback {
         // 刷新小组件
         val widget = ScheduleGlanceWidget()
         widget.update(context, glanceId)
+
+        // Toast提示
+        val isClockIn = savedDate != todayStr
+        val toastMsg = if (isClockIn) "\u5df2\u6210\u529f\u6253\u5361" else "\u5df2\u66f4\u65b0\u6253\u5361"
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+        }
     }
 }
 

@@ -36,6 +36,7 @@ import com.schedulecalendar.app.ui.todo.AddCalendarEventScreen
 import com.schedulecalendar.app.ui.todo.EditCalendarEventScreen
 import com.schedulecalendar.app.ui.todo.AddAnniversaryScreen
 import com.schedulecalendar.app.ui.settings.ReminderSettingsScreen
+import com.schedulecalendar.app.ui.settings.WidgetSettingsScreen
 import com.schedulecalendar.app.ui.calendar.HuangLiScreen
 
 /** Tab 配置（使用类型安全路由 Any 统一持有） */
@@ -125,6 +126,7 @@ fun AppNavHost() {
                 val route = backStackEntry.toRoute<RouteEditAnniversary>()
                 AddAnniversaryScreen(navController = navController, eventId = route.eventId)
             }
+            composable<RouteWidgetSettings> { WidgetSettingsScreen(navController) }
         }
     }
 }

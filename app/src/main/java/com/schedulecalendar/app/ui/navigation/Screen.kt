@@ -30,3 +30,4 @@ import kotlinx.serialization.Serializable
 @Serializable data class RouteEditCalendarEvent(val eventId: Long)
 @Serializable object RouteAddAnniversary
 @Serializable data class RouteEditAnniversary(val eventId: Long)
+@Serializable object RouteWidgetSettings

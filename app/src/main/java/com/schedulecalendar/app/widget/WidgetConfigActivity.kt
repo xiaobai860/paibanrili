@@ -44,6 +44,10 @@ const val KEY_CFG_DISPLAY_MODE = "cfg_schedule_display_mode"
 const val DISPLAY_MODE_SHIFT_TOMORROW = "shift_tomorrow"    // 当天班次 + 明天班次
 const val DISPLAY_MODE_SHIFT_HOLIDAY  = "shift_holiday"     // 当天班次 + 法定节假日倒计时
 
+// ── 从设置页面打开时传递的小组件类型 ─────────────────────────────────
+const val WIDGET_TYPE_CALENDAR = "calendar"
+const val WIDGET_TYPE_SCHEDULE = "schedule"
+
 // ── HSV / Hex 颜色转换工具 ───────────────────────────────────────────
 
 /** HSV → "#AARRGGBB"（alpha 固定 FF） */
@@ -84,14 +88,26 @@ class WidgetConfigActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        val appWidgetId = intent?.extras?.getInt(
-            AppWidgetManager.EXTRA_APPWIDGET_ID,
-            AppWidgetManager.INVALID_APPWIDGET_ID
-        ) ?: AppWidgetManager.INVALID_APPWIDGET_ID
 
-        val appWidgetManager = AppWidgetManager.getInstance(this)
-        val info = appWidgetManager.getAppWidgetInfo(appWidgetId)
-        val isScheduleWidget = info?.provider?.className?.contains("ScheduleGlanceReceiver") == true
+        val widgetType = intent?.getStringExtra("widget_type")
+        val isFromSettings = widgetType != null
+
+        val isScheduleWidget: Boolean
+        val appWidgetId: Int
+
+        if (isFromSettings) {
+            appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+            isScheduleWidget = widgetType == WIDGET_TYPE_SCHEDULE
+        } else {
+            appWidgetId = intent?.extras?.getInt(
+                AppWidgetManager.EXTRA_APPWIDGET_ID,
+                AppWidgetManager.INVALID_APPWIDGET_ID
+            ) ?: AppWidgetManager.INVALID_APPWIDGET_ID
+
+            val appWidgetManager = AppWidgetManager.getInstance(this)
+            val info = appWidgetManager.getAppWidgetInfo(appWidgetId)
+            isScheduleWidget = info?.provider?.className?.contains("ScheduleGlanceReceiver") == true
+        }
 
         setContent {
             ScheduleCalendarTheme {
@@ -105,16 +121,17 @@ class WidgetConfigActivity : ComponentActivity() {
     }
 
     private fun finishConfig(appWidgetId: Int) {
-        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-            val ctx = this
-            CoroutineScope(Dispatchers.Main).launch {
-                GlanceAppWidgetManager(ctx).getGlanceIds(CalendarGlanceWidget::class.java).forEach { id ->
-                    CalendarGlanceWidget().update(ctx, id)
-                }
-                GlanceAppWidgetManager(ctx).getGlanceIds(ScheduleGlanceWidget::class.java).forEach { id ->
-                    ScheduleGlanceWidget().update(ctx, id)
-                }
+        // 始终更新所有小组件
+        val ctx = this
+        CoroutineScope(Dispatchers.Main).launch {
+            GlanceAppWidgetManager(ctx).getGlanceIds(CalendarGlanceWidget::class.java).forEach { id ->
+                CalendarGlanceWidget().update(ctx, id)
             }
+            GlanceAppWidgetManager(ctx).getGlanceIds(ScheduleGlanceWidget::class.java).forEach { id ->
+                ScheduleGlanceWidget().update(ctx, id)
+            }
+        }
+        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
             val resultIntent = Intent().apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             }
