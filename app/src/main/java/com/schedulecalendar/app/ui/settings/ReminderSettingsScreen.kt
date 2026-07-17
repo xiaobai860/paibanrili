@@ -9,11 +9,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.commandiron.wheel_picker_compose.core.WheelPickerDefaults
+import com.commandiron.wheel_picker_compose.core.WheelTextPicker
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 
 /**
@@ -204,6 +209,8 @@ private fun AdvanceTimeCard(
     selectedMinutes: Int,
     onSelect: (Int) -> Unit
 ) {
+    var showCustomDialog by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp)
@@ -219,37 +226,191 @@ private fun AdvanceTimeCard(
             )
 
             // 时间选项网格
-            val rows = ADVANCE_TIME_OPTIONS.chunked(4)
-            rows.forEach { rowOptions ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    rowOptions.forEach { minutes ->
-                        FilterChip(
-                            selected = selectedMinutes == minutes,
-                            onClick = { onSelect(minutes) },
-                            label = {
-                                Text(
-                                    if (minutes >= 60) "${minutes / 60}小时" else "${minutes}分钟",
-                                    fontSize = 13.sp
-                                )
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ADVANCE_TIME_OPTIONS.forEach { optionMinutes ->
+                    val isCustom = optionMinutes == -1
+                    val isSelected = if (isCustom) {
+                        // 自定义选中：当前值不在预设列表中
+                        selectedMinutes !in listOf(15, 30, 60)
+                    } else {
+                        selectedMinutes == optionMinutes
                     }
-                    // 填充空位
-                    repeat(4 - rowOptions.size) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = {
+                            if (isCustom) {
+                                showCustomDialog = true
+                            } else {
+                                onSelect(optionMinutes)
+                            }
+                        },
+                        label = {
+                            Text(
+                                when {
+                                    isCustom -> "自定义"
+                                    optionMinutes >= 60 -> "${optionMinutes / 60}小时"
+                                    else -> "${optionMinutes}分钟"
+                                },
+                                fontSize = 13.sp
+                            )
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
 
             Text(
-                "当前设置：提前 ${if (selectedMinutes >= 60) "${selectedMinutes / 60}小时${if (selectedMinutes % 60 > 0) "${selectedMinutes % 60}分钟" else ""}" else "${selectedMinutes}分钟"}",
+                "当前设置：${formatAdvanceTime(selectedMinutes)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary
             )
+        }
+    }
+
+    // 自定义时间弹窗
+    if (showCustomDialog) {
+        CustomAdvanceTimeDialog(
+            onConfirm = { minutes ->
+                onSelect(minutes)
+                showCustomDialog = false
+            },
+            onDismiss = { showCustomDialog = false }
+        )
+    }
+}
+
+/**
+ * 格式化提前时间显示
+ */
+private fun formatAdvanceTime(minutes: Int): String {
+    if (minutes == 0) return "到点立即提醒"
+    val h = minutes / 60
+    val m = minutes % 60
+    return buildString {
+        append("提前 ")
+        if (h > 0) append("${h}小时")
+        if (m > 0) append("${m}分钟")
+    }
+}
+
+/**
+ * 自定义提前时间滚轮选择弹窗
+ * 使用 WheelPicker 小时 + 分钟 两列滚轮
+ */
+@Composable
+private fun CustomAdvanceTimeDialog(
+    onConfirm: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var snappedHour by remember { mutableIntStateOf(0) }
+    var snappedMinute by remember { mutableIntStateOf(0) }
+
+    val hourLabels = remember { (0..23).map { "${it}小时" } }
+    val minuteLabels = remember { (0..59).map { "${it}分钟" } }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(0.85f).wrapContentHeight(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "自定义提前时间",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                // 两列滚轮：小时 / 分钟
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 小时滚轮
+                    WheelTextPicker(
+                        size = DpSize(100.dp, 128.dp),
+                        texts = hourLabels,
+                        rowCount = 3,
+                        startIndex = 0,
+                        style = MaterialTheme.typography.titleMedium,
+                        selectorProperties = WheelPickerDefaults.selectorProperties(
+                            enabled = true,
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                            border = null
+                        ),
+                        onScrollFinished = { snappedIndex ->
+                            snappedHour = snappedIndex
+                            null
+                        }
+                    )
+
+                    // 分钟滚轮
+                    WheelTextPicker(
+                        size = DpSize(100.dp, 128.dp),
+                        texts = minuteLabels,
+                        rowCount = 3,
+                        startIndex = 0,
+                        style = MaterialTheme.typography.titleMedium,
+                        selectorProperties = WheelPickerDefaults.selectorProperties(
+                            enabled = true,
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                            border = null
+                        ),
+                        onScrollFinished = { snappedIndex ->
+                            snappedMinute = snappedIndex
+                            null
+                        }
+                    )
+                }
+
+                Text(
+                    text = if (snappedHour == 0 && snappedMinute == 0) "将到点立即提醒"
+                           else "将提前 ${if (snappedHour > 0) "${snappedHour}小时" else ""}${if (snappedMinute > 0) "${snappedMinute}分钟" else ""}提醒",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                // 确认 / 取消按钮
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("取消")
+                    }
+                    Button(
+                        onClick = {
+                            val totalMinutes = snappedHour * 60 + snappedMinute
+                            onConfirm(totalMinutes)
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("确定")
+                    }
+                }
+            }
         }
     }
 }
