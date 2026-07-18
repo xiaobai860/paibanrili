@@ -399,7 +399,7 @@ class BackupManager @Inject constructor(
             scheduleRepo.getByMonth("%04d-%02d".format(ym.year, ym.monthValue))
         }
         val backup = AppDataBackup(
-            version = 1, exportTime = now,
+            version = 2, exportTime = now,
             scheduleRecords = allRecords,
             shifts = shiftRepo.getAll().filter { !it.builtIn },
             globalBreaks = breakRepo.getAll(),
@@ -411,7 +411,24 @@ class BackupManager @Inject constructor(
             displaySchemes = prefs.displaySchemesFlow.first(),
             disabledAccountIds = prefs.getDisabledAccountIds().toList(),
             accountCategories = prefs.getAccountCategories(),
-            accountsInitialized = prefs.isAccountsInitialized()
+            accountsInitialized = prefs.isAccountsInitialized(),
+            // ── 提醒设置 ──
+            reminderEnabled = prefs.getReminderEnabled(),
+            reminderMethod = prefs.getReminderMethod(),
+            reminderClockIn = prefs.getReminderClockIn(),
+            reminderClockOut = prefs.getReminderClockOut(),
+            reminderClockInMinutes = prefs.getReminderClockInMinutes(),
+            reminderClockOutMinutes = prefs.getReminderClockOutMinutes(),
+            // ── 排序顺序 ──
+            shiftOrder = prefs.getShiftOrder(),
+            statusOrder = prefs.getStatusOrder(),
+            extraOrder = prefs.getExtraOrder(),
+            breakOrder = prefs.getBreakOrder(),
+            // ── 颜色索引 ──
+            shiftColorIndex = prefs.getShiftColorIndex(),
+            statusColorIndex = prefs.getStatusColorIndex(),
+            // ── 快捷方式 ──
+            shortcutEnabled = prefs.isShortcutEnabled()
         )
         return gson.toJson(backup)
     }
@@ -419,10 +436,11 @@ class BackupManager @Inject constructor(
     private suspend fun buildShiftConfigJson(): String {
         val now = LocalDateTime.now().format(exportFormatter)
         val data = com.schedulecalendar.app.ui.shifts.ShiftExportData(
-            version = 4, exportTime = now,
+            version = 5, exportTime = now,
             shifts = shiftRepo.getAll().filter { !it.builtIn },
             globalBreaks = breakRepo.getAll(),
-            shiftStatuses = statusRepo.getAll().filter { !it.builtIn }
+            shiftStatuses = statusRepo.getAll().filter { !it.builtIn },
+            extraItems = extraRepo.getAll()
         )
         return gson.toJson(data)
     }
@@ -450,6 +468,23 @@ class BackupManager @Inject constructor(
         if (backup.accountsInitialized == true) {
             prefs.setAccountsInitialized()
         }
+        // ── 恢复提醒设置（仅当有值时覆盖） ──
+        if (backup.reminderEnabled != null) prefs.saveReminderEnabled(backup.reminderEnabled)
+        if (backup.reminderMethod != null) prefs.saveReminderMethod(backup.reminderMethod)
+        if (backup.reminderClockIn != null) prefs.saveReminderClockIn(backup.reminderClockIn)
+        if (backup.reminderClockOut != null) prefs.saveReminderClockOut(backup.reminderClockOut)
+        if (backup.reminderClockInMinutes != null) prefs.saveReminderClockInMinutes(backup.reminderClockInMinutes)
+        if (backup.reminderClockOutMinutes != null) prefs.saveReminderClockOutMinutes(backup.reminderClockOutMinutes)
+        // ── 恢复排序顺序 ──
+        if (backup.shiftOrder != null) prefs.saveShiftOrder(backup.shiftOrder)
+        if (backup.statusOrder != null) prefs.saveStatusOrder(backup.statusOrder)
+        if (backup.extraOrder != null) prefs.saveExtraOrder(backup.extraOrder)
+        if (backup.breakOrder != null) prefs.saveBreakOrder(backup.breakOrder)
+        // ── 恢复颜色索引 ──
+        if (backup.shiftColorIndex != null) prefs.saveShiftColorIndex(backup.shiftColorIndex)
+        if (backup.statusColorIndex != null) prefs.saveStatusColorIndex(backup.statusColorIndex)
+        // ── 恢复快捷方式开关 ──
+        if (backup.shortcutEnabled != null) prefs.saveShortcutEnabled(backup.shortcutEnabled)
     }
 
     private suspend fun restoreShiftConfig(json: String) {
@@ -459,6 +494,8 @@ class BackupManager @Inject constructor(
         breakRepo.deleteAll()
         data.globalBreaks.forEach { breakRepo.save(it) }
         data.shiftStatuses.filter { !it.builtIn }.forEach { statusRepo.save(it) }
+        extraRepo.deleteAll()
+        data.extraItems.forEach { extraRepo.save(it) }
     }
 
     private fun listBackupFiles(type: BackupType, dir: File): List<BackupFile> {
@@ -508,9 +545,9 @@ class BackupManager @Inject constructor(
     }
 }
 
-/** 完整 AppData 备份包（内部数据结构） */
+/** 完整 AppData 备份包（内部数据结构）v2（+ 提醒设置/排序/颜色索引/快捷方式） */
 private data class AppDataBackup(
-    val version: Int = 1,
+    val version: Int = 2,
     val exportTime: String = "",
     val scheduleRecords: List<ScheduleRecord> = emptyList(),
     val shifts: List<Shift> = emptyList(),
@@ -523,5 +560,19 @@ private data class AppDataBackup(
     val displaySchemes: List<DisplayScheme>? = null,
     val disabledAccountIds: List<Long>? = null,
     val accountCategories: Map<String, String>? = null,
-    val accountsInitialized: Boolean? = null
+    val accountsInitialized: Boolean? = null,
+    // ── v2 新增字段 ──
+    val reminderEnabled: Boolean? = null,
+    val reminderMethod: String? = null,
+    val reminderClockIn: Boolean? = null,
+    val reminderClockOut: Boolean? = null,
+    val reminderClockInMinutes: Int? = null,
+    val reminderClockOutMinutes: Int? = null,
+    val shiftOrder: List<String>? = null,
+    val statusOrder: List<String>? = null,
+    val extraOrder: List<String>? = null,
+    val breakOrder: List<String>? = null,
+    val shiftColorIndex: Int? = null,
+    val statusColorIndex: Int? = null,
+    val shortcutEnabled: Boolean? = null
 )
