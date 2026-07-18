@@ -25,13 +25,19 @@
 -keepclassmembers class com.schedulecalendar.app.domain.model.** { *; }
 -keep class com.schedulecalendar.app.domain.model.** { *; }
 
-# ── Glance Widget ──────────────────────────────────────────────────────────────
+# ── Glance Widget（Gson 序列化数据类 + Widget 组件）────────────────────────────────
 -keep class * extends androidx.glance.appwidget.GlanceAppWidget
 -keep class * extends androidx.glance.appwidget.GlanceAppWidgetReceiver
+# 保留 widget 包下所有 Gson 序列化的数据类字段（CalendarWidgetInfo / CalendarWidgetDay / ClockInWidgetData）
+-keepclassmembers class com.schedulecalendar.app.widget.** { *; }
+-keep class com.schedulecalendar.app.widget.** { *; }
 
 # ── Coroutines ────────────────────────────────────────────────────────────────
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+
+# ── Navigation Route objects（防止 R8 重命名导致 ::class.qualifiedName 与 route 不匹配）──
+-keepnames class com.schedulecalendar.app.ui.navigation.Route*
 
 # ── kotlinx-serialization ─────────────────────────────────────────────────────
 -keepattributes RuntimeVisibleAnnotations,AnnotationDefault
