@@ -48,8 +48,14 @@ android {
     }
 
     // 使用日期格式版本号（如 2026071501），忽略 HighAppVersionCode 警告
+    // 抑制资源相关警告：图标形状(默认模板图标)、图标重复(方形/圆形相同)、新版API属性、新版依赖提示
     lint {
         disable += "HighAppVersionCode"
+        disable += "IconLauncherShape"
+        disable += "IconDuplicates"
+        disable += "UnusedAttribute"
+        disable += "NewerVersionAvailable"
+        disable += "ReportShortcutUsage"
     }
 }
 
@@ -105,11 +111,11 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     // WheelPickerCompose（滚轮选择器组件）
-    implementation("com.github.commandiron:WheelPickerCompose:1.1.11")
+    implementation(libs.wheel.picker.compose)
 
     // 农历计算库（tyme4j 是 lunar 的升级版）
     implementation(libs.tyme4j)
 
     // DocumentFile（SAF 目录文件操作）
-    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation(libs.documentfile)
 }
