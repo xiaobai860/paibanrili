@@ -32,6 +32,16 @@
 -keepclassmembers class com.schedulecalendar.app.widget.** { *; }
 -keep class com.schedulecalendar.app.widget.** { *; }
 
+# ── 备份管理 Gson 数据类（AppDataBackup / ShiftExportData）───────────────────────
+-keepclassmembers class com.schedulecalendar.app.ui.settings.** { *; }
+-keep class com.schedulecalendar.app.ui.settings.** { *; }
+-keepclassmembers class com.schedulecalendar.app.ui.shifts.** { *; }
+-keep class com.schedulecalendar.app.ui.shifts.** { *; }
+
+# ── data.repository Gson 数据类（AppliedStatusJson Room 序列化）────────────────
+-keepclassmembers class com.schedulecalendar.app.data.repository.** { *; }
+-keep class com.schedulecalendar.app.data.repository.** { *; }
+
 # ── Coroutines ────────────────────────────────────────────────────────────────
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}

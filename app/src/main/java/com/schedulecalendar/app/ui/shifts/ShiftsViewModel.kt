@@ -4,6 +4,7 @@ package com.schedulecalendar.app.ui.shifts
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.schedulecalendar.app.data.prefs.AppPreferences
+import com.schedulecalendar.app.data.repository.ExtraItemRepository
 import com.schedulecalendar.app.data.repository.ShiftBreakRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
@@ -33,13 +34,14 @@ data class ShiftsState(
     val statuses: List<ShiftStatus>    = emptyList()
 )
 
-/** 导出数据包 v4 */
+/** 导出数据包 v5（v4 + 增加 extraItems） */
 data class ShiftExportData(
-    val version: Int                     = 4,
+    val version: Int                     = 5,
     val exportTime: String               = "",
     val shifts: List<Shift>              = emptyList(),
     val globalBreaks: List<ShiftBreak>   = emptyList(),
-    val shiftStatuses: List<ShiftStatus> = emptyList()
+    val shiftStatuses: List<ShiftStatus> = emptyList(),
+    val extraItems: List<ExtraItem>      = emptyList()
 )
 
 @HiltViewModel
@@ -47,6 +49,7 @@ class ShiftsViewModel @Inject constructor(
     private val shiftRepo: ShiftRepository,
     private val breakRepo: ShiftBreakRepository,
     private val statusRepo: ShiftStatusRepository,
+    private val extraRepo: ExtraItemRepository,
     private val backupManager: com.schedulecalendar.app.ui.settings.BackupManager,
     private val prefs: AppPreferences
 ) : ViewModel() {
@@ -275,11 +278,12 @@ class ShiftsViewModel @Inject constructor(
         runCatching {
             val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
             val payload = ShiftExportData(
-                version       = 4,
+                version       = 5,
                 exportTime    = now,
                 shifts        = shiftRepo.getAll().filter { !it.builtIn },
                 globalBreaks  = breakRepo.getAll(),
-                shiftStatuses = statusRepo.getAll().filter { !it.builtIn }
+                shiftStatuses = statusRepo.getAll().filter { !it.builtIn },
+                extraItems    = extraRepo.getAll()
             )
             val json = com.google.gson.Gson().toJson(payload)
             _uiEvent.send(ShiftsUiEvent.ExportReady(json))

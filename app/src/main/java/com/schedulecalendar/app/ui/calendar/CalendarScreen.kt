@@ -2018,9 +2018,8 @@ private fun DateDetailSection(
 
             // 第六行：黄历宜忌
             val huangLi = LunarCalendar.getHuangLiInfo(year, month, day)
-            if (huangLi != null) {
-                Row(
-                    modifier = Modifier.clickable { onHuangLiClick() },
+            Row(
+                modifier = Modifier.clickable { onHuangLiClick() },
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -2067,7 +2066,6 @@ private fun DateDetailSection(
                         }
                     }
                 }
-            }
         }
     }
 }
