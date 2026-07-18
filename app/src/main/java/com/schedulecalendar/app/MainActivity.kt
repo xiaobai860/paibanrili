@@ -5,7 +5,9 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -39,22 +41,94 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_NAVIGATE_DATE = "navigate_date"
     }
 
-    // 存储待处理的快捷方式动作
     var pendingShortcutAction: String? = null
         private set
 
-    // 存储小组件点击跳转的日期
     var pendingNavigateDate: String? = null
         private set
+
+    /**
+     * 由 AppNavHost 更新——当前是否在 Tab 一级页面（底部导航页）
+     * API 34+: setter 触发系统级 OnBackInvokedCallback 注册/注销
+     * API 33-: setter 更新 legacy OnBackPressedCallback 的 isEnabled
+     */
+    @Volatile
+    var isOnTabPage: Boolean = false
+        set(value) {
+            field = value
+            if (Build.VERSION.SDK_INT >= 34) {
+                registerOverlayBackCallback()
+            } else {
+                legacyBackCallback?.isEnabled = value
+            }
+        }
+
+    // -- API 34+ 方案：系统级 OnBackInvokedDispatcher PRIORITY_OVERLAY ---------
+
+    private var overlayCallback: Any? = null
+
+    private fun registerOverlayBackCallback() {
+        try {
+            val cbClass = Class.forName("android.window.OnBackInvokedCallback")
+            val dispatcher = onBackInvokedDispatcher
+            val dispatcherClass = dispatcher.javaClass
+
+            overlayCallback?.let {
+                dispatcherClass.getMethod(
+                    "unregisterOnBackInvokedCallback", cbClass
+                ).invoke(dispatcher, it)
+            }
+            overlayCallback = null
+
+            if (isOnTabPage) {
+                val cb = java.lang.reflect.Proxy.newProxyInstance(
+                    cbClass.classLoader, arrayOf(cbClass)
+                ) { proxy, method, args ->
+                    when (method.name) {
+                        "onBackInvoked" -> {
+                            Log.d("MainActivity", "Overlay back: finish() from tab")
+                            finish()
+                            null
+                        }
+                        "equals" -> args != null && args.size > 0 && args[0] === proxy
+                        "hashCode" -> System.identityHashCode(proxy)
+                        "toString" -> "OverlayBackCallback"
+                        else -> null
+                    }
+                }
+                dispatcherClass.getMethod(
+                    "registerOnBackInvokedCallback",
+                    Int::class.javaPrimitiveType!!, cbClass
+                ).invoke(dispatcher, 1000000, cb)
+                overlayCallback = cb
+                Log.d("MainActivity", "Overlay registered (tab=true)")
+            }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "registerOverlayBackCallback failed", e)
+        }
+    }
+
+    // -- API 33- 兼容方案：OnBackPressedDispatcher ----------------------------
+
+    private var legacyBackCallback: OnBackPressedCallback? = null
+
+    // -- 生命周期 ---------------------------------------------------------------
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // 处理快捷方式Intent
+        if (Build.VERSION.SDK_INT < 34) {
+            legacyBackCallback = object : OnBackPressedCallback(isOnTabPage) {
+                override fun handleOnBackPressed() {
+                    if (isOnTabPage) finish()
+                }
+            }
+            onBackPressedDispatcher.addCallback(this, legacyBackCallback!!)
+        }
+
         handleShortcutIntent(intent)
 
-        // 应用启动时恢复动态快捷方式
         CoroutineScope(Dispatchers.Main).launch {
             if (appPreferences.isShortcutEnabled()) {
                 WidgetSettingsViewModel.updateDynamicShortcuts(this@MainActivity, true)
@@ -67,18 +141,15 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // 首次启动权限申请弹窗
                     var showPermissionDialog by remember { mutableStateOf(false) }
                     var permissionsRequested by remember { mutableStateOf(false) }
 
-                    // 检查是否需要首次权限申请
                     LaunchedEffect(Unit) {
                         if (!appPreferences.isInitialPermissionsDone() && !permissionsRequested) {
                             showPermissionDialog = true
                         }
                     }
 
-                    // 权限请求启动器
                     val permissionLauncher = rememberLauncherForActivityResult(
                         ActivityResultContracts.RequestMultiplePermissions()
                     ) { _ ->
@@ -94,7 +165,6 @@ class MainActivity : ComponentActivity() {
                             onConfirm = {
                                 showPermissionDialog = false
                                 permissionsRequested = true
-                                // 请求日历 + 通知权限
                                 val permissions = buildList {
                                     add(Manifest.permission.READ_CALENDAR)
                                     add(Manifest.permission.WRITE_CALENDAR)
@@ -120,13 +190,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (Build.VERSION.SDK_INT >= 34) {
+            registerOverlayBackCallback()
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleShortcutIntent(intent)
     }
 
     private fun handleShortcutIntent(intent: Intent?) {
-        // 处理小组件日期导航
         intent?.getStringExtra(EXTRA_NAVIGATE_DATE)?.let { date ->
             pendingNavigateDate = date
             intent.removeExtra(EXTRA_NAVIGATE_DATE)
@@ -134,7 +210,6 @@ class MainActivity : ComponentActivity() {
         when (intent?.action) {
             ACTION_CLOCK_IN -> {
                 pendingShortcutAction = ACTION_CLOCK_IN
-                // 清除action避免重复处理
                 intent.action = Intent.ACTION_MAIN
             }
             ACTION_CLOCK_OUT -> {
@@ -144,14 +219,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** 清除待处理的快捷方式动作（处理完成后调用） */
     fun consumeShortcutAction(): String? {
         val action = pendingShortcutAction
         pendingShortcutAction = null
         return action
     }
 
-    /** 清除并返回待处理的导航日期（小组件点击） */
     fun consumeNavigateDate(): String? {
         val date = pendingNavigateDate
         pendingNavigateDate = null
@@ -159,9 +232,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/**
- * 首次安装启动时的权限申请引导弹窗
- */
 @Composable
 private fun InitialPermissionDialog(
     onConfirm: () -> Unit,
