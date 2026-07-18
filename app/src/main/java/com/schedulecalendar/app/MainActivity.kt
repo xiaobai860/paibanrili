@@ -49,28 +49,28 @@ class MainActivity : ComponentActivity() {
 
     /**
      * 由 AppNavHost 更新——当前是否在 Tab 一级页面（底部导航页）
-     * API 34+: setter 触发系统级 OnBackInvokedCallback 注册/注销
-     * API 33-: setter 更新 legacy OnBackPressedCallback 的 isEnabled
+     * 同时更新 OnBackPressedDispatcher 回调的启用状态和系统级 overlay
      */
     @Volatile
     var isOnTabPage: Boolean = false
         set(value) {
             field = value
+            tabBackCallback?.isEnabled = value && !calendarSubModeActive
             if (Build.VERSION.SDK_INT >= 34) {
                 registerOverlayBackCallback()
-            } else {
-                legacyBackCallback?.isEnabled = value
             }
         }
 
     /**
      * 由 CalendarScreen 更新——当前是否处于批量排班/复制排班/删除排班模式
      * true 时覆盖 isOnTabPage，使返回键先退出模式而非直接 finish()
+     * 同时更新 OnBackPressedDispatcher 回调的启用状态
      */
     @Volatile
     var calendarSubModeActive: Boolean = false
         set(value) {
             field = value
+            tabBackCallback?.isEnabled = isOnTabPage && !value
             if (Build.VERSION.SDK_INT >= 34) {
                 registerOverlayBackCallback()
             }
@@ -121,9 +121,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // -- API 33- 兼容方案：OnBackPressedDispatcher ----------------------------
+    // -- 全API层通用兜底回调：OnBackPressedDispatcher --------------------------
+    // 在所有 API 级别可靠拦截返回键。注册顺序关键：
+    //   1. setContent() → NavHost BackHandler → 直接 addCallback() 加入调度器
+    //   2. onStart() → super.onStart() → 本回调 lifecycle-aware 加入调度器
+    // 结果：本回调最后加入 → 反向遍历时最先执行 → finish()
+    //
+    // 对 API 34+: 在系统 OnBackInvokedDispatcher 未命中时作为兜底
+    //   系统调度 → ComponentActivity 包装器 → OnBackPressedDispatcher → 本回调
+    //
+    // 对 API 33-: 直接拦截返回键（替代已移除的 legacy 方案）
 
-    private var legacyBackCallback: OnBackPressedCallback? = null
+    private var tabBackCallback: OnBackPressedCallback? = null
 
     // -- 生命周期 ---------------------------------------------------------------
 
@@ -131,14 +140,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        if (Build.VERSION.SDK_INT < 34) {
-            legacyBackCallback = object : OnBackPressedCallback(isOnTabPage) {
-                override fun handleOnBackPressed() {
-                    if (isOnTabPage) finish()
+        // 注册全 API 通用的返回键拦截回调（lifecycle-aware，onStart 时加入调度器）
+        tabBackCallback = object : OnBackPressedCallback(isOnTabPage && !calendarSubModeActive) {
+            override fun handleOnBackPressed() {
+                if (isOnTabPage && !calendarSubModeActive) {
+                    Log.d("MainActivity", "Tab back: finish() via dispatcher")
+                    finish()
                 }
             }
-            onBackPressedDispatcher.addCallback(this, legacyBackCallback!!)
         }
+        onBackPressedDispatcher.addCallback(this, tabBackCallback!!)
 
         handleShortcutIntent(intent)
 
