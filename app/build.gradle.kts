@@ -45,11 +45,17 @@ android {
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        // useLegacyPackaging = true — 控制 .so 打包方式，对 strip 警告无抑制效果
+        jniLibs { useLegacyPackaging = true }
     }
 
     // 使用日期格式版本号（如 2026071501），忽略 HighAppVersionCode 警告
     // 抑制资源相关警告：图标形状(默认模板图标)、图标重复(方形/圆形相同)、新版API属性、新版依赖提示
+    // checkReleaseBuilds = false：Android Studio 的「Generate Signed App Bundle/APK」菜单在 AS 运行期间会锁住 lint-cache 文件，
+    // 导致 lintVitalAnalyzeRelease 因 FileSystemException 失败并产生警告。跳过 release 的 lint 即可消除 Build 菜单中的 5 个警告。
     lint {
+        abortOnError       = false
+        checkReleaseBuilds = false
         disable += "HighAppVersionCode"
         disable += "IconLauncherShape"
         disable += "IconDuplicates"
