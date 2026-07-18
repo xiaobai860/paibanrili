@@ -17,6 +17,8 @@ glance               = "1.1.1"
 
 # 农历计算库（tyme4j 是 lunar 的升级版）
 tyme4j               = "1.5.1"
+wheel-picker-compose  = "1.1.11"
+documentfile          = "1.0.1"
 
 [libraries]
 # Android core
@@ -71,6 +73,8 @@ glance-material3        = { group = "androidx.glance",              name = "glan
 
 # 农历计算库（tyme4j 是 lunar 的升级版）
 tyme4j                  = { group = "cn.6tail",                    name = "tyme4j",                       version.ref = "tyme4j" }
+wheel-picker-compose    = { group = "com.github.commandiron",       name = "WheelPickerCompose",           version.ref = "wheel-picker-compose" }
+documentfile            = { group = "androidx.documentfile",        name = "documentfile",                 version.ref = "documentfile" }
 
 [plugins]
 android-application     = { id = "com.android.application",        version.ref = "agp" }

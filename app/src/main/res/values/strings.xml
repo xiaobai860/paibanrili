@@ -8,9 +8,5 @@
 
     <!-- 快捷方式字符串 -->
     <string name="shortcut_clock_in_short">上班打卡</string>
-    <string name="shortcut_clock_in_long">记录上班打卡时间</string>
-    <string name="shortcut_clock_in_disabled">无法打卡</string>
     <string name="shortcut_clock_out_short">下班打卡</string>
-    <string name="shortcut_clock_out_long">记录下班打卡时间</string>
-    <string name="shortcut_clock_out_disabled">无法打卡</string>
 </resources>

@@ -367,6 +367,7 @@ private fun PermissionManagementSection() {
                         granted = isBatteryOptimizationIgnored,
                         onAction = {
                             try {
+                                @Suppress("BatteryLife")
                                 val intent = Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                                     data = Uri.parse("package:${context.packageName}")
                                 }

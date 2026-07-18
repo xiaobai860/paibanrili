@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.*
 import androidx.glance.action.ActionParameters
@@ -99,24 +100,24 @@ class ClockInAction : ActionCallback {
         val now = LocalTime.now()
         val currentTime = "%02d:%02d".format(now.hour, now.minute)
 
-        val editor = prefs.edit()
-        if (savedDate != todayStr) {
-            // 新的一天 → 上班打卡
-            editor.putString(KEY_CLOCK_IN_DATE, todayStr)
-            editor.putString(KEY_CLOCK_IN_TIME, currentTime)
-            editor.remove(KEY_CLOCK_OUT_TIME)
-        } else {
-            val clockInTime = prefs.getString(KEY_CLOCK_IN_TIME, "") ?: ""
-            val clockOutTime = prefs.getString(KEY_CLOCK_OUT_TIME, "") ?: ""
-            if (clockOutTime.isEmpty() && clockInTime.isNotEmpty()) {
-                // 已打卡上班 → 下班打卡
-                editor.putString(KEY_CLOCK_OUT_TIME, currentTime)
+        prefs.edit {
+            if (savedDate != todayStr) {
+                // 新的一天 → 上班打卡
+                putString(KEY_CLOCK_IN_DATE, todayStr)
+                putString(KEY_CLOCK_IN_TIME, currentTime)
+                remove(KEY_CLOCK_OUT_TIME)
             } else {
-                // 已打卡下班 → 更新下班时间（可重复点击）
-                editor.putString(KEY_CLOCK_OUT_TIME, currentTime)
+                val clockInTime = prefs.getString(KEY_CLOCK_IN_TIME, "") ?: ""
+                val clockOutTime = prefs.getString(KEY_CLOCK_OUT_TIME, "") ?: ""
+                if (clockOutTime.isEmpty() && clockInTime.isNotEmpty()) {
+                    // 已打卡上班 → 下班打卡
+                    putString(KEY_CLOCK_OUT_TIME, currentTime)
+                } else {
+                    // 已打卡下班 → 更新下班时间（可重复点击）
+                    putString(KEY_CLOCK_OUT_TIME, currentTime)
+                }
             }
         }
-        editor.apply()
 
         // 刷新小组件
         val widget = ScheduleGlanceWidget()
@@ -177,6 +178,7 @@ private fun getHolidayCountdownText(): String {
     }
 }
 
+@Suppress("LocalContextConfigurationRead")
 @Composable
 private fun ClockInWidgetContent() {
     val prefs = currentState<androidx.datastore.preferences.core.Preferences>()

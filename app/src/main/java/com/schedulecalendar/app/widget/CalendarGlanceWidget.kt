@@ -96,6 +96,7 @@ class RefreshWidgetAction : ActionCallback {
     }
 }
 
+@Suppress("LocalContextConfigurationRead")
 @Composable
 private fun CalendarWidgetContent() {
     val prefs = currentState<androidx.datastore.preferences.core.Preferences>()

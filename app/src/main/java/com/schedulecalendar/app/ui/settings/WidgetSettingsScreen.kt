@@ -206,7 +206,6 @@ class WidgetSettingsViewModel @Inject constructor(
     companion object {
         /** 更新动态快捷方式 */
         fun updateDynamicShortcuts(context: Context, enabled: Boolean) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return
             try {
                 val shortcutManager = context.getSystemService(Context.SHORTCUT_SERVICE) as ShortcutManager
                 if (enabled) {

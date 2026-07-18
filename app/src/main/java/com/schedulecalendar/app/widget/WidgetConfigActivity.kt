@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.edit
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import com.schedulecalendar.app.ui.theme.ScheduleCalendarTheme
 import kotlinx.coroutines.runBlocking
@@ -162,12 +163,12 @@ private fun WidgetConfigScreen(
                     onClick = {
                         // 同步写入（含默认颜色 + 各自透明度 + 显示模式）
                         val transparencyKey = if (isScheduleWidget) KEY_CFG_SCHEDULE_BG_TRANSPARENCY else KEY_CFG_CALENDAR_BG_TRANSPARENCY
-                        prefs.edit()
-                            .putString(KEY_CFG_TEXT_COLOR, "#FF333333")
-                            .putString(KEY_CFG_BG_COLOR, "#FFFFFFFF")
-                            .putFloat(transparencyKey, bgTransparency)
-                            .putString(KEY_CFG_DISPLAY_MODE, selectedMode)
-                            .commit()
+                        prefs.edit {
+                            putString(KEY_CFG_TEXT_COLOR, "#FF333333")
+                            putString(KEY_CFG_BG_COLOR, "#FFFFFFFF")
+                            putFloat(transparencyKey, bgTransparency)
+                            putString(KEY_CFG_DISPLAY_MODE, selectedMode)
+                        }
                         onDone()
                     },
                     modifier = Modifier
