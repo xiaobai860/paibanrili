@@ -3,6 +3,7 @@ package com.schedulecalendar.app.ui.calendar
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -91,6 +92,20 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
 
     // 处理快捷方式Intent
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    // 同步子模式状态（批量排班/复制排班/删除排班）到 Activity，使返回键先退出模式再退出应用
+    val hostActivity = context as? MainActivity
+    val isInSubMode = state.batchMode || state.copyMode || state.deleteMode
+    DisposableEffect(isInSubMode) {
+        hostActivity?.calendarSubModeActive = isInSubMode
+        onDispose {
+            hostActivity?.calendarSubModeActive = false
+        }
+    }
+    BackHandler(enabled = isInSubMode) {
+        vm.exitAllModes()
+    }
+
     LaunchedEffect(Unit) {
         val activity = context as? MainActivity
         activity?.let { mainActivity ->

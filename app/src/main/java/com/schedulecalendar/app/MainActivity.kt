@@ -63,6 +63,19 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+    /**
+     * 由 CalendarScreen 更新——当前是否处于批量排班/复制排班/删除排班模式
+     * true 时覆盖 isOnTabPage，使返回键先退出模式而非直接 finish()
+     */
+    @Volatile
+    var calendarSubModeActive: Boolean = false
+        set(value) {
+            field = value
+            if (Build.VERSION.SDK_INT >= 34) {
+                registerOverlayBackCallback()
+            }
+        }
+
     // -- API 34+ 方案：系统级 OnBackInvokedDispatcher PRIORITY_OVERLAY ---------
 
     private var overlayCallback: Any? = null
@@ -80,7 +93,7 @@ class MainActivity : ComponentActivity() {
             }
             overlayCallback = null
 
-            if (isOnTabPage) {
+            if (isOnTabPage && !calendarSubModeActive) {
                 val cb = java.lang.reflect.Proxy.newProxyInstance(
                     cbClass.classLoader, arrayOf(cbClass)
                 ) { proxy, method, args ->
