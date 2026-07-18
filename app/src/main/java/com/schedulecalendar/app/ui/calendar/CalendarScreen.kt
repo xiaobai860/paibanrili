@@ -187,6 +187,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                     modifier = Modifier.clickable {
                                         navController.navigate(RouteTodo) {
                                             popUpTo(navController.graph.startDestinationId) {
+                                                inclusive = true
                                                 saveState = true
                                             }
                                             launchSingleTop = true

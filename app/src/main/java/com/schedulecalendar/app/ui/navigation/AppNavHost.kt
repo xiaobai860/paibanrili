@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.*
 
@@ -58,6 +59,13 @@ fun AppNavHost() {
     val currentDest = navBackStackEntry?.destination
     val tabRouteNames = tabs.map { (it.route::class).qualifiedName }
     val showBottomBar = currentDest?.route in tabRouteNames
+
+    val context = LocalContext.current
+    // 通知 Activity 当前是否在 Tab 页面
+    val activity = context as? com.schedulecalendar.app.MainActivity
+    if (activity != null && activity.isOnTabPage != showBottomBar) {
+        activity.isOnTabPage = showBottomBar
+    }
 
     Scaffold(
         bottomBar = {

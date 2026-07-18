@@ -212,9 +212,11 @@ class WidgetSettingsViewModel @Inject constructor(
                 if (enabled) {
                     val clockInIntent = Intent(context, com.schedulecalendar.app.MainActivity::class.java).apply {
                         action = com.schedulecalendar.app.MainActivity.ACTION_CLOCK_IN
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                     }
                     val clockOutIntent = Intent(context, com.schedulecalendar.app.MainActivity::class.java).apply {
                         action = com.schedulecalendar.app.MainActivity.ACTION_CLOCK_OUT
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                     }
                     val clockInShortcut = ShortcutInfo.Builder(context, "clock_in")
                         .setShortLabel(context.getString(com.schedulecalendar.app.R.string.shortcut_clock_in_short))
