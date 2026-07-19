@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
     @Volatile
     var isOnTabPage: Boolean = false
         set(value) {
+            Log.d("MainActivity", "isOnTabPage: $field -> $value, calendarSubMode=$calendarSubModeActive")
             field = value
             tabBackCallback?.isEnabled = value && !calendarSubModeActive
             if (Build.VERSION.SDK_INT >= 34) {
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
     @Volatile
     var calendarSubModeActive: Boolean = false
         set(value) {
+            Log.d("MainActivity", "calendarSubModeActive: $field -> $value, isOnTabPage=$isOnTabPage")
             field = value
             tabBackCallback?.isEnabled = isOnTabPage && !value
             if (Build.VERSION.SDK_INT >= 34) {
@@ -99,8 +101,8 @@ class MainActivity : ComponentActivity() {
                 ) { proxy, method, args ->
                     when (method.name) {
                         "onBackInvoked" -> {
-                            Log.d("MainActivity", "Overlay back: finish() from tab")
-                            finish()
+                            Log.d("MainActivity", "Overlay back: finishAndRemoveTask() from tab")
+                            if (!isFinishing) finishAndRemoveTask()
                             null
                         }
                         "equals" -> args != null && args.size > 0 && args[0] === proxy
@@ -143,9 +145,12 @@ class MainActivity : ComponentActivity() {
         // 注册全 API 通用的返回键拦截回调（lifecycle-aware，onStart 时加入调度器）
         tabBackCallback = object : OnBackPressedCallback(isOnTabPage && !calendarSubModeActive) {
             override fun handleOnBackPressed() {
-                if (isOnTabPage && !calendarSubModeActive) {
-                    Log.d("MainActivity", "Tab back: finish() via dispatcher")
-                    finish()
+                if (isFinishing) return // 已在 finish 中（TabAwareNavHostController 已处理）
+                val shouldFinish = isOnTabPage && !calendarSubModeActive
+                Log.d("MainActivity", "Tab back handler: isOnTabPage=$isOnTabPage, calendarSubMode=$calendarSubModeActive, shouldFinish=$shouldFinish")
+                if (shouldFinish) {
+                    Log.d("MainActivity", "Tab back: finishAndRemoveTask() via dispatcher")
+                    finishAndRemoveTask()
                 }
             }
         }

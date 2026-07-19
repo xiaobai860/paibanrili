@@ -42,6 +42,12 @@
 -keepclassmembers class com.schedulecalendar.app.data.repository.** { *; }
 -keep class com.schedulecalendar.app.data.repository.** { *; }
 
+# ── OnBackPressedDispatcher 回调（保证 handleOnBackPressed 不被 R8 裁剪）─────────
+-keepclassmembers class com.schedulecalendar.app.MainActivity$** {
+    void handleOnBackPressed();
+}
+-keep class com.schedulecalendar.app.MainActivity$** extends androidx.activity.OnBackPressedCallback { *; }
+
 # ── Coroutines ────────────────────────────────────────────────────────────────
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
