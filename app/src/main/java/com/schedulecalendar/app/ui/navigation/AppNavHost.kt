@@ -1,6 +1,8 @@
 // app/src/main/java/com/schedulecalendar/app/ui/navigation/AppNavHost.kt
 package com.schedulecalendar.app.ui.navigation
 
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -15,6 +17,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.*
 
 import androidx.navigation.compose.*
+import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.ui.calendar.CalendarScreen
 import com.schedulecalendar.app.ui.detail.DisplaySchemesScreen
 import com.schedulecalendar.app.ui.detail.ExtraItemsScreen
@@ -62,7 +65,7 @@ fun AppNavHost() {
 
     val context = LocalContext.current
     // 通知 Activity 当前是否在 Tab 页面
-    val activity = context as? com.schedulecalendar.app.MainActivity
+    val activity = context as? MainActivity
     if (activity != null && activity.isOnTabPage != showBottomBar) {
         activity.isOnTabPage = showBottomBar
     }
@@ -85,6 +88,7 @@ fun AppNavHost() {
                                 navController.navigate(tab.route) {
                                     popUpTo(navController.graph.startDestinationRoute ?: return@navigate) {
                                         saveState = true
+                                        inclusive = true
                                     }
                                     launchSingleTop = true
                                     restoreState    = true
@@ -135,6 +139,14 @@ fun AppNavHost() {
                 AddAnniversaryScreen(navController = navController, eventId = route.eventId)
             }
             composable<RouteWidgetSettings> { WidgetSettingsScreen(navController) }
+        }
+
+        // 重写返回键：当在 Tab 页面时拦截 popBackStack，直接 finish Activity
+        BackHandler(enabled = showBottomBar && (activity?.calendarSubModeActive != true)) {
+            val act = context as? Activity
+            if (act != null && !act.isFinishing) {
+                act.finishAndRemoveTask()
+            }
         }
     }
 }
