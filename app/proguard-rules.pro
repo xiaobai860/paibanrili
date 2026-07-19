@@ -42,6 +42,19 @@
 -keepclassmembers class com.schedulecalendar.app.data.repository.** { *; }
 -keep class com.schedulecalendar.app.data.repository.** { *; }
 
+# ── MainActivity 返回键状态字段与访问方法（防止 R8 内联优化导致状态同步失效）──
+# Kotlin 属性编译为 getter/setter 方法，R8 全程序优化可能内联这些方法
+# 使 Activity ↔ Composable 之间的状态同步失效
+-keepclassmembers class com.schedulecalendar.app.MainActivity {
+    boolean isOnTabPage;
+    boolean calendarSubModeActive;
+    boolean getIsOnTabPage();
+    void setIsOnTabPage(boolean);
+    boolean getCalendarSubModeActive();
+    void setCalendarSubModeActive(boolean);
+    androidx.activity.OnBackPressedCallback tabBackCallback;
+}
+
 # ── OnBackPressedDispatcher 回调（保证 handleOnBackPressed 不被 R8 裁剪）─────────
 -keepclassmembers class com.schedulecalendar.app.MainActivity$** {
     void handleOnBackPressed();
