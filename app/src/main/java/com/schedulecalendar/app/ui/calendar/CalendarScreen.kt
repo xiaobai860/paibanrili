@@ -83,7 +83,7 @@ private data class DayCellData(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltViewModel()) {
+fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltViewModel(), onSubModeChange: (Boolean) -> Unit = {}) {
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var showCopyDialog        by remember { mutableStateOf(false) }
@@ -101,6 +101,11 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
         onDispose {
             hostActivity?.calendarSubModeActive = false
         }
+    }
+    // 通过回调同步子模式状态到 AppNavHost 的 Compose MutableState，
+    // 保证 BackHandler 的 enabled 条件能响应状态变化触发重组
+    LaunchedEffect(isInSubMode) {
+        onSubModeChange(isInSubMode)
     }
     BackHandler(enabled = isInSubMode) {
         vm.exitAllModes()

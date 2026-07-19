@@ -70,6 +70,9 @@ fun AppNavHost() {
         activity.isOnTabPage = showBottomBar
     }
 
+    // 用 Compose MutableState 追踪日历子模式状态，保证 BackHandler 可响应状态变化
+    var calendarSubModeActive by remember { mutableStateOf(false) }
+
     Scaffold(
         bottomBar = {
             AnimatedVisibility(
@@ -106,7 +109,7 @@ fun AppNavHost() {
             modifier         = Modifier.padding(paddingValues)
         ) {
             // ── Tab 主页面 ──────────────────────────────────────────
-            composable<RouteCalendar>   { CalendarScreen(navController) }
+            composable<RouteCalendar>   { CalendarScreen(navController, onSubModeChange = { calendarSubModeActive = it }) }
             composable<RouteTodo>       { TodoScreen(navController) }
             composable<RouteShifts>     { ShiftsScreen(navController) }
             composable<RouteStatistics> { StatisticsScreen(navController) }
@@ -142,7 +145,9 @@ fun AppNavHost() {
         }
 
         // 重写返回键：当在 Tab 页面时拦截 popBackStack，直接 finish Activity
-        BackHandler(enabled = showBottomBar && (activity?.calendarSubModeActive != true)) {
+        // 使用 Compose MutableState calendarSubModeActive（可响应重组），
+        // 避免 JVM 属性 activity.calendarSubModeActive 无法触发重组的问题
+        BackHandler(enabled = showBottomBar && !calendarSubModeActive) {
             val act = context as? Activity
             if (act != null && !act.isFinishing) {
                 act.finishAndRemoveTask()
