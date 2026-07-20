@@ -15,8 +15,8 @@ android {
         applicationId = "com.schedulecalendar.app"
         minSdk        = 26
         targetSdk     = 36
-        versionCode   = 2026072003
-        versionName   = "2026072003"
+        versionCode   = 2026072004
+        versionName   = "2026072004"
     }
 
     buildTypes {

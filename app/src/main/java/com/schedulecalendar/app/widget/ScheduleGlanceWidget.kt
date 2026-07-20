@@ -538,6 +538,7 @@ private fun ClockInWidgetContent() {
                 modifier = GlanceModifier
                     .width(40.dp)
                     .height(36.dp)
+                    .padding(end = 4.dp)
                     .background(btnBgColor)
                     .cornerRadius(10.dp)
                     .clickable(actionRunCallback(btnAction::class.java)),
