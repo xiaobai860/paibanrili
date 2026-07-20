@@ -18,6 +18,8 @@ import com.schedulecalendar.app.widget.CalendarWidgetDay
 import com.schedulecalendar.app.widget.CalendarWidgetInfo
 import com.schedulecalendar.app.widget.ClockInWidgetData
 import com.schedulecalendar.app.widget.ScheduleGlanceWidget
+import com.schedulecalendar.app.widget.isBuiltInStatus
+import java.time.LocalTime
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -101,6 +103,14 @@ data class CalendarUiState(
     val selectedDateEvents: List<CalendarEventInfo> = emptyList(),
     /** 有日历事件（日程/纪念日）的日期集合（用于 DayCell 显示事件指示点） */
     val datesWithEvents: Set<String> = emptySet()
+)
+
+/** 活跃班次判定结果 */
+data class ActiveShiftResult(
+    val date: LocalDate,       // 打卡写入的目标日期
+    val shift: Shift,
+    val showClockIn: Boolean,
+    val showClockOut: Boolean
 )
 
 @HiltViewModel
@@ -887,35 +897,159 @@ class CalendarViewModel @Inject constructor(
         CalendarGlanceWidget.updateWidgetData(context, data)
     }
 
+   /**
+     * 查找当前活跃班次
+     * 今天优先 → 其次昨天跨午夜夜班
+     */
+    private fun findActiveShift(
+        shifts: List<Shift>,
+        schedules: Map<String, ScheduleRecord>
+    ): ActiveShiftResult? {
+        val today = LocalDate.now()
+        val yesterday = today.minusDays(1)
+        val now = LocalTime.now()
+        val nowMin = now.hour * 60 + now.minute
+
+        // 第一步：检查今天
+        val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+        val todayRecord = schedules[todayStr]
+        if (todayRecord?.type == ScheduleType.SHIFT && todayRecord.shiftId != null) {
+            val shift = shifts.find { it.id == todayRecord.shiftId }
+            if (shift != null && shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) {
+                val ss = CalcUtils.timeToMin(shift.startTime)
+                val se = CalcUtils.timeToMin(shift.endTime)
+                val (_, normE) = CalcUtils.normRange(ss, se)
+
+                val showClockIn = nowMin >= (ss - 300) && nowMin < normE
+                val showClockOut = nowMin >= ss && nowMin <= (normE + 300)
+
+                if (showClockIn || showClockOut) {
+                    return ActiveShiftResult(today, shift, showClockIn, showClockOut)
+                }
+            }
+        }
+
+        // 第二步：检查昨天（针对跨午夜夜班的下班打卡）
+        val yesterdayStr = "%04d-%02d-%02d".format(yesterday.year, yesterday.monthValue, yesterday.dayOfMonth)
+        val yesterdayRecord = schedules[yesterdayStr]
+        if (yesterdayRecord?.type == ScheduleType.SHIFT && yesterdayRecord.shiftId != null) {
+            val shift = shifts.find { it.id == yesterdayRecord.shiftId }
+            if (shift != null && shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) {
+                // 偏移到"今天时间轴"：起止分钟都 -1440
+                val ss = CalcUtils.timeToMin(shift.startTime) - 1440
+                val se = CalcUtils.timeToMin(shift.endTime) - 1440
+                val (_, normE) = CalcUtils.normRange(ss, se)
+
+                val showClockOut = nowMin >= ss && nowMin <= (normE + 300)
+
+                // 昨天的活跃班次只考虑下班打卡
+                if (showClockOut) {
+                    return ActiveShiftResult(yesterday, shift, false, true)
+                }
+            }
+        }
+
+        return null
+    }
+
     private suspend fun syncWidget(shifts: List<Shift>, schedules: Map<String, ScheduleRecord>) {
         val today = LocalDate.now()
         val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
         val tomorrow = today.plusDays(1)
         val tomorrowStr = "%04d-%02d-%02d".format(tomorrow.year, tomorrow.monthValue, tomorrow.dayOfMonth)
-        val todayRecord = schedules[todayStr]
-        val todayShift = todayRecord?.shiftId?.let { id -> shifts.find { it.id == id } }
+
+        // 1. 查找活跃班次
+        val active = findActiveShift(shifts, schedules)
+
+        // 2. 确定目标排班记录和班次
+        val targetDate = active?.date ?: today
+        val targetDateStr = "%04d-%02d-%02d".format(targetDate.year, targetDate.monthValue, targetDate.dayOfMonth)
+        val targetRecord = schedules[targetDateStr]
+        val targetShift = targetRecord?.shiftId?.let { id -> shifts.find { it.id == id } }
+
         val tomorrowShift = schedules[tomorrowStr]?.shiftId?.let { id -> shifts.find { it.id == id } }
 
-        // 读取附加状态名
-        val statusName = todayRecord?.appliedStatus?.let { applied ->
+        // 3. 应用规则 1-4：判断是否内置班次 + 附加状态类型
+        val isBuiltInShift = targetShift?.builtIn == true &&
+                (targetShift?.builtInType == "rest" || targetShift?.builtInType == "swap")
+        val hasAppliedStatus = targetRecord?.appliedStatus != null
+        val hasBuiltInStatus = hasAppliedStatus && isBuiltInStatus(targetRecord!!.appliedStatus!!.statusId)
+        val hasCustomStatus = hasAppliedStatus && !hasBuiltInStatus
+
+        var showClockIn = active?.showClockIn ?: false
+        var showClockOut = active?.showClockOut ?: false
+
+        when {
+            // 规则1：内置班次且无自定义附加状态 → 不显示打卡按钮
+            isBuiltInShift && !hasCustomStatus -> {
+                showClockIn = false
+                showClockOut = false
+            }
+            // 规则4：内置班次 + 自定义附加状态 → 显示打卡按钮
+            isBuiltInShift && hasCustomStatus -> {
+                showClockIn = true
+                showClockOut = true
+            }
+        }
+
+        // 4. 读取附加状态名
+        val statusName = targetRecord?.appliedStatus?.let { applied ->
             (BUILTIN_STATUSES + state.value.allShiftStatuses).find { it.id == applied.statusId }?.name
         } ?: ""
 
-        // 读取打卡状态
+        // 5. 读取本地打卡状态（SharedPreferences）
         val clockPrefs = context.getSharedPreferences("clock_in_widget_prefs", Context.MODE_PRIVATE)
         val savedDate = clockPrefs.getString("clock_in_date", "") ?: ""
-        val actualStart = if (savedDate == todayStr) clockPrefs.getString("clock_in_time", "") ?: "" else ""
-        val actualEnd = if (savedDate == todayStr) clockPrefs.getString("clock_out_time", "") ?: "" else ""
+        val actualStart = if (savedDate == targetDateStr) clockPrefs.getString("clock_in_time", "") ?: "" else ""
+        val actualEnd = if (savedDate == targetDateStr) clockPrefs.getString("clock_out_time", "") ?: "" else ""
+
+        val hasClockedIn = actualStart.isNotEmpty()
+        val hasClockedOut = actualEnd.isNotEmpty()
+
+        // 6. 根据打卡进度调整按钮显示
+        when {
+            // 规则4：内置班次 + 自定义状态 → 已下班打卡后隐藏全部按钮
+            isBuiltInShift && hasCustomStatus && hasClockedOut -> {
+                showClockIn = false
+                showClockOut = false
+            }
+            // 规则4：内置班次 + 自定义状态 → 已上班未下班 → 只显示下班卡
+            isBuiltInShift && hasCustomStatus && hasClockedIn && !hasClockedOut -> {
+                showClockIn = false
+                showClockOut = true
+            }
+            // 规则2/3：普通班次 → 已全部打卡 → 隐藏按钮
+            !isBuiltInShift && hasClockedIn && hasClockedOut -> {
+                showClockIn = false
+                showClockOut = false
+            }
+            // 规则2/3：普通班次 → 已上班未下班 → 只显示下班卡
+            !isBuiltInShift && hasClockedIn && !hasClockedOut -> {
+                showClockIn = false
+                showClockOut = true
+            }
+        }
 
         val widgetData = ClockInWidgetData(
-            shiftName = todayShift?.name ?: "",
-            startTime = todayShift?.startTime ?: "",
-            endTime = todayShift?.endTime ?: "",
-            tomorrowShiftName = tomorrowShift?.name ?: "",
-            actualStartTime = actualStart,
-            actualEndTime = actualEnd,
-            shiftColor = todayShift?.color ?: "#059669",
-            statusName = statusName
+            shiftName          = targetShift?.name ?: "",
+            startTime          = targetShift?.startTime ?: "",
+            endTime            = targetShift?.endTime ?: "",
+            tomorrowShiftName  = tomorrowShift?.name ?: "",
+            actualStartTime    = actualStart,
+            actualEndTime      = actualEnd,
+            shiftColor         = targetShift?.color ?: "#059669",
+            statusName         = statusName,
+            shiftId            = targetShift?.id ?: "",
+            isBuiltInShift     = isBuiltInShift,
+            appliedStatusId    = targetRecord?.appliedStatus?.statusId ?: "",
+            isBuiltInStatus    = hasBuiltInStatus,
+            showClockIn        = showClockIn,
+            showClockOut       = showClockOut,
+            hasClockIn         = hasClockedIn,
+            hasClockOut        = hasClockedOut,
+            clockInDate        = targetDateStr,
+            widgetClockInTime  = actualStart,
+            widgetClockOutTime = actualEnd
         )
         ScheduleGlanceWidget.updateWidgetData(context, widgetData)
     }

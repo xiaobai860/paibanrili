@@ -32,9 +32,17 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
-import com.schedulecalendar.app.domain.model.HolidayData
+import com.schedulecalendar.app.domain.model.*
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.LocalDateTime
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import com.schedulecalendar.app.data.repository.ScheduleRepository
+import com.schedulecalendar.app.data.repository.ShiftRepository
+import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 
 // ── 快捷打卡小组件数据模型 ──────────────────────────────────────────
 
@@ -46,7 +54,19 @@ data class ClockInWidgetData(
     val actualStartTime: String = "",
     val actualEndTime: String = "",
     val shiftColor: String = "#059669",
-    val statusName: String = ""
+    val statusName: String = "",
+    // ── 新增：打卡按钮规则控制字段 ──
+    val shiftId: String = "",
+    val isBuiltInShift: Boolean = false,
+    val appliedStatusId: String = "",
+    val isBuiltInStatus: Boolean = false,
+    val showClockIn: Boolean = false,
+    val showClockOut: Boolean = false,
+    val hasClockIn: Boolean = false,
+    val hasClockOut: Boolean = false,
+    val clockInDate: String = "",
+    val widgetClockInTime: String = "",
+    val widgetClockOutTime: String = ""
 )
 
 // ── Glance 状态键 ──────────────────────────────────────────────────
@@ -57,6 +77,8 @@ private const val CLOCK_IN_PREFS = "clock_in_widget_prefs"
 private const val KEY_CLOCK_IN_DATE = "clock_in_date"
 private const val KEY_CLOCK_IN_TIME = "clock_in_time"
 private const val KEY_CLOCK_OUT_TIME = "clock_out_time"
+private const val WIDGET_DATA_PREFS = "widget_action_data_prefs"
+private const val KEY_WIDGET_JSON = "widget_json"
 
 // ── 快捷打卡 Glance 小组件 ─────────────────────────────────────────
 
@@ -71,6 +93,9 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
     companion object {
         suspend fun updateWidgetData(context: Context, data: ClockInWidgetData) {
             val gson = Gson()
+            // 同步保存到 SharedPreferences，供 ActionCallback 读取
+            context.getSharedPreferences(WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
+                .edit { putString(KEY_WIDGET_JSON, gson.toJson(data)) }
             val widget = ScheduleGlanceWidget()
             val manager = GlanceAppWidgetManager(context)
             manager.getGlanceIds(ScheduleGlanceWidget::class.java).forEach { glanceId ->
@@ -85,14 +110,90 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
     }
 }
 
-// ── 打卡动作回调（始终可点击，更新打卡时间） ─────────────────────────
+// ── Widget 上班打卡动作 ──────────────────────────────────────────
 
-class ClockInAction : ActionCallback {
+class WidgetClockInAction : ActionCallback {
     override suspend fun onAction(
         context: Context,
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
+        val now = LocalTime.now()
+        val currentTime = "%02d:%02d".format(now.hour, now.minute)
+
+        // 读取 widget 数据
+        val prefsJson = context.getSharedPreferences(WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_WIDGET_JSON, "") ?: ""
+        val data = runCatching { Gson().fromJson(prefsJson, ClockInWidgetData::class.java) }
+            .getOrElse { ClockInWidgetData() }
+
+        if (data.clockInDate.isBlank()) {
+            fallbackClock(context, glanceId, true)
+            return
+        }
+
+        val targetDate = data.clockInDate
+        val isBuiltInShift = data.isBuiltInShift
+        val hasCustomStatus = data.appliedStatusId.isNotBlank() && !data.isBuiltInStatus
+        val hasBuiltInStatus = data.appliedStatusId.isNotBlank() && data.isBuiltInStatus
+
+        // 先更新 SharedPreferences（widget 即时刷新）
+        val clockPrefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
+        clockPrefs.edit {
+            putString(KEY_CLOCK_IN_DATE, targetDate)
+            putString(KEY_CLOCK_IN_TIME, currentTime)
+            remove(KEY_CLOCK_OUT_TIME)
+        }
+
+        // 再持久化到数据库
+        runCatching {
+            val entryPoint = EntryPointAccessors.fromApplication(
+                context.applicationContext, WidgetClockEntryPoint::class.java
+            )
+            val scheduleRepo = entryPoint.scheduleRepository()
+            val shiftRepo = entryPoint.shiftRepository()
+
+            var record = scheduleRepo.getByDate(targetDate) ?: ScheduleRecord(targetDate)
+
+            if (isBuiltInShift && hasCustomStatus) {
+                // 规则4：内置班次+自定义附加状态 → 打卡时间写入附加状态.startTime
+                val newStatus = record.appliedStatus?.copy(startTime = currentTime)
+                    ?: AppliedStatus(data.appliedStatusId, startTime = currentTime)
+                record = record.copy(appliedStatus = newStatus)
+            } else {
+                // 规则1/2/3：普通班次 → 写入实际上班时间
+                record = record.copy(actualStartTime = currentTime)
+
+                if (hasBuiltInStatus && record.shiftId != null) {
+                    // 规则3：迟到时段自动填入附加状态
+                    val shift = shiftRepo.getById(record.shiftId)
+                    if (shift != null && shift.startTime.isNotEmpty()) {
+                        val shiftStartMin = CalcUtils.timeToMin(shift.startTime)
+                        val actualMin = CalcUtils.timeToMin(currentTime)
+                        if (actualMin > shiftStartMin) {
+                            val lateEnd = currentTime
+                            val newStatus = record.appliedStatus?.copy(
+                                startTime = shift.startTime, endTime = lateEnd
+                            ) ?: AppliedStatus(
+                                data.appliedStatusId, startTime = shift.startTime, endTime = lateEnd
+                            )
+                            record = record.copy(appliedStatus = newStatus)
+                        }
+                    }
+                }
+            }
+
+            scheduleRepo.save(record)
+        }
+
+        // 刷新小组件
+        refreshWidgets(context, glanceId)
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(context, "\u5df2\u6253\u4e0a\u73ed\u5361 $currentTime", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private suspend fun fallbackClock(context: Context, glanceId: GlanceId, isClockIn: Boolean) {
         val prefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
         val today = LocalDate.now()
         val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
@@ -102,37 +203,124 @@ class ClockInAction : ActionCallback {
 
         prefs.edit {
             if (savedDate != todayStr) {
-                // 新的一天 → 上班打卡
                 putString(KEY_CLOCK_IN_DATE, todayStr)
                 putString(KEY_CLOCK_IN_TIME, currentTime)
                 remove(KEY_CLOCK_OUT_TIME)
+            }
+        }
+        refreshWidgets(context, glanceId)
+        Toast.makeText(context, "\u5df2\u6253\u5361 $currentTime", Toast.LENGTH_SHORT).show()
+    }
+}
+
+// ── Widget 下班打卡动作 ──────────────────────────────────────────
+
+class WidgetClockOutAction : ActionCallback {
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: ActionParameters
+    ) {
+        val now = LocalTime.now()
+        val currentTime = "%02d:%02d".format(now.hour, now.minute)
+
+        // 读取 widget 数据
+        val prefsJson = context.getSharedPreferences(WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_WIDGET_JSON, "") ?: ""
+        val data = runCatching { Gson().fromJson(prefsJson, ClockInWidgetData::class.java) }
+            .getOrElse { ClockInWidgetData() }
+
+        if (data.clockInDate.isBlank()) {
+            fallbackClock(context, glanceId, false)
+            return
+        }
+
+        val targetDate = data.clockInDate
+        val isBuiltInShift = data.isBuiltInShift
+        val hasCustomStatus = data.appliedStatusId.isNotBlank() && !data.isBuiltInStatus
+        val hasBuiltInStatus = data.appliedStatusId.isNotBlank() && data.isBuiltInStatus
+
+        // 先更新 SharedPreferences
+        val clockPrefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
+        clockPrefs.edit { putString(KEY_CLOCK_OUT_TIME, currentTime) }
+
+        // 再持久化到数据库
+        runCatching {
+            val entryPoint = EntryPointAccessors.fromApplication(
+                context.applicationContext, WidgetClockEntryPoint::class.java
+            )
+            val scheduleRepo = entryPoint.scheduleRepository()
+            val shiftRepo = entryPoint.shiftRepository()
+
+            var record = scheduleRepo.getByDate(targetDate) ?: ScheduleRecord(targetDate)
+
+            if (isBuiltInShift && hasCustomStatus) {
+                // 规则4：内置班次+自定义附加状态 → 写入附加状态.endTime
+                val newStatus = record.appliedStatus?.copy(endTime = currentTime)
+                    ?: AppliedStatus(data.appliedStatusId, endTime = currentTime)
+                record = record.copy(appliedStatus = newStatus)
             } else {
-                val clockInTime = prefs.getString(KEY_CLOCK_IN_TIME, "") ?: ""
-                val clockOutTime = prefs.getString(KEY_CLOCK_OUT_TIME, "") ?: ""
-                if (clockOutTime.isEmpty() && clockInTime.isNotEmpty()) {
-                    // 已打卡上班 → 下班打卡
-                    putString(KEY_CLOCK_OUT_TIME, currentTime)
-                } else {
-                    // 已打卡下班 → 更新下班时间（可重复点击）
-                    putString(KEY_CLOCK_OUT_TIME, currentTime)
+                // 规则1/2/3：写入实际下班时间
+                record = record.copy(actualEndTime = currentTime)
+
+                if (hasBuiltInStatus && record.shiftId != null) {
+                    // 规则3：早退时段自动填入附加状态
+                    val shift = shiftRepo.getById(record.shiftId)
+                    if (shift != null && shift.endTime.isNotEmpty()) {
+                        val (_, normSE) = CalcUtils.normRange(
+                            CalcUtils.timeToMin(shift.startTime),
+                            CalcUtils.timeToMin(shift.endTime)
+                        )
+                        val (_, normAE) = CalcUtils.normRange(
+                            CalcUtils.timeToMin(shift.startTime),
+                            CalcUtils.timeToMin(currentTime)
+                        )
+                        if (normSE - normAE > 0) {
+                            val earlyStart = currentTime
+                            val newStatus = record.appliedStatus?.copy(
+                                startTime = earlyStart, endTime = shift.endTime
+                            ) ?: AppliedStatus(
+                                data.appliedStatusId, startTime = earlyStart, endTime = shift.endTime
+                            )
+                            record = record.copy(appliedStatus = newStatus)
+                        }
+                    }
                 }
             }
+
+            scheduleRepo.save(record)
         }
 
         // 刷新小组件
-        val widget = ScheduleGlanceWidget()
-        widget.update(context, glanceId)
-        // 同时刷新日历小组件
-        CalendarGlanceWidget().let { w ->
-            GlanceAppWidgetManager(context).getGlanceIds(w.javaClass).forEach { w.update(context, it) }
-        }
-
-        // Toast提示
-        val isClockIn = savedDate != todayStr
-        val toastMsg = if (isClockIn) "\u5df2\u6210\u529f\u6253\u5361" else "\u5df2\u66f4\u65b0\u6253\u5361"
+        refreshWidgets(context, glanceId)
         Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "\u5df2\u6253\u4e0b\u73ed\u5361 $currentTime", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private suspend fun fallbackClock(context: Context, glanceId: GlanceId, isClockIn: Boolean) {
+        val prefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
+        val today = LocalDate.now()
+        val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+        val savedDate = prefs.getString(KEY_CLOCK_IN_DATE, "") ?: ""
+        val now = LocalTime.now()
+        val currentTime = "%02d:%02d".format(now.hour, now.minute)
+
+        val clockInTime = prefs.getString(KEY_CLOCK_IN_TIME, "") ?: ""
+        if (savedDate == todayStr && clockInTime.isNotEmpty()) {
+            prefs.edit { putString(KEY_CLOCK_OUT_TIME, currentTime) }
+        }
+        refreshWidgets(context, glanceId)
+        Toast.makeText(context, "\u5df2\u6253\u5361 $currentTime", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/** 刷新两个小组件 */
+private suspend fun refreshWidgets(context: Context, glanceId: GlanceId) {
+    val widget = ScheduleGlanceWidget()
+    widget.update(context, glanceId)
+    CalendarGlanceWidget().let { w ->
+        GlanceAppWidgetManager(context).getGlanceIds(w.javaClass).forEach { w.update(context, it) }
     }
 }
 
@@ -192,9 +380,11 @@ private fun ClockInWidgetContent() {
     val clockPrefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
     val today = LocalDate.now()
     val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+    // 使用 data.clockInDate 作为参考日期（支持跨午夜场景）
+    val refDate = data.clockInDate.ifBlank { todayStr }
     val savedDate = clockPrefs.getString(KEY_CLOCK_IN_DATE, "") ?: ""
-    val actualStart = if (savedDate == todayStr) clockPrefs.getString(KEY_CLOCK_IN_TIME, "") ?: "" else ""
-    val actualEnd = if (savedDate == todayStr) clockPrefs.getString(KEY_CLOCK_OUT_TIME, "") ?: "" else ""
+    val actualStart = if (savedDate == refDate) clockPrefs.getString(KEY_CLOCK_IN_TIME, "") ?: "" else ""
+    val actualEnd = if (savedDate == refDate) clockPrefs.getString(KEY_CLOCK_OUT_TIME, "") ?: "" else ""
 
     // 判断打卡状态
     val hasClockIn = actualStart.isNotEmpty()
@@ -309,80 +499,90 @@ private fun ClockInWidgetContent() {
             }
         }
 
-        // ── 右侧：打卡按钮 ──
-        val btnLabel: String   // 上班卡 / 下班卡
-        val btnTime: String    // 时间（未打卡显示班次时间）
-        val btnBgColor: ColorProvider
-        val btnTextColor: ColorProvider
-        when {
-            !hasClockIn -> {
-                btnLabel = "\u4e0a\u73ed\u5361"
-                btnTime = ""
-                btnBgColor = pickColor(Color(0xFF059669).copy(alpha = 0.12f * bgAlpha), Color(0xFF059669).copy(alpha = 0.22f), isDark)
-                btnTextColor = pickColor(Color(0xFF059669), Color(0xFF4ADE80), isDark)
+        // ── 右侧：打卡按钮（使用 showClockIn/showClockOut 规则控制） ──
+        val showBtn = data.showClockIn || data.showClockOut
+        if (showBtn) {
+            val btnLabel: String
+            val btnTime: String
+            val btnBgColor: ColorProvider
+            val btnTextColor: ColorProvider
+            val btnAction: ActionCallback
+            when {
+                // 上班打卡按钮
+                data.showClockIn && !data.hasClockIn -> {
+                    btnLabel = "\u4e0a\u73ed\u5361"
+                    btnTime = ""
+                    btnBgColor = pickColor(Color(0xFF059669).copy(alpha = 0.12f * bgAlpha), Color(0xFF059669).copy(alpha = 0.22f), isDark)
+                    btnTextColor = pickColor(Color(0xFF059669), Color(0xFF4ADE80), isDark)
+                    btnAction = WidgetClockInAction()
+                }
+                // 下班打卡按钮（已上班未下班）
+                data.showClockOut && data.hasClockIn && !data.hasClockOut -> {
+                    btnLabel = "\u4e0b\u73ed\u5361"
+                    btnTime = actualStart.take(5)
+                    btnBgColor = pickColor(Color(0xFFF59E0B).copy(alpha = 0.12f * bgAlpha), Color(0xFFF59E0B).copy(alpha = 0.22f), isDark)
+                    btnTextColor = pickColor(Color(0xFFD97706), Color(0xFFFBBF24), isDark)
+                    btnAction = WidgetClockOutAction()
+                }
+                // 已全部打卡 → 灰色不可点击状态
+                else -> {
+                    btnLabel = "\u4e0b\u73ed\u5361"
+                    btnTime = actualEnd.take(5)
+                    btnBgColor = pickColor(Color(0xFF9CA3AF).copy(alpha = 0.10f * bgAlpha), Color(0xFF9CA3AF).copy(alpha = 0.18f), isDark)
+                    btnTextColor = pickColor(Color(0xFF6B7280), Color(0xFF9CA3AF), isDark)
+                    btnAction = WidgetClockOutAction()
+                }
             }
-            !hasClockOut -> {
-                btnLabel = "\u4e0b\u73ed\u5361"
-                btnTime = actualStart.take(5)
-                btnBgColor = pickColor(Color(0xFFF59E0B).copy(alpha = 0.12f * bgAlpha), Color(0xFFF59E0B).copy(alpha = 0.22f), isDark)
-                btnTextColor = pickColor(Color(0xFFD97706), Color(0xFFFBBF24), isDark)
-            }
-            else -> {
-                btnLabel = "\u4e0b\u73ed\u5361"
-                btnTime = actualEnd.take(5)
-                btnBgColor = pickColor(Color(0xFF9CA3AF).copy(alpha = 0.10f * bgAlpha), Color(0xFF9CA3AF).copy(alpha = 0.18f), isDark)
-                btnTextColor = pickColor(Color(0xFF6B7280), Color(0xFF9CA3AF), isDark)
-            }
-        }
 
-        Box(
-            modifier = GlanceModifier
-                .width(40.dp)
-                .height(36.dp)
-                .background(btnBgColor)
-                .cornerRadius(10.dp)
-                .clickable(actionRunCallback<ClockInAction>()),
-            contentAlignment = Alignment.Center
-        ) {
-            if (btnTime.isEmpty()) {
-                // 未打卡：单行居中显示"上班卡"
-                Text(
-                    text = btnLabel,
-                    style = TextStyle(
-                        color = btnTextColor,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    ),
-                    maxLines = 1
-                )
-            } else {
-                // 已打卡：两行居中显示"下班卡" + 时间
-                Column(
-                    modifier = GlanceModifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Box(
+                modifier = GlanceModifier
+                    .width(40.dp)
+                    .height(36.dp)
+                    .background(btnBgColor)
+                    .cornerRadius(10.dp)
+                    .clickable(actionRunCallback(btnAction::class.java)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (btnTime.isEmpty()) {
+                    // 未打卡：单行居中显示"上班卡"
                     Text(
                         text = btnLabel,
                         style = TextStyle(
                             color = btnTextColor,
-                            fontSize = 9.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         ),
                         maxLines = 1
                     )
-                    Text(
-                        text = btnTime,
-                        style = TextStyle(
-                            color = btnTextColor,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.Center
-                        ),
-                        maxLines = 1
-                    )
+                } else {
+                    // 已打卡：两行居中显示"下班卡" + 时间
+                    Column(
+                        modifier = GlanceModifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = btnLabel,
+                            style = TextStyle(
+                                color = btnTextColor,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
+                            ),
+                            maxLines = 1
+                        )
+                        Text(
+                            text = btnTime,
+                            style = TextStyle(
+                                color = btnTextColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center
+                            ),
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }
@@ -412,4 +612,20 @@ private fun hexToWidgetColor(hex: String, fallback: Color): Color {
         val b = h.substring(h.length - 2).toInt(16) / 255f
         Color(r, g, b, a)
     }.getOrElse { fallback }
+}
+
+// ── 判断附加状态是否为内置（调休/请假） ──────────────────────────────
+
+fun isBuiltInStatus(statusId: String): Boolean {
+    return statusId == BUILTIN_STATUS_LEAVE || statusId == BUILTIN_STATUS_SWAP
+}
+
+// ── Hilt EntryPoint：允许小组件 ActionCallback 访问 Repository ─────
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface WidgetClockEntryPoint {
+    fun scheduleRepository(): ScheduleRepository
+    fun shiftRepository(): ShiftRepository
+    fun shiftStatusRepository(): ShiftStatusRepository
 }
