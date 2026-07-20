@@ -13,6 +13,10 @@ import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
+import com.schedulecalendar.app.domain.model.AppliedStatus
+import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_LEAVE
+import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_SWAP
+import com.schedulecalendar.app.domain.model.CalcUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import java.time.LocalDate
@@ -128,19 +132,29 @@ class ReminderScheduler @Inject constructor(
                 val record = getShiftForDate(date.toString()) ?: continue
                 val shiftTimes = getShiftTimes(record.shiftId) ?: continue
 
-                if (clockInEnabled && shiftTimes.first.isNotBlank()) {
+                // Bug 2: 内置请假/调休调整提醒时间
+                val effectiveTimes = computeEffectiveReminderTimes(
+                    shiftTimes.first, shiftTimes.second, record.appliedStatus
+                ) ?: continue
+                val (clockInTime, clockOutTime) = effectiveTimes
+
+                // Bug 1: 跨午夜班次下班提醒推后一天
+                val isCrossMidnight = CalcUtils.timeToMin(clockOutTime) < CalcUtils.timeToMin(clockInTime)
+                val clockOutDate = if (isCrossMidnight) date.plusDays(1) else date
+
+                if (clockInEnabled && clockInTime.isNotBlank()) {
                     scheduleCalendarReminder(
                         date = date,
-                        timeStr = shiftTimes.first,
+                        timeStr = clockInTime,
                         advanceMinutes = clockInMinutes,
                         isClockIn = true,
                         shiftName = shiftTimes.third
                     )
                 }
-                if (clockOutEnabled && shiftTimes.second.isNotBlank()) {
+                if (clockOutEnabled && clockOutTime.isNotBlank()) {
                     scheduleCalendarReminder(
-                        date = date,
-                        timeStr = shiftTimes.second,
+                        date = clockOutDate,
+                        timeStr = clockOutTime,
                         advanceMinutes = clockOutMinutes,
                         isClockIn = false,
                         shiftName = shiftTimes.third
@@ -156,19 +170,29 @@ class ReminderScheduler @Inject constructor(
                 val record = getShiftForDate(date.toString()) ?: continue
                 val shiftTimes = getShiftTimes(record.shiftId) ?: continue
 
-                if (clockInEnabled && shiftTimes.first.isNotBlank()) {
+                // Bug 2: 内置请假/调休调整提醒时间
+                val effectiveTimes = computeEffectiveReminderTimes(
+                    shiftTimes.first, shiftTimes.second, record.appliedStatus
+                ) ?: continue
+                val (clockInTime, clockOutTime) = effectiveTimes
+
+                // Bug 1: 跨午夜班次下班提醒推后一天
+                val isCrossMidnight = CalcUtils.timeToMin(clockOutTime) < CalcUtils.timeToMin(clockInTime)
+                val clockOutDate = if (isCrossMidnight) date.plusDays(1) else date
+
+                if (clockInEnabled && clockInTime.isNotBlank()) {
                     scheduleReminder(
                         date = date,
-                        timeStr = shiftTimes.first,
+                        timeStr = clockInTime,
                         advanceMinutes = clockInMinutes,
                         isClockIn = true,
                         shiftName = shiftTimes.third
                     )
                 }
-                if (clockOutEnabled && shiftTimes.second.isNotBlank()) {
+                if (clockOutEnabled && clockOutTime.isNotBlank()) {
                     scheduleReminder(
-                        date = date,
-                        timeStr = shiftTimes.second,
+                        date = clockOutDate,
+                        timeStr = clockOutTime,
                         advanceMinutes = clockOutMinutes,
                         isClockIn = false,
                         shiftName = shiftTimes.third
@@ -205,6 +229,61 @@ class ReminderScheduler @Inject constructor(
         } catch (_: Exception) {
             null
         }
+    }
+
+    /**
+     * 根据附加状态（内置请假/调休）计算生效的上下班提醒时间。
+     *
+     * - 无附加状态或非内置请假/调休 → 返回原始班次时间。
+     * - 内置请假/调休且 startTime/endTime 均为 null（全天）→ 返回 null，跳过闹钟。
+     * - 内置请假/调休且有时间段 → 排除该时间段后，取最长的有效工作段作为提醒时间；
+     *   支持跨午夜班次和跨午夜状态时间段的处理。
+     *
+     * @return Pair(clockInTime, clockOutTime)，若无需注册则返回 null
+     */
+    private fun computeEffectiveReminderTimes(
+        shiftStart: String,
+        shiftEnd: String,
+        status: AppliedStatus?
+    ): Pair<String, String>? {
+        // 无附加状态或非内置请假/调休，不调整
+        if (status == null) return Pair(shiftStart, shiftEnd)
+        val isLeaveOrSwap = status.statusId == BUILTIN_STATUS_LEAVE ||
+                status.statusId == BUILTIN_STATUS_SWAP
+        if (!isLeaveOrSwap) return Pair(shiftStart, shiftEnd)
+        // 全天请假/调休（时间段均为 null）：不注册任何闹钟
+        if (status.startTime == null || status.endTime == null) return null
+
+        val sS = CalcUtils.timeToMin(shiftStart)
+        val sE = CalcUtils.timeToMin(shiftEnd)
+        val (nSS, nSE) = CalcUtils.normRange(sS, sE)
+
+        val bS = CalcUtils.timeToMin(status.startTime)
+        val bE = CalcUtils.timeToMin(status.endTime)
+        val (nBS, nBE) = CalcUtils.normRange(bS, bE)
+
+        // 排除时间段整体在班次开始之前时，整体偏移 +1440 对齐归一化时间轴
+        val (adjBS, adjBE) = if (nBS < nSS && nBE < nSS) {
+            Pair(nBS + 1440, nBE + 1440)
+        } else {
+            Pair(nBS, nBE)
+        }
+
+        // 计算非排除的有效时间段
+        val segments = mutableListOf<Pair<Int, Int>>()
+        val beforeEnd = minOf(nSE, adjBS)
+        if (beforeEnd > nSS) segments.add(Pair(nSS, beforeEnd))
+        val afterStart = maxOf(nSS, adjBE)
+        if (nSE > afterStart) segments.add(Pair(afterStart, nSE))
+
+        if (segments.isEmpty()) return null
+
+        // 取最长的有效时段
+        val (longestStart, longestEnd) = segments.maxBy { it.second - it.first }
+        return Pair(
+            CalcUtils.minutesToTime(longestStart),
+            CalcUtils.minutesToTime(longestEnd)
+        )
     }
 
     /**
