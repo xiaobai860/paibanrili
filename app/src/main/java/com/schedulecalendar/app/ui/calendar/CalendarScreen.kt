@@ -714,12 +714,20 @@ private fun DayCell(
     val isRest = shift?.builtInType == "rest" || shift?.builtInType == "swap"
 
     // ── 早退/迟到/备注状态检测 ───────────────────────────────────
+    // 迟到：与工时报表（calcMonthHours）逻辑一致，简单分钟比较
     val isLate = record?.actualStartTime != null && shift?.startTime != null &&
         record.actualStartTime.isNotBlank() && shift.startTime.isNotBlank() &&
-        record.actualStartTime > shift.startTime
+        CalcUtils.timeToMin(record.actualStartTime) > CalcUtils.timeToMin(shift.startTime)
+    // 早退：使用 normRange 支持跨天比较，与 calcMonthHours 一致
     val isEarlyLeave = record?.actualEndTime != null && shift?.endTime != null &&
         record.actualEndTime.isNotBlank() && shift.endTime.isNotBlank() &&
-        record.actualEndTime < shift.endTime
+        shift.startTime.isNotBlank() &&
+        run {
+            val sS = CalcUtils.timeToMin(shift.startTime)
+            val (_, normSE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(shift.endTime))
+            val (_, normAE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(record.actualEndTime))
+            normSE - normAE > 0
+        }
     val hasRemark = !record?.remark.isNullOrBlank()
     // 构建左侧状态角标列表
     val statusBadges = buildList<@Composable () -> Unit> {

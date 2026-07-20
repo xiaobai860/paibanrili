@@ -197,6 +197,17 @@ class BackupManager @Inject constructor(
             val customPath = prefs.getBackupCustomPath()
             val fileName = "应用数据_${today}_${LocalDateTime.now().format(timeFormatter)}.json"
 
+            // 先清理当天的旧自动备份（避免写完新文件后被自身清理逻辑删除）
+            deleteTodayAutoBackups(today, privateBackupDir)
+            if (customPath.isNotBlank()) {
+                if (isSafPath(customPath)) {
+                    deleteTodaySafAutoBackups(customPath.toUri(), today)
+                } else {
+                    val customDir = File(resolveSafPath(customPath))
+                    if (customDir.exists()) deleteTodayAutoBackups(today, customDir)
+                }
+            }
+
             if (customPath.isNotBlank() && isSafPath(customPath)) {
                 // SAF 目录写入
                 writeSafBackupFile(customPath.toUri(), fileName, json)
@@ -208,17 +219,6 @@ class BackupManager @Inject constructor(
                 }
                 val file = File(targetDir, fileName)
                 file.writeText(json)
-            }
-
-            // 将私有目录和自定义目录视为整体，清理两个目录中当天的旧自动备份
-            deleteTodayAutoBackups(today, privateBackupDir)
-            if (customPath.isNotBlank()) {
-                if (isSafPath(customPath)) {
-                    deleteTodaySafAutoBackups(customPath.toUri(), today)
-                } else {
-                    val customDir = File(resolveSafPath(customPath))
-                    if (customDir.exists()) deleteTodayAutoBackups(today, customDir)
-                }
             }
 
             // 裁剪保留天数（跨目录合并后统一裁剪）
