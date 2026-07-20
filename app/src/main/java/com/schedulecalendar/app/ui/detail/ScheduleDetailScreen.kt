@@ -545,31 +545,74 @@ private fun StatusTimeDialog(
     var e by remember { mutableStateOf(endTime) }
     // 内部时间选择器对话框（"开始"或"结束"）
     var editingField by remember { mutableStateOf<String?>(null) } // "start" or "end"
+    // 时间超出班次范围时的警告提示
+    var timeWarning by remember { mutableStateOf(false) }
+
+    // 将时间约束到班次范围内（null=无需修正）
+    fun clampToShift(t: String, isStart: Boolean): String? {
+        val sel = CalcUtils.timeToMin(t)
+        val ss = CalcUtils.timeToMin(defaultStartTime)
+        val se = CalcUtils.timeToMin(defaultEndTime)
+        if (sel <= se && sel >= ss) return null // 正常：在范围内
+        if (se < ss) {
+            // 跨天班次（如 20:30-8:30）：gap = (se, ss)
+            if (sel > se && sel < ss) return if (isStart) defaultStartTime else defaultEndTime
+            return null // 剩余情况均在有效范围内
+        }
+        // 普通班次
+        return when {
+            sel < ss -> defaultStartTime
+            sel > se -> defaultEndTime
+            else -> null
+        }
+    }
+
+    fun clampAndSet(t: String, isStart: Boolean): String {
+        val clamped = clampToShift(t, isStart)
+        timeWarning = clamped != null
+        return clamped ?: t
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title   = { Text("设置状态时间段") },
         text    = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TimePickerField(
-                    time         = s,
-                    onTimeChange = { s = it },
-                    label        = "开始",
-                    defaultTime  = defaultStartTime,
-                    onRequestDialog = { editingField = "start" },
-                    modifier     = Modifier.weight(1f)
-                )
-                TimePickerField(
-                    time         = e,
-                    onTimeChange = { e = it },
-                    label        = "结束",
-                    defaultTime  = defaultEndTime,
-                    onRequestDialog = { editingField = "end" },
-                    modifier     = Modifier.weight(1f)
-                )
+            Column {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TimePickerField(
+                        time         = s,
+                        onTimeChange = { s = it },
+                        label        = "开始",
+                        defaultTime  = defaultStartTime,
+                        onRequestDialog = { editingField = "start" },
+                        modifier     = Modifier.weight(1f)
+                    )
+                    TimePickerField(
+                        time         = e,
+                        onTimeChange = { e = it },
+                        label        = "结束",
+                        defaultTime  = defaultEndTime,
+                        onRequestDialog = { editingField = "end" },
+                        modifier     = Modifier.weight(1f)
+                    )
+                }
+                if (timeWarning) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "不能超过班次时间段",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { onConfirm(s, e) }) { Text("确认") } },
+        confirmButton = {
+            TextButton(onClick = {
+                s = clampAndSet(s, true)
+                e = clampAndSet(e, false)
+                onConfirm(s, e)
+            }) { Text("确认") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
 
@@ -600,7 +643,8 @@ private fun StatusTimeDialog(
                 TextButton(onClick = {
                     val hh = pickerState.hour.toString().padStart(2, '0')
                     val mm = pickerState.minute.toString().padStart(2, '0')
-                    if (isStart) s = "$hh:$mm" else e = "$hh:$mm"
+                    val newTime = clampAndSet("$hh:$mm", isStart)
+                    if (isStart) s = newTime else e = newTime
                     editingField = null
                 }) { Text("确定") }
             },

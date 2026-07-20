@@ -99,11 +99,23 @@ class SalaryViewModel @Inject constructor(
                 else CalcUtils.calcMonthSalary(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf) {
                     if (isCurrentMonth) it <= todayStr else true
                 }
-                // 预计薪资（不含底薪/绩效，仅工时部分）
+                // 预计薪资（不含底薪/绩效/社保/公积金，仅工时部分）
                 val future = when {
                     !isCurrentMonth && !isFutureMonth -> null
-                    isFutureMonth -> CalcUtils.calcMonthSalary(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf)
-                    else -> CalcUtils.calcMonthSalary(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf) { it > todayStr }
+                    else -> {
+                        val raw = CalcUtils.calcMonthSalary(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf) {
+                            if (isCurrentMonth) it > todayStr else true
+                        }
+                        val hoursTotal = raw.normalSalary + raw.overtimeSalary + raw.weekendSalary +
+                                raw.holidaySalary + raw.totalSubsidy - raw.totalDeduction
+                        raw.copy(
+                            baseSalary = 0.0,
+                            basePerformance = 0.0,
+                            socialInsurance = 0.0,
+                            housingFundDeduction = 0.0,
+                            totalSalary = CalcUtils.roundD2(hoursTotal.coerceAtLeast(0.0))
+                        )
+                    }
                 }
                 // 全月估算
                 val fullEstimate = CalcUtils.calcMonthSalary(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf)
