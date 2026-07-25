@@ -40,7 +40,9 @@ data class TodoItem(
     val shiftTime: String = "",
     val clockTime: String = "",
     val overtimeMinutes: Int = 0,
-    val actualTime: String = ""
+    val actualTime: String = "",
+    /** 内置附加状态名称（如"请假"、"调休"），空=普通班次 */
+    val statusLabel: String = ""
 )
 
 enum class TodoType {
@@ -288,16 +290,27 @@ class CalendarViewModel @Inject constructor(
             val st = if (shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) "${shift.startTime}-${shift.endTime}" else ""
             val stStart = shift.startTime
             val stEnd = shift.endTime
+            // 检测是否有内置附加状态（请假/调休）
+            val applied = record.appliedStatus
+            val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
+            val stLabel = if (isBuiltIn) {
+                if (applied!!.statusId == BUILTIN_STATUS_LEAVE) "请假" else "调休"
+            } else ""
+            // 内置状态：检查 appliedStatus 时间；普通：检查 actualStartTime/actualEndTime
+            val startFilled = if (isBuiltIn) applied?.startTime != null else record.actualStartTime != null
+            val endFilled   = if (isBuiltIn) applied?.endTime != null else record.actualEndTime != null
+            val startVal    = if (isBuiltIn) applied?.startTime else record.actualStartTime
+            val endVal      = if (isBuiltIn) applied?.endTime else record.actualEndTime
             // 漏打卡检测：有班次但缺少打卡记录，上班/下班分别独立判断
-            if (record.actualStartTime == null) {
-                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_IN, "上班漏打卡", shiftName = sn, shiftTime = stStart))
+            if (!startFilled) {
+                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_IN, "上班漏打卡", shiftName = sn, shiftTime = stStart, statusLabel = stLabel))
             } else {
-                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_IN, "上班已补录", shiftName = sn, shiftTime = stStart, clockTime = record.actualStartTime))
+                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_IN, "上班已补录", shiftName = sn, shiftTime = stStart, clockTime = startVal ?: "", statusLabel = stLabel))
             }
-            if (record.actualEndTime == null) {
-                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_OUT, "下班漏打卡", shiftName = sn, shiftTime = stEnd))
+            if (!endFilled) {
+                todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_OUT, "下班漏打卡", shiftName = sn, shiftTime = stEnd, statusLabel = stLabel))
             } else {
-                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_OUT, "下班已补录", shiftName = sn, shiftTime = stEnd, clockTime = record.actualEndTime))
+                todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_OUT, "下班已补录", shiftName = sn, shiftTime = stEnd, clockTime = endVal ?: "", statusLabel = stLabel))
             }
 
             // 加班待确认：早到/晚退分别独立判断（与小程序逻辑一致）
@@ -473,13 +486,23 @@ class CalendarViewModel @Inject constructor(
         syncClockInWidget()
     }
 
-    /** 补填漏打卡时间 */
+    /** 补填漏打卡时间：内置附加状态写入 appliedStatus，普通写入 actualTime */
     fun fillMissedClock(date: String, startTime: String?, endTime: String?) = viewModelScope.launch {
         val rec = scheduleRepo.getByDate(date) ?: ScheduleRecord(date)
-        val updated = rec.copy(
-            actualStartTime = startTime?.ifBlank { null } ?: rec.actualStartTime,
-            actualEndTime   = endTime?.ifBlank { null } ?: rec.actualEndTime
-        )
+        val applied = rec.appliedStatus
+        val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
+        val updated = if (isBuiltIn) {
+            val newStatus = applied.copy(
+                startTime = startTime?.ifBlank { applied.startTime } ?: applied.startTime,
+                endTime   = endTime?.ifBlank { applied.endTime } ?: applied.endTime
+            )
+            rec.copy(appliedStatus = newStatus)
+        } else {
+            rec.copy(
+                actualStartTime = startTime?.ifBlank { null } ?: rec.actualStartTime,
+                actualEndTime   = endTime?.ifBlank { null } ?: rec.actualEndTime
+            )
+        }
         scheduleRepo.save(updated)
         _uiEvent.send(CalendarUiEvent.ShowMessage("已补填 $date 打卡记录"))
     }
@@ -514,17 +537,29 @@ class CalendarViewModel @Inject constructor(
 
     // ── 撤销操作 ────────────────────────────────────────────────────
 
-    /** 撤销上班补录：清除实际打卡开始时间 */
+    /** 撤销上班补录：内置状态清除 appliedStatus.startTime，普通清除 actualStartTime */
     fun unfillMissedClockIn(date: String) = viewModelScope.launch {
         val rec = scheduleRepo.getByDate(date) ?: return@launch
-        scheduleRepo.save(rec.copy(actualStartTime = null))
+        val applied = rec.appliedStatus
+        val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
+        if (isBuiltIn) {
+            scheduleRepo.save(rec.copy(appliedStatus = applied!!.copy(startTime = null)))
+        } else {
+            scheduleRepo.save(rec.copy(actualStartTime = null))
+        }
         _uiEvent.send(CalendarUiEvent.ShowMessage("已撤销 $date 上班打卡"))
     }
 
-    /** 撤销下班补录：清除实际打卡结束时间 */
+    /** 撤销下班补录：内置状态清除 appliedStatus.endTime，普通清除 actualEndTime */
     fun unfillMissedClockOut(date: String) = viewModelScope.launch {
         val rec = scheduleRepo.getByDate(date) ?: return@launch
-        scheduleRepo.save(rec.copy(actualEndTime = null))
+        val applied = rec.appliedStatus
+        val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
+        if (isBuiltIn) {
+            scheduleRepo.save(rec.copy(appliedStatus = applied!!.copy(endTime = null)))
+        } else {
+            scheduleRepo.save(rec.copy(actualEndTime = null))
+        }
         _uiEvent.send(CalendarUiEvent.ShowMessage("已撤销 $date 下班打卡"))
     }
 

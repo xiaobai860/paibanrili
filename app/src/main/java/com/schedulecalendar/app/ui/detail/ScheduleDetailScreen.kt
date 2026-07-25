@@ -198,36 +198,68 @@ fun ScheduleDetailScreen(
             if (selectedShift != null && !isRestOrSwap) {
                 SectionLabel("实际打卡时间（可选）")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TimePickerField(
-                        time         = record?.actualStartTime ?: "",
-                        onTimeChange = vm::setActualStart,
-                        label        = "实际上班",
-                        defaultTime  = selectedShift.startTime,
-                        onRequestDialog = {
-                            timeDialogConfig = TimeDialogConfig(
-                                label = "实际上班",
-                                currentTime = record?.actualStartTime ?: "",
-                                defaultTime = selectedShift.startTime,
-                                onConfirm = vm::setActualStart
-                            )
-                        },
-                        modifier     = Modifier.weight(1f)
-                    )
-                    TimePickerField(
-                        time         = record?.actualEndTime ?: "",
-                        onTimeChange = vm::setActualEnd,
-                        label        = "实际下班",
-                        defaultTime  = selectedShift.endTime,
-                        onRequestDialog = {
-                            timeDialogConfig = TimeDialogConfig(
-                                label = "实际下班",
-                                currentTime = record?.actualEndTime ?: "",
-                                defaultTime = selectedShift.endTime,
-                                onConfirm = vm::setActualEnd
-                            )
-                        },
-                        modifier     = Modifier.weight(1f)
-                    )
+                    // 实际上班 + 清除按钮
+                    Row(Modifier.weight(1f).height(IntrinsicSize.Min)) {
+                        TimePickerField(
+                            time         = record?.actualStartTime ?: "",
+                            onTimeChange = vm::setActualStart,
+                            label        = "实际上班",
+                            defaultTime  = selectedShift.startTime,
+                            onRequestDialog = {
+                                timeDialogConfig = TimeDialogConfig(
+                                    label = "实际上班",
+                                    currentTime = record?.actualStartTime ?: "",
+                                    defaultTime = selectedShift.startTime,
+                                    onConfirm = vm::setActualStart
+                                )
+                            },
+                            modifier     = Modifier.weight(1f)
+                        )
+                        if (record?.actualStartTime != null) {
+                            Box(
+                                modifier = Modifier
+                                    .height(54.dp)
+                                    .width(36.dp)
+                                    .align(Alignment.Bottom)
+                                    .clickable { vm.setActualStart("") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Close, "清除实际上班", modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                    // 实际下班 + 清除按钮
+                    Row(Modifier.weight(1f).height(IntrinsicSize.Min)) {
+                        TimePickerField(
+                            time         = record?.actualEndTime ?: "",
+                            onTimeChange = vm::setActualEnd,
+                            label        = "实际下班",
+                            defaultTime  = selectedShift.endTime,
+                            onRequestDialog = {
+                                timeDialogConfig = TimeDialogConfig(
+                                    label = "实际下班",
+                                    currentTime = record?.actualEndTime ?: "",
+                                    defaultTime = selectedShift.endTime,
+                                    onConfirm = vm::setActualEnd
+                                )
+                            },
+                            modifier     = Modifier.weight(1f)
+                        )
+                        if (record?.actualEndTime != null) {
+                            Box(
+                                modifier = Modifier
+                                    .height(54.dp)
+                                    .width(36.dp)
+                                    .align(Alignment.Bottom)
+                                    .clickable { vm.setActualEnd("") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Close, "清除实际下班", modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -488,7 +520,12 @@ private fun StatusRow(
         Spacer(Modifier.width(10.dp))
         Text(status.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         if (applied) {
-            val timeLabel = if (startTime != null && endTime != null) "$startTime–$endTime" else "全天"
+            val timeLabel = when {
+                startTime != null && endTime != null -> "$startTime\u2013$endTime"
+                startTime != null -> "$startTime\u2013"
+                endTime != null -> "\u2013$endTime"
+                else -> "\u5168\u5929"
+            }
             TextButton(
                 onClick      = onEditTime,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
@@ -547,9 +584,12 @@ private fun StatusTimeDialog(
     var editingField by remember { mutableStateOf<String?>(null) } // "start" or "end"
     // 时间超出班次范围时的警告提示
     var timeWarning by remember { mutableStateOf(false) }
+    // 班次是否有有效时间段（休息/调休班次无时间段 → 不约束）
+    val hasShiftRange = defaultStartTime.isNotEmpty() && defaultEndTime.isNotEmpty()
 
     // 将时间约束到班次范围内（null=无需修正）
     fun clampToShift(t: String, isStart: Boolean): String? {
+        if (!hasShiftRange) return null  // 班次无时间段（休息/调休）→ 不约束
         val sel = CalcUtils.timeToMin(t)
         val ss = CalcUtils.timeToMin(defaultStartTime)
         val se = CalcUtils.timeToMin(defaultEndTime)
@@ -607,13 +647,25 @@ private fun StatusTimeDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                s = clampAndSet(s, true)
-                e = clampAndSet(e, false)
-                onConfirm(s, e)
-            }) { Text("确认") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                if (s.isNotEmpty() || e.isNotEmpty()) {
+                    TextButton(onClick = { onConfirm("", "") }) {
+                        Text("清除时间", color = MaterialTheme.colorScheme.error)
+                    }
+                } else {
+                    Spacer(Modifier.width(1.dp))
+                }
+                Row {
+                    TextButton(onClick = onDismiss) { Text("取消") }
+                    TextButton(onClick = {
+                        s = clampAndSet(s, true)
+                        e = clampAndSet(e, false)
+                        onConfirm(s, e)
+                    }) { Text("确认") }
+                }
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+        dismissButton = {}
     )
 
     // 时间选择器弹窗（在 AlertDialog 外部渲染）

@@ -66,7 +66,8 @@ data class Shift(
 
 /** 内置班次列表 */
 val BUILTIN_SHIFTS = listOf(
-    Shift(id = BUILTIN_SHIFT_REST,  name = "\u4f11\u606f", color = "#6B7280", builtIn = true, builtInType = "rest"),
+    Shift(id = BUILTIN_SHIFT_REST,  name = "\u4f11\u606f", color = "#6B7280", builtIn = true, builtInType = "rest",
+        startTime = "", endTime = ""),
     Shift(id = BUILTIN_SHIFT_SWAP,  name = "\u8c03\u4f11", color = "#78716C", builtIn = true, builtInType = "swap",
         startTime = "", endTime = ""),
 )
