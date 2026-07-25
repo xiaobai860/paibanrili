@@ -55,8 +55,8 @@ import java.util.Locale
 
 // ── 数据类 ────────────────────────────────────────────────────────────────
 
-/** 漏打卡补录目标：记录日期与是上班还是下班 */
-private data class MissedFillTarget(val date: String, val isClockIn: Boolean, val defaultTime: String = "")
+/** 漏打卡补录目标：记录日期与是上班还是下班，以及内置状态名称 */
+private data class MissedFillTarget(val date: String, val isClockIn: Boolean, val defaultTime: String = "", val statusLabel: String = "")
 
 /** 加班处理目标：记录日期与是早到还是晚退 */
 private data class OvertimeActionTarget(val date: String, val isEarly: Boolean)
@@ -155,7 +155,7 @@ fun TodoScreen(
                         onOtConfirmedToggle = { otConfirmedExpanded = !otConfirmedExpanded },
                         otIgnoredExpanded = otIgnoredExpanded,
                         onOtIgnoredToggle = { otIgnoredExpanded = !otIgnoredExpanded },
-                        onFillMissedClock = { date, isClockIn, shiftTime -> showMissedFillDialog = MissedFillTarget(date, isClockIn, shiftTime) },
+                        onFillMissedClock = { date, isClockIn, shiftTime, statusLabel -> showMissedFillDialog = MissedFillTarget(date, isClockIn, shiftTime, statusLabel) },
                         onOvertimeAction = { date, isEarly -> showOvertimeActionDialog = OvertimeActionTarget(date, isEarly) },
                         vm = vm
                     )
@@ -173,6 +173,7 @@ fun TodoScreen(
             date = target.date,
             isClockIn = target.isClockIn,
             defaultTime = target.defaultTime,
+            statusLabel = target.statusLabel,
             onConfirm = { start, end ->
                 vm.fillMissedClock(target.date, start, end)
                 showMissedFillDialog = null
@@ -231,7 +232,7 @@ private fun TodoTab(
     onOtConfirmedToggle: () -> Unit,
     otIgnoredExpanded: Boolean,
     onOtIgnoredToggle: () -> Unit,
-    onFillMissedClock: (String, Boolean, String) -> Unit,
+    onFillMissedClock: (String, Boolean, String, String) -> Unit,
     onOvertimeAction: (String, Boolean) -> Unit,
     vm: CalendarViewModel
 ) {
@@ -326,7 +327,7 @@ private fun TodoTab(
                     MergedClockRow(
                         date = date, items = items,
                         onAction = { todo, isClockIn ->
-                            onFillMissedClock(todo.date, isClockIn, todo.shiftTime)
+                            onFillMissedClock(todo.date, isClockIn, todo.shiftTime, todo.statusLabel)
                         },
                         actionLabel = "\u8865\u5f55"
                     )
@@ -675,6 +676,20 @@ private fun MergedClockSubRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        // 内置附加状态标签（请假/调休）
+        if (item.statusLabel.isNotEmpty()) {
+            Spacer(Modifier.width(6.dp))
+            Surface(
+                shape = RoundedCornerShape(3.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+            ) {
+                Text(item.statusLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                    fontSize = 10.sp)
+            }
+        }
         Spacer(Modifier.weight(1f))
         if (item.clockTime.isNotEmpty()) {
             Text("已录: ${item.clockTime}",
@@ -712,6 +727,7 @@ private fun MissedClockFillDialog(
     date: String,
     isClockIn: Boolean,
     defaultTime: String = "",
+    statusLabel: String = "",
     onConfirm: (startTime: String?, endTime: String?) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -725,10 +741,15 @@ private fun MissedClockFillDialog(
         initialMinute = defMinute,
         is24Hour = true
     )
+    val dialogTitle = if (statusLabel.isNotEmpty()) {
+        "${statusLabel}补录${if (isClockIn) "上班" else "下班"}时间"
+    } else {
+        if (isClockIn) "\u8865\u5f55\u4e0a\u73ed\u6253\u5361\u65f6\u95f4" else "\u8865\u5f55\u4e0b\u73ed\u6253\u5361\u65f6\u95f4"
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isClockIn) "\u8865\u5f55\u4e0a\u73ed\u6253\u5361\u65f6\u95f4" else "\u8865\u5f55\u4e0b\u73ed\u6253\u5361\u65f6\u95f4") },
+        title = { Text(dialogTitle) },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("\u65e5\u671f\uff1a$date", style = MaterialTheme.typography.bodyMedium)

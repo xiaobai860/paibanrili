@@ -203,7 +203,11 @@ object CalcUtils {
 
         // 已应用状态时间段扣减
         record.appliedStatus?.let { ast ->
-            if (ast.startTime != null && ast.endTime != null) {
+            val isBuiltinLeaveSwap = ast.statusId == BUILTIN_STATUS_LEAVE || ast.statusId == BUILTIN_STATUS_SWAP
+            if (isBuiltinLeaveSwap && ast.startTime == null && ast.endTime == null) {
+                // 内置请假/调休全天（无时间段）：工时直接为0
+                worked = 0.0
+            } else if (ast.startTime != null && ast.endTime != null) {
                 worked = max(0.0, worked - calcHourDiff(ast.startTime, ast.endTime))
             }
         }
@@ -248,6 +252,7 @@ object CalcUtils {
         var leaveDaysCount = 0; var swapDays = 0; var restDays = 0
         var lateCount = 0; var earlyLeaveCount = 0
         var leaveStatusHours = 0.0; var swapStatusHours = 0.0
+        val stdH = if (attendConfig.normalWorkHoursPerDay > 0) attendConfig.normalWorkHoursPerDay else 8.0
 
         for ((date, record) in schedules) {
             if (!date.startsWith(prefix)) continue
@@ -303,11 +308,19 @@ object CalcUtils {
 
             // 状态时间段工时汇总（所有排班类型均处理，含请假）
             record.appliedStatus?.let { ast ->
-                if (ast.startTime == null || ast.endTime == null) return@let
                 val st = shiftStatuses.find { s -> s.id == ast.statusId } ?: return@let
-                val rawH   = calcHourDiff(ast.startTime, ast.endTime)
-                val breakH = calcGlobalBreakHours(ast.startTime, ast.endTime, breaks)
-                val h      = roundD2(max(0.0, rawH - breakH) * 60 / 60.0)
+                val isBuiltinLeaveSwap = st.id == BUILTIN_STATUS_LEAVE || st.id == BUILTIN_STATUS_SWAP ||
+                        st.reportType == "leave" || st.reportType == "swap"
+                val h: Double
+                if (ast.startTime == null || ast.endTime == null) {
+                    // 内置请假/调休全天（无时间段）：按日标准工时计入（上限）
+                    if (!isBuiltinLeaveSwap) return@let
+                    h = stdH
+                } else {
+                    val rawH   = calcHourDiff(ast.startTime, ast.endTime)
+                    val breakH = calcGlobalBreakHours(ast.startTime, ast.endTime, breaks)
+                    h = roundD2(max(0.0, rawH - breakH) * 60 / 60.0)
+                }
                 when {
                     st.id == BUILTIN_STATUS_LEAVE || st.reportType == "leave" -> leaveStatusHours += h
                     st.id == BUILTIN_STATUS_SWAP  || st.reportType == "swap"  -> swapStatusHours  += h
@@ -316,7 +329,6 @@ object CalcUtils {
         }
 
         // 请假折算：完整请假天 × 标准工时 + 附加状态请假小时 → 按标准工时折算天数
-        val stdH = if (attendConfig.normalWorkHoursPerDay > 0) attendConfig.normalWorkHoursPerDay else 8.0
         val totalLeaveHours = leaveDaysCount * stdH + leaveStatusHours
         val leaveDays = if (stdH > 0) (totalLeaveHours / stdH).toInt() else 0
         val leaveHoursRemainder = roundD2(totalLeaveHours - leaveDays * stdH)

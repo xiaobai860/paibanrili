@@ -15,8 +15,17 @@ android {
         applicationId = "com.schedulecalendar.app"
         minSdk        = 26
         targetSdk     = 36
-        versionCode   = 2026072004
-        versionName   = "2026072004"
+        versionCode   = 2026072601
+        versionName   = "2026072601"
+    }
+
+    signingConfigs {
+        create("release") {
+                storeFile = null
+                storePassword = ""
+                keyAlias = ""
+                keyPassword = ""
+            }
     }
 
     buildTypes {
@@ -26,7 +35,7 @@ android {
         release {
             isMinifyEnabled   = true
             isShrinkResources = true
-            signingConfig     = signingConfigs.getByName("debug")
+            signingConfig     = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
