@@ -486,15 +486,29 @@ class CalendarViewModel @Inject constructor(
         syncClockInWidget()
     }
 
-    /** 补填漏打卡时间：内置附加状态写入 appliedStatus，普通写入 actualTime */
+    /** 补填漏打卡时间：内置附加状态写入 appliedStatus（并 clamp 到班次范围），普通写入 actualTime */
     fun fillMissedClock(date: String, startTime: String?, endTime: String?) = viewModelScope.launch {
         val rec = scheduleRepo.getByDate(date) ?: ScheduleRecord(date)
         val applied = rec.appliedStatus
         val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
         val updated = if (isBuiltIn) {
+            // 获取班次时间段作为约束边界
+            val shift = rec.shiftId?.let { id -> shiftRepo.getById(id) }
+            val shiftStart = shift?.startTime?.takeIf { it.isNotEmpty() }
+            val shiftEnd   = shift?.endTime?.takeIf { it.isNotEmpty() }
+            fun clampTime(t: String, boundary: String?, isStart: Boolean): String {
+                if (boundary == null) return t
+                val tMin = CalcUtils.timeToMin(t)
+                val bMin = CalcUtils.timeToMin(boundary)
+                return if (isStart && tMin < bMin) boundary
+                       else if (!isStart && tMin > bMin) boundary
+                       else t
+            }
+            val clampedStart = startTime?.ifBlank { null }?.let { clampTime(it, shiftStart, true) }
+            val clampedEnd   = endTime?.ifBlank { null }?.let { clampTime(it, shiftEnd, false) }
             val newStatus = applied.copy(
-                startTime = startTime?.ifBlank { applied.startTime } ?: applied.startTime,
-                endTime   = endTime?.ifBlank { applied.endTime } ?: applied.endTime
+                startTime = clampedStart ?: applied.startTime,
+                endTime   = clampedEnd ?: applied.endTime
             )
             rec.copy(appliedStatus = newStatus)
         } else {

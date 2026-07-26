@@ -742,7 +742,7 @@ private fun MissedClockFillDialog(
         is24Hour = true
     )
     val dialogTitle = if (statusLabel.isNotEmpty()) {
-        "${statusLabel}补录${if (isClockIn) "上班" else "下班"}时间"
+        "补录$statusLabel${if (isClockIn) "开始" else "结束"}时间"
     } else {
         if (isClockIn) "\u8865\u5f55\u4e0a\u73ed\u6253\u5361\u65f6\u95f4" else "\u8865\u5f55\u4e0b\u73ed\u6253\u5361\u65f6\u95f4"
     }
