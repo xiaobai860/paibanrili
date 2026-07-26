@@ -317,9 +317,18 @@ object CalcUtils {
                     if (!isBuiltinLeaveSwap) return@let
                     h = stdH
                 } else {
-                    val rawH   = calcHourDiff(ast.startTime, ast.endTime)
-                    val breakH = calcGlobalBreakHours(ast.startTime, ast.endTime, breaks)
-                    h = roundD2(max(0.0, rawH - breakH) * 60 / 60.0)
+                    // 判断是否覆盖完整班次时间段（等同全天）
+                    val dayShift = record.shiftId?.let { id -> shifts.find { s -> s.id == id } }
+                    val isFullShift = dayShift != null &&
+                            dayShift.startTime.isNotEmpty() && dayShift.endTime.isNotEmpty() &&
+                            ast.startTime == dayShift.startTime && ast.endTime == dayShift.endTime
+                    if (isFullShift && isBuiltinLeaveSwap) {
+                        h = stdH
+                    } else {
+                        val rawH   = calcHourDiff(ast.startTime, ast.endTime)
+                        val breakH = calcGlobalBreakHours(ast.startTime, ast.endTime, breaks)
+                        h = roundD2(max(0.0, rawH - breakH) * 60 / 60.0)
+                    }
                 }
                 when {
                     st.id == BUILTIN_STATUS_LEAVE || st.reportType == "leave" -> leaveStatusHours += h
