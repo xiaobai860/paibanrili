@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -159,18 +158,14 @@ private fun AccountCard(
     onToggle: () -> Unit,
     onCategoryChange: (String?) -> Unit
 ) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isDisabled)
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-            else
-                MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isDisabled) 0.dp else 1.dp
-        ),
+        color = if (isDisabled)
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        else
+            MaterialTheme.colorScheme.surface,
+        tonalElevation = if (isDisabled) 0.dp else 1.dp,
         border = null
     ) {
         Column(
