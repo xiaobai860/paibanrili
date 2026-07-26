@@ -487,15 +487,23 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                 // HorizontalPager for month swiping
                 val pagerState = rememberPagerState(initialPage = 500) { 1000 }
                 val rowHeight = 83.dp  // dateHeight(28)+lunarGap(2)+lunarHeight(12)+dataGap(3)+3*dataRowHeight(36)+2*dataRowGap(2)
-                // Real-time height interpolation during swipe - based on currently visible page
-                val visibleYM = YearMonth.of(today.year, today.monthValue).plusMonths((pagerState.currentPage - 500).toLong())
-                val visibleFirstDow = LocalDate.of(visibleYM.year, visibleYM.monthValue, 1).dayOfWeek.let { if (it == DayOfWeek.SUNDAY) 6 else it.value - 1 }
-                val visibleRows = (visibleFirstDow + visibleYM.lengthOfMonth() + 6) / 7
-                val nextYM = visibleYM.plusMonths(1)
-                val nextFirstDow = LocalDate.of(nextYM.year, nextYM.monthValue, 1).dayOfWeek.let { if (it == DayOfWeek.SUNDAY) 6 else it.value - 1 }
-                val nextRows = (nextFirstDow + nextYM.lengthOfMonth() + 6) / 7
+                // Continuous height interpolation - handles both forward and backward scrolling
                 val frac = pagerState.currentPageOffsetFraction
-                val interpolatedHeight = ((visibleRows + (nextRows - visibleRows) * frac) * rowHeight.value).dp
+                val curPage = pagerState.currentPage
+                val baseYM = YearMonth.of(today.year, today.monthValue).plusMonths((curPage - 500).toLong())
+                val baseFirstDow = LocalDate.of(baseYM.year, baseYM.monthValue, 1).dayOfWeek.let { if (it == DayOfWeek.SUNDAY) 6 else it.value - 1 }
+                val baseRows = (baseFirstDow + baseYM.lengthOfMonth() + 6) / 7
+                val interpolatedHeight = if (frac >= 0f) {
+                    val adjYM = baseYM.plusMonths(1)
+                    val adjFirstDow = LocalDate.of(adjYM.year, adjYM.monthValue, 1).dayOfWeek.let { if (it == DayOfWeek.SUNDAY) 6 else it.value - 1 }
+                    val adjRows = (adjFirstDow + adjYM.lengthOfMonth() + 6) / 7
+                    ((baseRows + (adjRows - baseRows) * frac) * rowHeight.value).dp
+                } else {
+                    val adjYM = baseYM.minusMonths(1)
+                    val adjFirstDow = LocalDate.of(adjYM.year, adjYM.monthValue, 1).dayOfWeek.let { if (it == DayOfWeek.SUNDAY) 6 else it.value - 1 }
+                    val adjRows = (adjFirstDow + adjYM.lengthOfMonth() + 6) / 7
+                    ((baseRows + (adjRows - baseRows) * -frac) * rowHeight.value).dp
+                }
                 val shiftMap = remember(state.allShifts) { state.allShifts.associateBy { it.id } }
 
                 // Sync pager position when ViewModel month changes externally
@@ -524,10 +532,13 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                     ) { pageIndex ->
                         val pageMonthOffset = pageIndex - 500
                         val pageYM = YearMonth.of(today.year, today.monthValue).plusMonths(pageMonthOffset.toLong())
-                        Box(Modifier.fillMaxWidth()) {
                         val pageFirstDow = LocalDate.of(pageYM.year, pageYM.monthValue, 1).dayOfWeek.let { if (it == DayOfWeek.SUNDAY) 6 else it.value - 1 }
-                        val pageTotalCells = pageFirstDow + pageYM.lengthOfMonth()
-                        val pageRows = (pageTotalCells + 6) / 7
+                        val pageRows = (pageFirstDow + pageYM.lengthOfMonth() + 6) / 7
+                        val prevPageYM = pageYM.minusMonths(1)
+                        val prevFirstDow = LocalDate.of(prevPageYM.year, prevPageYM.monthValue, 1).dayOfWeek.let { if (it == DayOfWeek.SUNDAY) 6 else it.value - 1 }
+                        val prevPageRows = (prevFirstDow + prevPageYM.lengthOfMonth() + 6) / 7
+                        val pageAlignment = if (pageRows > prevPageRows) Alignment.BottomStart else Alignment.TopStart
+                        Box(Modifier.fillMaxWidth(), contentAlignment = pageAlignment) {
                             renderDateGrid(pageYM.year, pageYM.monthValue, pageRows, shiftMap, state, today, todayStr, vm, navController)
                         }
                     }
