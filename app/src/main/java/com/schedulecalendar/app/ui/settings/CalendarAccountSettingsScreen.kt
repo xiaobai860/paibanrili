@@ -171,9 +171,7 @@ private fun AccountCard(
         elevation = CardDefaults.cardElevation(
             defaultElevation = if (isDisabled) 0.dp else 1.dp
         ),
-        border = if (isDisabled) {
-            BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-        } else null
+        border = null
     ) {
         Column(
             modifier = Modifier

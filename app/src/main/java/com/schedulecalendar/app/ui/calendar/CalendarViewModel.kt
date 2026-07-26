@@ -416,12 +416,14 @@ class CalendarViewModel @Inject constructor(
         }
     }
 
-    /** 加载选中日期的纪念日与日程事件 */
+    /** 加载选中日期的纪念日与日程事件（仅显示已启用账户的事件） */
     private fun loadSelectedDateEvents(date: String) {
         viewModelScope.launch {
             val events = try {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val disabledIds = prefs.getDisabledAccountIds()
                     calendarEventRepo.getEventsForDate(date)
+                        .filter { it.calendarId !in disabledIds }
                 }
             } catch (_: Exception) { emptyList() }
             _state.update { it.copy(selectedDateEvents = events) }
@@ -436,7 +438,9 @@ class CalendarViewModel @Inject constructor(
         viewModelScope.launch {
             val datesWithEvents = try {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val disabledIds = prefs.getDisabledAccountIds()
                     val allEvents = calendarEventRepo.getAllEvents()
+                        .filter { it.calendarId !in disabledIds }
                     val dates = mutableSetOf<String>()
                     val fromDate = try { java.time.LocalDate.parse(rangeFrom) } catch (_: Exception) { null }
                     val toDate = try { java.time.LocalDate.parse(rangeTo) } catch (_: Exception) { null }
