@@ -2,6 +2,7 @@
 package com.schedulecalendar.app.ui.calendar
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -9,11 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.input.pointer.pointerInput
@@ -33,10 +31,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.core.graphics.toColorInt
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -68,6 +69,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
+import kotlinx.coroutines.launch
 
 private val WEEK_LABELS = listOf("一","二","三","四","五","六","日")
 
@@ -327,8 +329,9 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
 
             // ══════════════════════════════════════════════════════════
             // 日历区域（动态高度：根据行数自适应，紧贴最后一行日历格子）
+            // 支持水平滑动手势跟随手指移动 + 平滑切换月份动画
             // ══════════════════════════════════════════════════════════
-            item(key = "calendar_${state.year}_${state.month}") {
+            item(key = "calendar_section") {
                 val today = LocalDate.now()
                 val year  = state.year
                 val month = state.month
@@ -339,199 +342,202 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                 val daysInMonth = ym.lengthOfMonth()
                 val todayStr    = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
                 val totalCells  = firstDow + daysInMonth
-                val rowCount    = (totalCells + 6) / 7
 
                 // 星期标题 + 分割线约占 36dp
                 val weekdayHeaderDp = 36.dp
 
-                // 外层 Column 高度完全由内容自适应，wrapContent 让列高由内容撑开
-                // 添加水平滑动手势检测，实现月份切换（仅在非操作模式下启用）
                 val swipeThreshold = 50f
-                var offsetX by remember { mutableFloatStateOf(0f) }
                 val isInOperMode = state.batchMode || state.deleteMode || state.copyMode
-                Column(
+                val animOffset = remember { androidx.compose.animation.core.Animatable(0f) }
+                val coroutineScope = rememberCoroutineScope()
+                var contentWidth by remember { mutableFloatStateOf(0f) }
+
+                Box(
                     Modifier.fillMaxWidth()
                         .wrapContentHeight()
+                        .onSizeChanged { contentWidth = it.width.toFloat() }
+                        .clip(RectangleShape)
                         .pointerInput(isInOperMode) {
                             if (isInOperMode) return@pointerInput
                             detectHorizontalDragGestures(
-                                onDragStart = { offsetX = 0f },
+                                onDragStart = {
+                                    coroutineScope.launch { animOffset.snapTo(0f) }
+                                },
                                 onDragEnd = {
-                                    if (offsetX > swipeThreshold) {
-                                        vm.goToPrevMonth()
-                                    } else if (offsetX < -swipeThreshold) {
-                                        vm.goToNextMonth()
+                                    if (contentWidth <= 0f) return@detectHorizontalDragGestures
+                                    coroutineScope.launch {
+                                        val currentOffset = animOffset.value
+                                        if (currentOffset > swipeThreshold) {
+                                            // 向右滑动 → 上一个月：当前内容滑出至右侧，新内容从左侧滑入
+                                            animOffset.animateTo(
+                                                targetValue = contentWidth + currentOffset,
+                                                animationSpec = tween(250)
+                                            )
+                                            animOffset.snapTo(-contentWidth)
+                                            vm.goToPrevMonth()
+                                            animOffset.animateTo(0f, animationSpec = tween(300))
+                                        } else if (currentOffset < -swipeThreshold) {
+                                            // 向左滑动 → 下一个月：当前内容滑出至左侧，新内容从右侧滑入
+                                            animOffset.animateTo(
+                                                targetValue = -contentWidth + currentOffset,
+                                                animationSpec = tween(250)
+                                            )
+                                            animOffset.snapTo(contentWidth)
+                                            vm.goToNextMonth()
+                                            animOffset.animateTo(0f, animationSpec = tween(300))
+                                        } else {
+                                            // 未超过阈值，弹性回弹
+                                            animOffset.animateTo(0f, animationSpec = tween(250))
+                                        }
                                     }
-                                    offsetX = 0f
                                 },
                                 onHorizontalDrag = { _, dragAmount ->
-                                    offsetX += dragAmount
+                                    coroutineScope.launch { animOffset.snapTo(animOffset.value + dragAmount) }
                                 }
                             )
                         }
                 ) {
-                    val isCurrentMonth = state.year == today.year && state.month == today.monthValue
-                    val shiftMap    = remember(state.allShifts) { state.allShifts.associateBy { it.id } }
+                    val shiftMap = remember(state.allShifts) { state.allShifts.associateBy { it.id } }
 
-                // 日历网格：不使用 weight，直接根据内容自适应高度
-                    if (state.loading) {
-                        Box(Modifier.fillMaxWidth().wrapContentHeight(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
-                        }
-                    } else {
-                    // 月份切换过渡动画：向左滑入=下月，向右滑入=上月
-                    AnimatedContent(
-                        targetState = state.year * 100 + state.month,
-                        transitionSpec = {
-                            val sameMonth = initialState == targetState
-                            if (sameMonth) {
-                                EnterTransition.None togetherWith ExitTransition.None
-                            } else {
-                                val slideForward = targetState > initialState
-                                (slideInHorizontally(tween(300)) { fullWidth ->
-                                    if (slideForward) fullWidth else -fullWidth
-                                } + fadeIn(tween(300))) togetherWith
-                                (slideOutHorizontally(tween(300)) { fullWidth ->
-                                    if (slideForward) -fullWidth else fullWidth
-                                } + fadeOut(tween(200)))
-                            }
-                        },
-                        label = "month_transition"
-                    ) { targetMonth ->
-                        // 从 AnimatedContent 目标状态解码年月，确保过渡动画期间渲染正确
-                        val animYear = targetMonth / 100
-                        val animMonth = targetMonth % 100
-                        // ── 预计算本月所有日期的展示数据 ──────────────────────────
-                    // 构建完整网格数据：prevMonth尾部 + 当月 + nextMonth头部
-                    val prevMonthYear = if (animMonth == 1) animYear - 1 else animYear
-                    val prevMonthMonth = if (animMonth == 1) 12 else animMonth - 1
-                    val prevMonthDaysInMonth = YearMonth.of(prevMonthYear, prevMonthMonth).lengthOfMonth()
-                    val nextMonthYear = if (animMonth == 12) animYear + 1 else animYear
-                    val nextMonthMonth = if (animMonth == 12) 1 else animMonth + 1
-
-                    val prevFillDays = (0 until firstDow).map { idx ->
-                        val day = prevMonthDaysInMonth - firstDow + 1 + idx
-                        val pDate = LocalDate.of(prevMonthYear, prevMonthMonth, day)
-                        val dateStr = "%04d-%02d-%02d".format(pDate.year, pDate.monthValue, pDate.dayOfMonth)
-                        val record = state.schedules[dateStr]
-                        val shift = record?.shiftId?.let { shiftMap[it] }
-                        val detail = state.dayDetails[dateStr]
-                        val isHol = HolidayData.isLegalHoliday(dateStr)
-                        val dowOfDay = pDate.dayOfWeek
-                        val isWknd = (dowOfDay == DayOfWeek.SATURDAY || dowOfDay == DayOfWeek.SUNDAY)
-                            && !HolidayData.isTransferWorkday(dateStr)
-                        val selected = when {
-                            state.copyMode && state.copyPhase == 1 -> dateStr in state.copySourceDates
-                            state.copyMode && state.copyPhase == 2 -> dateStr == state.copyTargetDate
-                            state.batchMode || state.deleteMode    -> dateStr in state.batchSelected
-                            else                                   -> dateStr == state.selectedDate
-                        }
-                        DayCellData(
-                            day = day, dateStr = dateStr,
-                            shift = shift, record = record, detail = detail,
-                            isToday = false, isHoliday = isHol, isWeekend = isWknd, selected = selected,
-                            hasCalendarEvent = dateStr in state.datesWithEvents,
-                            isPrevMonth = true
-                        )
-                    }
-                    val curMonthDays = (0 until daysInMonth).map { dayIdx ->
-                        val day = dayIdx + 1
-                        val dateStr = "%04d-%02d-%02d".format(animYear, animMonth, day)
-                        val record = state.schedules[dateStr]
-                        val shift = record?.shiftId?.let { shiftMap[it] }
-                        val detail = state.dayDetails[dateStr]
-                        val isToday = dateStr == todayStr
-                        val isHol = HolidayData.isLegalHoliday(dateStr)
-                        val dowOfDay = LocalDate.of(animYear, animMonth, day).dayOfWeek
-                        val isWknd = (dowOfDay == DayOfWeek.SATURDAY || dowOfDay == DayOfWeek.SUNDAY)
-                            && !HolidayData.isTransferWorkday(dateStr)
-                        val selected = when {
-                            state.copyMode && state.copyPhase == 1 -> dateStr in state.copySourceDates
-                            state.copyMode && state.copyPhase == 2 -> dateStr == state.copyTargetDate
-                            state.batchMode || state.deleteMode    -> dateStr in state.batchSelected
-                            else                                   -> dateStr == state.selectedDate
-                        }
-                        DayCellData(day, dateStr, shift, record, detail, isToday, isHol, isWknd, selected,
-                            hasCalendarEvent = dateStr in state.datesWithEvents)
-                    }
-                    val totalCells = firstDow + daysInMonth
-                    val totalRows = (totalCells + 6) / 7  // 向上取整
-                    val remainingInLastRow = totalRows * 7 - totalCells
-                    val nextFillDays = (1..remainingInLastRow).map { idx ->
-                        val nDate = LocalDate.of(nextMonthYear, nextMonthMonth, idx)
-                        val dateStr = "%04d-%02d-%02d".format(nDate.year, nDate.monthValue, nDate.dayOfMonth)
-                        val record = state.schedules[dateStr]
-                        val shift = record?.shiftId?.let { shiftMap[it] }
-                        val detail = state.dayDetails[dateStr]
-                        val isHol = HolidayData.isLegalHoliday(dateStr)
-                        val dowOfDay = nDate.dayOfWeek
-                        val isWknd = (dowOfDay == DayOfWeek.SATURDAY || dowOfDay == DayOfWeek.SUNDAY)
-                            && !HolidayData.isTransferWorkday(dateStr)
-                        val selected = when {
-                            state.copyMode && state.copyPhase == 1 -> dateStr in state.copySourceDates
-                            state.copyMode && state.copyPhase == 2 -> dateStr == state.copyTargetDate
-                            state.batchMode || state.deleteMode    -> dateStr in state.batchSelected
-                            else                                   -> dateStr == state.selectedDate
-                        }
-                        DayCellData(
-                            day = idx, dateStr = dateStr,
-                            shift = shift, record = record, detail = detail,
-                            isToday = false, isHoliday = isHol, isWeekend = isWknd, selected = selected,
-                            hasCalendarEvent = dateStr in state.datesWithEvents,
-                            isNextMonth = true
-                        )
-                    }
-                    val allDays = prevFillDays + curMonthDays + nextFillDays
-                    val rowCount = totalRows
-
-                    Column(
+                    Box(
                         Modifier.fillMaxWidth()
+                            .graphicsLayer { translationX = animOffset.value }
                     ) {
-                        for (rowIdx in 0 until rowCount) {
-                            Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 2.dp),
-                                horizontalArrangement = Arrangement.spacedBy(0.dp)
+                        // 日历网格：不使用 weight，直接根据内容自适应高度
+                        if (state.loading) {
+                            Box(Modifier.fillMaxWidth().wrapContentHeight(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        } else {
+                            // ── 预计算本月所有日期的展示数据 ──────────────────────────
+                            // 构建完整网格数据：prevMonth尾部 + 当月 + nextMonth头部
+                            val prevMonthYear = if (month == 1) year - 1 else year
+                            val prevMonthMonth = if (month == 1) 12 else month - 1
+                            val prevMonthDaysInMonth = YearMonth.of(prevMonthYear, prevMonthMonth).lengthOfMonth()
+                            val nextMonthYear = if (month == 12) year + 1 else year
+                            val nextMonthMonth = if (month == 12) 1 else month + 1
+
+                            val prevFillDays = (0 until firstDow).map { idx ->
+                                val day = prevMonthDaysInMonth - firstDow + 1 + idx
+                                val pDate = LocalDate.of(prevMonthYear, prevMonthMonth, day)
+                                val dateStr = "%04d-%02d-%02d".format(pDate.year, pDate.monthValue, pDate.dayOfMonth)
+                                val record = state.schedules[dateStr]
+                                val shift = record?.shiftId?.let { shiftMap[it] }
+                                val detail = state.dayDetails[dateStr]
+                                val isHol = HolidayData.isLegalHoliday(dateStr)
+                                val dowOfDay = pDate.dayOfWeek
+                                val isWknd = (dowOfDay == DayOfWeek.SATURDAY || dowOfDay == DayOfWeek.SUNDAY)
+                                    && !HolidayData.isTransferWorkday(dateStr)
+                                val selected = when {
+                                    state.copyMode && state.copyPhase == 1 -> dateStr in state.copySourceDates
+                                    state.copyMode && state.copyPhase == 2 -> dateStr == state.copyTargetDate
+                                    state.batchMode || state.deleteMode    -> dateStr in state.batchSelected
+                                    else                                   -> dateStr == state.selectedDate
+                                }
+                                DayCellData(
+                                    day = day, dateStr = dateStr,
+                                    shift = shift, record = record, detail = detail,
+                                    isToday = false, isHoliday = isHol, isWeekend = isWknd, selected = selected,
+                                    hasCalendarEvent = dateStr in state.datesWithEvents,
+                                    isPrevMonth = true
+                                )
+                            }
+                            val curMonthDays = (0 until daysInMonth).map { dayIdx ->
+                                val day = dayIdx + 1
+                                val dateStr = "%04d-%02d-%02d".format(year, month, day)
+                                val record = state.schedules[dateStr]
+                                val shift = record?.shiftId?.let { shiftMap[it] }
+                                val detail = state.dayDetails[dateStr]
+                                val isToday = dateStr == todayStr
+                                val isHol = HolidayData.isLegalHoliday(dateStr)
+                                val dowOfDay = LocalDate.of(year, month, day).dayOfWeek
+                                val isWknd = (dowOfDay == DayOfWeek.SATURDAY || dowOfDay == DayOfWeek.SUNDAY)
+                                    && !HolidayData.isTransferWorkday(dateStr)
+                                val selected = when {
+                                    state.copyMode && state.copyPhase == 1 -> dateStr in state.copySourceDates
+                                    state.copyMode && state.copyPhase == 2 -> dateStr == state.copyTargetDate
+                                    state.batchMode || state.deleteMode    -> dateStr in state.batchSelected
+                                    else                                   -> dateStr == state.selectedDate
+                                }
+                                DayCellData(day, dateStr, shift, record, detail, isToday, isHol, isWknd, selected,
+                                    hasCalendarEvent = dateStr in state.datesWithEvents)
+                            }
+                            val totalRows = (totalCells + 6) / 7  // 向上取整
+                            val remainingInLastRow = totalRows * 7 - totalCells
+                            val nextFillDays = (1..remainingInLastRow).map { idx ->
+                                val nDate = LocalDate.of(nextMonthYear, nextMonthMonth, idx)
+                                val dateStr = "%04d-%02d-%02d".format(nDate.year, nDate.monthValue, nDate.dayOfMonth)
+                                val record = state.schedules[dateStr]
+                                val shift = record?.shiftId?.let { shiftMap[it] }
+                                val detail = state.dayDetails[dateStr]
+                                val isHol = HolidayData.isLegalHoliday(dateStr)
+                                val dowOfDay = nDate.dayOfWeek
+                                val isWknd = (dowOfDay == DayOfWeek.SATURDAY || dowOfDay == DayOfWeek.SUNDAY)
+                                    && !HolidayData.isTransferWorkday(dateStr)
+                                val selected = when {
+                                    state.copyMode && state.copyPhase == 1 -> dateStr in state.copySourceDates
+                                    state.copyMode && state.copyPhase == 2 -> dateStr == state.copyTargetDate
+                                    state.batchMode || state.deleteMode    -> dateStr in state.batchSelected
+                                    else                                   -> dateStr == state.selectedDate
+                                }
+                                DayCellData(
+                                    day = idx, dateStr = dateStr,
+                                    shift = shift, record = record, detail = detail,
+                                    isToday = false, isHoliday = isHol, isWeekend = isWknd, selected = selected,
+                                    hasCalendarEvent = dateStr in state.datesWithEvents,
+                                    isNextMonth = true
+                                )
+                            }
+                            val allDays = prevFillDays + curMonthDays + nextFillDays
+
+                            Column(
+                                Modifier.fillMaxWidth()
                             ) {
-                                for (col in 0 until 7) {
-                                    val cellIndex = rowIdx * 7 + col
-                                    val d = allDays[cellIndex]
-                                    Box(Modifier.weight(1f)) {
-                                        DayCell(
-                                            day = d.day, dateStr = d.dateStr,
-                                            shift = d.shift, record = d.record, detail = d.detail,
-                                            isToday = d.isToday, isHoliday = d.isHoliday, isWeekend = d.isWeekend,
-                                            displayScheme = state.displayScheme,
-                                            shiftStatuses = state.allShiftStatuses,
-                                            batchMode = state.batchMode || state.deleteMode,
-                                            selected = d.selected,
-                                            hasCalendarEvent = d.hasCalendarEvent,
-                                            isPrevMonth = d.isPrevMonth, isNextMonth = d.isNextMonth,
-                                            onClick = {
-                                                val blockPrev = (state.batchMode || state.deleteMode) && d.isPrevMonth
-                                                val blockPrevCopy = state.copyMode && state.copyPhase == 2 && d.isPrevMonth
-                                                if (blockPrev || blockPrevCopy) return@DayCell
-                                                if (state.copyMode) {
-                                                    if (state.copyPhase == 1) vm.copySourceClick(d.dateStr)
-                                                    else vm.copyTargetClick(d.dateStr)
-                                                } else {
-                                                    vm.onDayClick(d.dateStr)
-                                                }
-                                            },
-                                            onLongClick = {
-                                                val isOperMode = state.batchMode || state.copyMode || state.deleteMode
-                                                if (!isOperMode) {
-                                                    navController.navigate(RouteScheduleDetail(d.dateStr))
-                                                }
+                                for (rowIdx in 0 until totalRows) {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(0.dp)
+                                    ) {
+                                        for (col in 0 until 7) {
+                                            val cellIndex = rowIdx * 7 + col
+                                            val d = allDays[cellIndex]
+                                            Box(Modifier.weight(1f)) {
+                                                DayCell(
+                                                    day = d.day, dateStr = d.dateStr,
+                                                    shift = d.shift, record = d.record, detail = d.detail,
+                                                    isToday = d.isToday, isHoliday = d.isHoliday, isWeekend = d.isWeekend,
+                                                    displayScheme = state.displayScheme,
+                                                    shiftStatuses = state.allShiftStatuses,
+                                                    batchMode = state.batchMode || state.deleteMode,
+                                                    selected = d.selected,
+                                                    hasCalendarEvent = d.hasCalendarEvent,
+                                                    isPrevMonth = d.isPrevMonth, isNextMonth = d.isNextMonth,
+                                                    onClick = {
+                                                        val blockPrev = (state.batchMode || state.deleteMode) && d.isPrevMonth
+                                                        val blockPrevCopy = state.copyMode && state.copyPhase == 2 && d.isPrevMonth
+                                                        if (blockPrev || blockPrevCopy) return@DayCell
+                                                        if (state.copyMode) {
+                                                            if (state.copyPhase == 1) vm.copySourceClick(d.dateStr)
+                                                            else vm.copyTargetClick(d.dateStr)
+                                                        } else {
+                                                            vm.onDayClick(d.dateStr)
+                                                        }
+                                                    },
+                                                    onLongClick = {
+                                                        val isOperMode = state.batchMode || state.copyMode || state.deleteMode
+                                                        if (!isOperMode) {
+                                                            navController.navigate(RouteScheduleDetail(d.dateStr))
+                                                        }
+                                                    }
+                                                )
                                             }
-                                        )
+                                        }
                                     }
                                 }
                             }
-                        }
-                    }
-                        } // end calendar grid Column
-                    } // end AnimatedContent
-                } // end else (not loading)
+                        } // end else (not loading)
+                    } // end graphicsLayer Box
+                } // end outer Box (pointerInput)
             } // end item calendar_section
 
             // ── 批量操作工具栏（日历网格下方）─────────────────────────────
@@ -868,12 +874,12 @@ private fun DayCell(
                     isToday -> drawRoundRect(color = Green700, cornerRadius = cr, style = Stroke(width = 2.5.dp.toPx()))
                 }
             }
-            .combinedClickable(
-                indication = ripple(bounded = true, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
-                interactionSource = interactionSource,
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
+            .pointerInput(onClick, onLongClick) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { onLongClick?.invoke() }
+                )
+            }
             .semantics { contentDescription = accessibilityDescription }
             .padding(horizontal = 0.5.dp),
         contentAlignment = Alignment.Center

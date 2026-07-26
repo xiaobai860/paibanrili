@@ -99,8 +99,16 @@ class CalendarEventRepository @Inject constructor(
             }
         }
     
-        // 应用自定义账户类型排在最前面，确保默认选中优先级
-        accounts.sortByDescending { if (it.accountType == ACCOUNT_TYPE) 1 else 0 }
+        // 应用自定义账户类型排在最前面，固定顺序：日程 > 纪念日 > 提醒 > 外部账户
+        accounts.sortWith(compareBy<CalendarAccountInfo> {
+            when {
+                it.accountType != ACCOUNT_TYPE -> "ZZZ" // 外部账户排在最后
+                it.displayName.contains(SCHEDULE_SUFFIX) -> "A"      // 日程
+                it.displayName.contains(ANNIVERSARY_SUFFIX) -> "B"  // 纪念日
+                it.displayName.contains(REMINDER_SUFFIX) -> "C"     // 提醒
+                else -> "D"
+            }
+        })
     
         return accounts
     }
