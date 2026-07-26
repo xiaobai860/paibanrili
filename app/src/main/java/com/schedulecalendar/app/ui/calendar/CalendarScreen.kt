@@ -486,7 +486,16 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
 
                 // HorizontalPager for month swiping
                 val pagerState = rememberPagerState(initialPage = 500) { 1000 }
-                val pagerHeight = (maxRows * 48).dp
+                val rowHeight = 83.dp  // dateHeight(28)+lunarGap(2)+lunarHeight(12)+dataGap(3)+3*dataRowHeight(36)+2*dataRowGap(2)
+                // Real-time height interpolation during swipe - based on currently visible page
+                val visibleYM = YearMonth.of(today.year, today.monthValue).plusMonths((pagerState.currentPage - 500).toLong())
+                val visibleFirstDow = LocalDate.of(visibleYM.year, visibleYM.monthValue, 1).dayOfWeek.let { if (it == DayOfWeek.SUNDAY) 6 else it.value - 1 }
+                val visibleRows = (visibleFirstDow + visibleYM.lengthOfMonth() + 6) / 7
+                val nextYM = visibleYM.plusMonths(1)
+                val nextFirstDow = LocalDate.of(nextYM.year, nextYM.monthValue, 1).dayOfWeek.let { if (it == DayOfWeek.SUNDAY) 6 else it.value - 1 }
+                val nextRows = (nextFirstDow + nextYM.lengthOfMonth() + 6) / 7
+                val frac = pagerState.currentPageOffsetFraction
+                val interpolatedHeight = ((visibleRows + (nextRows - visibleRows) * frac) * rowHeight.value).dp
                 val shiftMap = remember(state.allShifts) { state.allShifts.associateBy { it.id } }
 
                 // Sync pager position when ViewModel month changes externally
@@ -507,16 +516,19 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                     }
                 }
 
-                Box(Modifier.fillMaxWidth().height(pagerHeight)) {
+                Box(Modifier.fillMaxWidth().height(interpolatedHeight)) {
                     HorizontalPager(
                         state = pagerState,
-                        modifier = Modifier.fillMaxWidth().height(pagerHeight),
+                        modifier = Modifier.fillMaxWidth().height(interpolatedHeight),
                         userScrollEnabled = !isInOperMode
                     ) { pageIndex ->
                         val pageMonthOffset = pageIndex - 500
                         val pageYM = YearMonth.of(today.year, today.monthValue).plusMonths(pageMonthOffset.toLong())
                         Box(Modifier.fillMaxWidth()) {
-                            renderDateGrid(pageYM.year, pageYM.monthValue, maxRows, shiftMap, state, today, todayStr, vm, navController)
+                        val pageFirstDow = LocalDate.of(pageYM.year, pageYM.monthValue, 1).dayOfWeek.let { if (it == DayOfWeek.SUNDAY) 6 else it.value - 1 }
+                        val pageTotalCells = pageFirstDow + pageYM.lengthOfMonth()
+                        val pageRows = (pageTotalCells + 6) / 7
+                            renderDateGrid(pageYM.year, pageYM.monthValue, pageRows, shiftMap, state, today, todayStr, vm, navController)
                         }
                     }
                     if (state.loading) {
