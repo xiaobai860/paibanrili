@@ -157,19 +157,13 @@ class CalendarViewModel @Inject constructor(
             val totalCells = firstDow + daysInMonth
             val totalRows = (totalCells + 6) / 7
             val remainingInLastRow = totalRows * 7 - totalCells
-            // 上月填充范围
+            // 上月（滑动联动用，需加载完整月份数据）
             val prevYM = if (s.month == 1) YearMonth.of(s.year - 1, 12) else YearMonth.of(s.year, s.month - 1)
-            val prevFillStart = prevYM.lengthOfMonth() - firstDow + 1
-            val prevRangeFrom = "%04d-%02d-%02d".format(prevYM.year, prevYM.monthValue, prevFillStart.coerceAtLeast(1))
-            // 下月填充范围
+            // 下月（滑动联动用，需加载完整月份数据）
             val nextYM = if (s.month == 12) YearMonth.of(s.year + 1, 1) else YearMonth.of(s.year, s.month + 1)
-            val nextRangeTo = "%04d-%02d-%02d".format(nextYM.year, nextYM.monthValue, remainingInLastRow.coerceAtLeast(0))
-            // 当月范围
-            val curFrom = "%04d-%02d-01".format(s.year, s.month)
-            val curTo   = "%04d-%02d-%02d".format(s.year, s.month, daysInMonth)
-            // 最终范围：取最小/最大
-            val rangeFrom = minOf(prevRangeFrom, curFrom)
-            val rangeTo   = maxOf(nextRangeTo, curTo)
+            // 数据范围：上月1日 ~ 下月末日（覆盖完整相邻月份，支持滑动时显示）
+            val rangeFrom = "%04d-%02d-01".format(prevYM.year, prevYM.monthValue)
+            val rangeTo   = "%04d-%02d-%02d".format(nextYM.year, nextYM.monthValue, nextYM.lengthOfMonth())
 
             combine(
                 shiftRepo.observeAll(),
@@ -213,30 +207,14 @@ class CalendarViewModel @Inject constructor(
                 val curDetails = CalcUtils.getMonthScheduleDetails(
                     s.year, s.month, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
                 ).associateBy { it.date }
-                // 计算跨月日期详情（上月尾部 + 下月头部）
-                val crossDetails = mutableMapOf<String, DayScheduleDetail>()
-                // 上月填充日期详情
-                if (firstDow > 0) {
-                    val prevDetails = CalcUtils.getMonthScheduleDetails(
-                        prevYM.year, prevYM.monthValue, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
-                    ).associateBy { it.date }
-                    val prevFillDays = (prevFillStart..prevYM.lengthOfMonth()).filter { it >= 1 }
-                    for (d in prevFillDays) {
-                        val dateStr = "%04d-%02d-%02d".format(prevYM.year, prevYM.monthValue, d)
-                        prevDetails[dateStr]?.let { crossDetails[dateStr] = it }
-                    }
-                }
-                // 下月填充日期详情
-                if (remainingInLastRow > 0) {
-                    val nextDetails = CalcUtils.getMonthScheduleDetails(
-                        nextYM.year, nextYM.monthValue, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
-                    ).associateBy { it.date }
-                    for (d in 1..remainingInLastRow) {
-                        val dateStr = "%04d-%02d-%02d".format(nextYM.year, nextYM.monthValue, d)
-                        nextDetails[dateStr]?.let { crossDetails[dateStr] = it }
-                    }
-                }
-                val allDetails = curDetails + crossDetails
+                // 计算完整相邻月份详情（支持滑动联动时显示相邻月份网格）
+                val prevDetails = CalcUtils.getMonthScheduleDetails(
+                    prevYM.year, prevYM.monthValue, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
+                ).associateBy { it.date }
+                val nextDetails = CalcUtils.getMonthScheduleDetails(
+                    nextYM.year, nextYM.monthValue, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
+                ).associateBy { it.date }
+                val allDetails = curDetails + prevDetails + nextDetails
                 val todos      = buildTodos(s.year, s.month, schedules, allShifts, attendConf)
                 _state.update { it.copy(
                     shifts         = shifts,
@@ -367,6 +345,12 @@ class CalendarViewModel @Inject constructor(
         loadCurrentMonth()
     }
 
+
+    /** Lightweight month update for pager swipe (no data reload) */
+    fun updateDisplayMonth(year: Int, month: Int) {
+        _state.update { it.copy(year = year, month = month) }
+        loadCurrentMonth()
+    }
     fun goToToday() {
         val today = LocalDate.now()
         val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
