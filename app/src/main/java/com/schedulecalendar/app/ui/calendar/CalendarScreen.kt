@@ -60,10 +60,12 @@ import com.schedulecalendar.app.domain.model.*
 import com.schedulecalendar.app.ui.detail.safeColor
 import com.schedulecalendar.app.ui.component.WheelDatePickerDialog
 import com.schedulecalendar.app.ui.navigation.*
+import com.schedulecalendar.app.ui.theme.EarlyLeaveOrange
 import com.schedulecalendar.app.ui.theme.Green100
 import com.schedulecalendar.app.ui.theme.Green700
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import com.schedulecalendar.app.ui.theme.RedError
+import com.schedulecalendar.app.ui.theme.RemarkCyan
 import com.schedulecalendar.app.ui.theme.ScheduleCalendarTheme
 import com.tyme.solar.SolarDay
 import java.time.DayOfWeek
@@ -366,7 +368,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 OutlinedButton(
                                     onClick = vm::goToToday,
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(48.dp),
+                                    modifier = Modifier.height(32.dp),
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
                                     colors = ButtonDefaults.outlinedButtonColors(
                                         contentColor = MaterialTheme.colorScheme.error
@@ -374,7 +376,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 ) {
                                     Text(
                                         "今天",
-                                        style = MaterialTheme.typography.bodySmall,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.error,
                                         fontWeight = FontWeight.Medium
                                     )
@@ -748,9 +750,9 @@ private fun DayCell(
     val hasRemark = !record?.remark.isNullOrBlank()
     // 构建左侧状态角标列表
     val statusBadges = buildList<@Composable () -> Unit> {
-        if (isEarlyLeave) add({ StatusMiniBadge("早", Color(0xFFF97316)) })
+        if (isEarlyLeave) add({ StatusMiniBadge("早", EarlyLeaveOrange) })
         if (isLate) add({ StatusMiniBadge("迟", RedError) })
-        if (hasRemark) add({ StatusMiniBadge("注", Color(0xFF06B6D4)) })
+        if (hasRemark) add({ StatusMiniBadge("注", RemarkCyan) })
     }
 
     // ── 视觉状态 ──────────────────────────────────────────────
@@ -1329,11 +1331,11 @@ private fun CopyMonthDialog(
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("目标年份：", style = MaterialTheme.typography.bodyMedium)
-                    IconButton(onClick = { dstYear-- }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { dstYear-- }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Remove, "减年")
                     }
                     Text("${dstYear}年", fontWeight = FontWeight.Bold)
-                    IconButton(onClick = { dstYear++ }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { dstYear++ }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Add, "加年")
                     }
                 }
@@ -1420,7 +1422,7 @@ private fun CopyRangeToolbar(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 6.dp)
                     ) {
-                        Text("确认复制", fontSize = 13.sp)
+                        Text("确认复制", style = MaterialTheme.typography.bodyMedium)
                     }
                     OutlinedButton(
                         onClick = onClearSelection,
@@ -1428,14 +1430,14 @@ private fun CopyRangeToolbar(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 6.dp)
                     ) {
-                        Text("取消选择", fontSize = 13.sp)
+                        Text("取消选择", style = MaterialTheme.typography.bodyMedium)
                     }
                     OutlinedButton(
                         onClick = onCancel,
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 6.dp)
                     ) {
-                        Text("退出", fontSize = 13.sp)
+                        Text("退出", style = MaterialTheme.typography.bodyMedium)
                     }
                 } else {
                     OutlinedButton(
@@ -1444,21 +1446,21 @@ private fun CopyRangeToolbar(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 6.dp)
                     ) {
-                        Text("确认应用", fontSize = 13.sp)
+                        Text("确认应用", style = MaterialTheme.typography.bodyMedium)
                     }
                     OutlinedButton(
                         onClick = onBackToPhase1,
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 6.dp)
                     ) {
-                        Text("返回上一级", fontSize = 13.sp)
+                        Text("返回上一级", style = MaterialTheme.typography.bodyMedium)
                     }
                     OutlinedButton(
                         onClick = onCancel,
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 6.dp)
                     ) {
-                        Text("退出", fontSize = 13.sp)
+                        Text("退出", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -1579,7 +1581,7 @@ private fun YearMonthPickerDialog(
                         ) {
                             Text(
                                 label,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Medium,
                                 color = if (isActive) MaterialTheme.colorScheme.onPrimary
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1625,7 +1627,7 @@ private fun YearMonthPickerDialog(
                                 Text(
                                     text = type,
                                     textAlign = TextAlign.Center,
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) MaterialTheme.colorScheme.onPrimary
                                            else MaterialTheme.colorScheme.onSurface,
@@ -1655,7 +1657,7 @@ private fun YearMonthPickerDialog(
                                 Text(
                                     text = yearDisplayText(y),
                                     textAlign = TextAlign.Center,
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) MaterialTheme.colorScheme.onPrimary
                                            else MaterialTheme.colorScheme.onSurface,
@@ -1685,7 +1687,7 @@ private fun YearMonthPickerDialog(
                                 Text(
                                     text = monthDisplayText(m),
                                     textAlign = TextAlign.Center,
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) MaterialTheme.colorScheme.onPrimary
                                            else MaterialTheme.colorScheme.onSurface,
@@ -1715,7 +1717,7 @@ private fun YearMonthPickerDialog(
                                 Text(
                                     text = dayDisplayText(d),
                                     textAlign = TextAlign.Center,
-                                    fontSize = 14.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) MaterialTheme.colorScheme.onPrimary
                                            else MaterialTheme.colorScheme.onSurface,
@@ -1861,7 +1863,7 @@ private fun CalendarWeekPreview() {
             Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp)) {
                 labels.forEachIndexed { i, label ->
                     Text(label, Modifier.weight(1f), textAlign = TextAlign.Center,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         color = if (i >= 5) HolidayRed
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium)
@@ -2081,7 +2083,7 @@ private fun DateDetailSection(
                         ) {
                             Text(
                                 text = huangLi.level,
-                                fontSize = 14.sp,
+                                style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = if (huangLi.isGood) Green700 else MaterialTheme.colorScheme.error
                             )
@@ -2189,7 +2191,7 @@ private fun SchedulePreviewSection(
                 Spacer(Modifier.weight(1f))
 
                 // 编辑按钮
-                IconButton(onClick = onEditClick, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = onEditClick, modifier = Modifier.size(48.dp)) {
                     Icon(
                         Icons.Default.Edit,
                         contentDescription = "编辑排班",

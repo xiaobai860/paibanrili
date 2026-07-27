@@ -38,6 +38,10 @@ val CategoryGreen  = Color(0xFF059669)   // 节气分类
 val CategoryOrange = Color(0xFFD97706)   // 传统分类
 val CategoryBlue   = Color(0xFF2563EB)   // 国际分类
 
+// 状态角标语义色
+val EarlyLeaveOrange = Color(0xFFF97316) // 早退角标
+val RemarkCyan       = Color(0xFF06B6D4) // 备注角标
+
 // 班次预设颜色（18色，2行x9列）—— 高区分度配色方案
 val ShiftPresetColors = listOf(
     // 第一行：高饱和鲜艳色（暖冷交替）
