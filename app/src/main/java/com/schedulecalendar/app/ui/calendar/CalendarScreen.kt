@@ -368,7 +368,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 OutlinedButton(
                                     onClick = vm::goToToday,
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(32.dp),
+                                    modifier = Modifier.height(26.dp),
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
                                     colors = ButtonDefaults.outlinedButtonColors(
                                         contentColor = MaterialTheme.colorScheme.error
