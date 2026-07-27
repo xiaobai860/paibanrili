@@ -90,7 +90,8 @@ fun ColorPicker(selected: String, onSelect: (String) -> Unit) {
                     val color = runCatching { Color(hex.toColorInt()) }.getOrElse { Color.Gray }
                     Box(
                         Modifier
-                            .size(28.dp)
+                            .size(48.dp)
+                            .padding(10.dp)
                             .clip(CircleShape)
                             .background(color)
                             .then(if (hex == selected) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
@@ -107,9 +108,9 @@ fun ColorPicker(selected: String, onSelect: (String) -> Unit) {
 fun StatCard(label: String, value: String, modifier: Modifier = Modifier, containerColor: Color = MaterialTheme.colorScheme.primaryContainer) {
     Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = containerColor), shape = RoundedCornerShape(12.dp)) {
         Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(value, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(2.dp))
-            Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -119,7 +120,7 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier, contai
 fun MonthNavigator(year: Int, month: Int, onPrev: () -> Unit, onNext: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
         IconButton(onClick = onPrev) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "上月") }
-        Text("${year}年${month}月", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        Text("${year}年${month}月", style = MaterialTheme.typography.titleLarge)
         IconButton(onClick = onNext) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "下月") }
     }
 }

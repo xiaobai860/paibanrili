@@ -29,6 +29,8 @@ import com.schedulecalendar.app.domain.model.*
 import com.schedulecalendar.app.ui.component.ImeAdaptiveOutlinedTextField
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import com.schedulecalendar.app.ui.component.TimePickerField
+import com.schedulecalendar.app.ui.theme.AllowanceGreen
+import com.schedulecalendar.app.ui.theme.DeductionRed
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import com.schedulecalendar.app.domain.model.LunarCalendar
 import com.schedulecalendar.app.domain.model.HolidayData
@@ -547,7 +549,7 @@ private fun ExtraItemRow(item: ExtraItem, checked: Boolean, onToggle: () -> Unit
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val typeColor = if (item.type == "allowance") Color(0xFF059669) else Color(0xFFDC2626)
+        val typeColor = if (item.type == "allowance") AllowanceGreen else DeductionRed
         Surface(shape = RoundedCornerShape(4.dp), color = typeColor.copy(alpha = 0.12f)) {
             Text(
                 text     = if (item.type == "allowance") "补" else "扣",

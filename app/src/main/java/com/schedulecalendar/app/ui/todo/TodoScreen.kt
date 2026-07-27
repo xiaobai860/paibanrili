@@ -45,6 +45,10 @@ import com.schedulecalendar.app.ui.navigation.RouteCalendarAccountSettings
 import com.schedulecalendar.app.ui.navigation.RouteEditAnniversary
 import com.schedulecalendar.app.ui.navigation.RouteEditCalendarEvent
 import com.schedulecalendar.app.ui.navigation.RouteScheduleDetail
+import com.schedulecalendar.app.ui.theme.AllowanceGreen
+import com.schedulecalendar.app.ui.theme.CategoryBlue
+import com.schedulecalendar.app.ui.theme.CategoryGreen
+import com.schedulecalendar.app.ui.theme.CategoryOrange
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -272,7 +276,7 @@ private fun TodoTab(
             ) {
                 Icon(Icons.Default.ChevronLeft, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(2.dp))
-                Text("上月", fontSize = 13.sp)
+                Text("上月", style = MaterialTheme.typography.labelLarge)
             }
             Spacer(Modifier.weight(1f))
             Text(
@@ -296,7 +300,7 @@ private fun TodoTab(
                 onClick = { vm.goToNextMonth() },
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
             ) {
-                Text("下月", fontSize = 13.sp)
+                Text("下月", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.width(2.dp))
                 Icon(Icons.Default.ChevronRight, null, Modifier.size(18.dp))
             }
@@ -379,7 +383,7 @@ private fun TodoTab(
                 icon = Icons.Default.CheckCircle, title = "\u662f\u52a0\u73ed",
                 count = confirmedOTTodos.size, expanded = otConfirmedExpanded,
                 onToggle = onOtConfirmedToggle,
-                iconTint = Color(0xFF059669)
+                iconTint = AllowanceGreen
             ) {
                 sortedConfirmed.forEach { todo ->
                     val isEarly = todo.type == TodoType.CONFIRMED_EARLY_OT
@@ -536,8 +540,7 @@ private fun UnifiedTodoRow(
                     Text(typeLabel,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                        fontSize = 10.sp)
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
                 }
                 Spacer(Modifier.width(6.dp))
                 // 班次名称 + 班次时间
@@ -574,7 +577,7 @@ private fun UnifiedTodoRow(
         // 右侧：操作
         if (onAction != null) {
             if (actionIcon != null) {
-                IconButton(onClick = onAction, modifier = Modifier.size(28.dp)) {
+                IconButton(onClick = onAction, modifier = Modifier.size(48.dp)) {
                     Icon(actionIcon, contentDescription = null,
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -585,7 +588,7 @@ private fun UnifiedTodoRow(
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                     modifier = Modifier.height(28.dp)
                 ) {
-                    Text(actionLabel, fontSize = 13.sp)
+                    Text(actionLabel, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -660,8 +663,7 @@ private fun MergedClockSubRow(
             Text(typeLabel,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                fontSize = 10.sp)
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
         }
         Spacer(Modifier.width(6.dp))
         val shiftInfo = buildString {
@@ -686,8 +688,7 @@ private fun MergedClockSubRow(
                 Text(item.statusLabel,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                    fontSize = 10.sp)
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
             }
         }
         Spacer(Modifier.weight(1f))
@@ -698,7 +699,7 @@ private fun MergedClockSubRow(
             Spacer(Modifier.width(4.dp))
         }
         if (actionIcon != null) {
-            IconButton(onClick = onAction, modifier = Modifier.size(28.dp)) {
+            IconButton(onClick = onAction, modifier = Modifier.size(48.dp)) {
                 Icon(actionIcon, contentDescription = null,
                     modifier = Modifier.size(16.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -709,7 +710,7 @@ private fun MergedClockSubRow(
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                 modifier = Modifier.height(28.dp)
             ) {
-                Text(actionLabel, fontSize = 13.sp)
+                Text(actionLabel, style = MaterialTheme.typography.labelLarge)
             }
         }
     }
@@ -802,7 +803,7 @@ private fun OvertimeActionDialog(
             Button(
                 onClick = onConfirm,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF059669)
+                    containerColor = AllowanceGreen
                 )
             ) {
                 Icon(Icons.Default.Check, null, Modifier.size(16.dp))
@@ -1614,9 +1615,9 @@ private fun HolidayRow(item: HolidayListItem, today: LocalDate) {
     val isToday = diff == 0
     val catColor = when (item.category) {
         "法定" -> HolidayRed
-        "节气" -> Color(0xFF059669)
-        "传统" -> Color(0xFFD97706)
-        "国际" -> Color(0xFF2563EB)
+        "节气" -> CategoryGreen
+        "传统" -> CategoryOrange
+        "国际" -> CategoryBlue
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val dateDisplay = try {
@@ -1668,8 +1669,7 @@ private fun HolidayRow(item: HolidayListItem, today: LocalDate) {
                         item.category,
                         style = MaterialTheme.typography.labelSmall,
                         color = catColor,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                        fontSize = 10.sp
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                     )
                 }
             }
@@ -1679,7 +1679,7 @@ private fun HolidayRow(item: HolidayListItem, today: LocalDate) {
                 style = MaterialTheme.typography.labelSmall,
                 color = when {
                     isToday -> MaterialTheme.colorScheme.primary
-                    diff > 0 -> Color(0xFF059669)
+                    diff > 0 -> AllowanceGreen
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
                 fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal

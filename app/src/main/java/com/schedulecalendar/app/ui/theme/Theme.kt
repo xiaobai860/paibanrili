@@ -25,7 +25,9 @@ private val LightColors = lightColorScheme(
     onSurfaceVariant = Gray500,
     outline          = Gray300,
     error            = RedError,
-    onError          = White
+    onError          = White,
+    errorContainer   = Color(0xFFFEE2E2),
+    onErrorContainer = Color(0xFF991B1B)
 )
 
 private val DarkColors = darkColorScheme(
@@ -43,7 +45,9 @@ private val DarkColors = darkColorScheme(
     onSurfaceVariant = Gray300,
     outline          = Color(0xFF4B5563),
     error            = Color(0xFFF87171),
-    onError          = White
+    onError          = White,
+    errorContainer   = Color(0xFF7F1D1D),
+    onErrorContainer = Color(0xFFFCA5A5)
 )
 
 @Composable
