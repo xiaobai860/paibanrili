@@ -586,7 +586,7 @@ private fun UnifiedTodoRow(
                 TextButton(
                     onClick = onAction,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    modifier = Modifier.height(28.dp)
+                    modifier = Modifier.defaultMinSize(minHeight = 40.dp)
                 ) {
                     Text(actionLabel, style = MaterialTheme.typography.labelLarge)
                 }
@@ -708,7 +708,7 @@ private fun MergedClockSubRow(
             TextButton(
                 onClick = onAction,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                modifier = Modifier.height(28.dp)
+                modifier = Modifier.defaultMinSize(minHeight = 40.dp)
             ) {
                 Text(actionLabel, style = MaterialTheme.typography.labelLarge)
             }

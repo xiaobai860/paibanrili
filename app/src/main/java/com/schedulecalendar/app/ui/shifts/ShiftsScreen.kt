@@ -118,19 +118,19 @@ fun ShiftsScreen(navController: NavController, vm: ShiftsViewModel = hiltViewMod
             when (currentPage) {
                 0 -> FloatingActionButton(onClick = vm::onAddClick,
                     containerColor = MaterialTheme.colorScheme.primary) {
-                    Icon(Icons.Default.Add, "新增班次", tint = Color.White)
+                    Icon(Icons.Default.Add, "新增班次", tint = MaterialTheme.colorScheme.onPrimary)
                 }
                 1 -> FloatingActionButton(onClick = { showStatusEditor = true },
                     containerColor = MaterialTheme.colorScheme.primary) {
-                    Icon(Icons.Default.Add, "新增状态", tint = Color.White)
+                    Icon(Icons.Default.Add, "新增状态", tint = MaterialTheme.colorScheme.onPrimary)
                 }
                 2 -> FloatingActionButton(
                     onClick = { showExtraEditor = true },
                     containerColor = MaterialTheme.colorScheme.primary
-                ) { Icon(Icons.Default.Add, "新增项目", tint = Color.White) }
+                ) { Icon(Icons.Default.Add, "新增项目", tint = MaterialTheme.colorScheme.onPrimary) }
                 3 -> FloatingActionButton(onClick = { showBreakEditor = true },
                     containerColor = MaterialTheme.colorScheme.primary) {
-                    Icon(Icons.Default.Add, "新增休息时段", tint = Color.White)
+                    Icon(Icons.Default.Add, "新增休息时段", tint = MaterialTheme.colorScheme.onPrimary)
                 }
             }
         }

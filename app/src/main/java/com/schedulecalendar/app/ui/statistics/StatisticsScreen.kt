@@ -56,8 +56,8 @@ fun StatisticsScreen(navController: NavController) {
                         }
                         Text(
                             "${sharedYear}年${sharedMonth}月",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
                         )
                         IconButton(onClick = {
                             if (sharedMonth == 12) { sharedYear++; sharedMonth = 1 }

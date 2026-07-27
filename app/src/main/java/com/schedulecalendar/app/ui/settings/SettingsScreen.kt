@@ -400,8 +400,7 @@ private fun PermissionManagementSection() {
                                         "\u2022 \u540e\u53f0\u5f39\u51fa\u754c\u9762\uff08\u70b9\u51fb\u901a\u77e5\u540e\u6253\u5f00\u5e94\u7528\uff09\n" +
                                         "\u2022 \u684c\u9762\u5feb\u6377\u65b9\u5f0f\uff08\u957f\u6309\u56fe\u6807\u663e\u793a\u6253\u5361\u5feb\u6377\u65b9\u5f0f\uff09",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    lineHeight = 16.sp
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 TextButton(
