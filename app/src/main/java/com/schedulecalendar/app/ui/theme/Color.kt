@@ -31,6 +31,13 @@ val Black      = Color(0xFF000000)
 val HolidayRed = Color(0xFFDC2626)
 val RestGray   = Color(0xFF9CA3AF)
 
+// 业务语义色（补贴/扣款/分类标签）
+val AllowanceGreen = Color(0xFF059669)   // 补贴/确认绿色
+val DeductionRed   = Color(0xFFDC2626)   // 扣款红色
+val CategoryGreen  = Color(0xFF059669)   // 节气分类
+val CategoryOrange = Color(0xFFD97706)   // 传统分类
+val CategoryBlue   = Color(0xFF2563EB)   // 国际分类
+
 // 班次预设颜色（18色，2行x9列）—— 高区分度配色方案
 val ShiftPresetColors = listOf(
     // 第一行：高饱和鲜艳色（暖冷交替）

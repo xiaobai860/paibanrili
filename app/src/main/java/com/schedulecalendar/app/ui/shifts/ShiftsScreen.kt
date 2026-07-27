@@ -39,6 +39,7 @@ import com.schedulecalendar.app.domain.model.ShiftStatus
 import com.schedulecalendar.app.ui.component.ColorPicker
 import com.schedulecalendar.app.ui.component.TimePickerField
 import com.schedulecalendar.app.ui.component.stableLabelColors
+import com.schedulecalendar.app.ui.theme.AllowanceGreen
 import com.schedulecalendar.app.ui.theme.ShiftPresetColors
 import com.schedulecalendar.app.ui.detail.ExtraItemsViewModel
 import com.schedulecalendar.app.ui.detail.safeColor
@@ -234,7 +235,8 @@ private fun ShiftsTab(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.Top) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(shift.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
+                            Text(shift.name, fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.bodyLarge,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (isBuiltin) {
                                 Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)) {
@@ -263,8 +265,7 @@ private fun ShiftsTab(
                         if (infoText.isNotBlank()) {
                             Text(
                                 text = infoText,
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 3,
                                 overflow = TextOverflow.Ellipsis
@@ -275,10 +276,10 @@ private fun ShiftsTab(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         // 仅用户班次显示编辑/删除
                         if (!isBuiltin) {
-                            IconButton(onClick = { onDelete(shift.id) }, modifier = Modifier.size(32.dp)) {
+                            IconButton(onClick = { onDelete(shift.id) }, modifier = Modifier.size(48.dp)) {
                                 Icon(Icons.Default.Delete, "\u5220\u9664", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                             }
-                            IconButton(onClick = { onEdit(shift.id) }, modifier = Modifier.size(32.dp)) {
+                            IconButton(onClick = { onEdit(shift.id) }, modifier = Modifier.size(48.dp)) {
                                 Icon(Icons.Default.Edit, "\u7f16\u8f91", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                             }
                         }
@@ -287,7 +288,7 @@ private fun ShiftsTab(
                             IconButton(
                                 onClick = { onMoveUp(shift.id) },
                                 enabled = !isFirst,
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(48.dp)
                             ) {
                                 Icon(Icons.Default.KeyboardDoubleArrowUp, "\u4e0a\u79fb", modifier = Modifier.size(20.dp),
                                     tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -295,7 +296,7 @@ private fun ShiftsTab(
                             IconButton(
                                 onClick = { onMoveDown(shift.id) },
                                 enabled = !isLast,
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(48.dp)
                             ) {
                                 Icon(Icons.Default.KeyboardDoubleArrowDown, "\u4e0b\u79fb", modifier = Modifier.size(20.dp),
                                     tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -345,12 +346,12 @@ private fun GlobalBreaksTab(
                         Text(brk.label.ifEmpty { "\u672a\u547d\u540d" }, fontWeight = FontWeight.SemiBold,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("${brk.startTime} \u2013 ${brk.endTime} ${formatBreakDuration(brk.startTime, brk.endTime)}",
-                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    IconButton(onClick = { onDelete(brk.id) }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { onDelete(brk.id) }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Delete, "\u5220\u9664", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                     }
-                    IconButton(onClick = { editTarget = brk }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { editTarget = brk }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Edit, "\u7f16\u8f91", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     }
                     // 排序按钮（垂直排列，与班次Tab一致）
@@ -358,7 +359,7 @@ private fun GlobalBreaksTab(
                         IconButton(
                             onClick = { onMoveUp(brk.id) },
                             enabled = !isFirst,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(Icons.Default.KeyboardDoubleArrowUp, "\u4e0a\u79fb", modifier = Modifier.size(20.dp),
                                 tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -366,7 +367,7 @@ private fun GlobalBreaksTab(
                         IconButton(
                             onClick = { onMoveDown(brk.id) },
                             enabled = !isLast,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(Icons.Default.KeyboardDoubleArrowDown, "\u4e0b\u79fb", modifier = Modifier.size(20.dp),
                                 tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -486,14 +487,14 @@ private fun StatusTypesTab(
                         }
                         if (status.reportType != null) {
                             val label = when (status.reportType) { "leave" -> "\u8ba1\u5165\u8bf7\u5047"; "swap" -> "\u8ba1\u5165\u8c03\u4f11"; else -> status.reportType }
-                            Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     if (!status.builtIn) {
-                        IconButton(onClick = { onDelete(status.id) }, modifier = Modifier.size(32.dp)) {
+                        IconButton(onClick = { onDelete(status.id) }, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.Delete, "\u5220\u9664", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                         }
-                        IconButton(onClick = { editTarget = status }, modifier = Modifier.size(32.dp)) {
+                        IconButton(onClick = { editTarget = status }, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.Edit, "\u7f16\u8f91", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         }
                     }
@@ -504,7 +505,7 @@ private fun StatusTypesTab(
                         IconButton(
                             onClick = { onMoveUp(status.id) },
                             enabled = !isFirst,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(Icons.Default.KeyboardDoubleArrowUp, "\u4e0a\u79fb", modifier = Modifier.size(20.dp),
                                 tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -512,7 +513,7 @@ private fun StatusTypesTab(
                         IconButton(
                             onClick = { onMoveDown(status.id) },
                             enabled = !isLast,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(Icons.Default.KeyboardDoubleArrowDown, "\u4e0b\u79fb", modifier = Modifier.size(20.dp),
                                 tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -589,9 +590,8 @@ private fun StatusEditorDialog(
                             Text(
                                 text = name.ifBlank { "\u72b6\u6001" },
                                 color = Color.White,
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Medium,
-                                lineHeight = 14.sp
                             )
                         }
                     }
@@ -715,17 +715,17 @@ private fun ExtraItemCard(
                 Text(
                     "${if (item.type == "allowance") "+\u00a5" else "-\u00a5"}${"%.2f".format(item.amount)}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (item.type == "allowance") Color(0xFF16A34A) else MaterialTheme.colorScheme.error
+                    color = if (item.type == "allowance") AllowanceGreen else MaterialTheme.colorScheme.error
                 )
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) { Icon(Icons.Filled.Delete, "\u5220\u9664", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp)) }
-            IconButton(onClick = onEdit, modifier = Modifier.size(32.dp))   { Icon(Icons.Filled.Edit,   "\u7f16\u8f91", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) }
+            IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.Delete, "\u5220\u9664", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp)) }
+            IconButton(onClick = onEdit, modifier = Modifier.size(48.dp))   { Icon(Icons.Filled.Edit,   "\u7f16\u8f91", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) }
             // 排序按钮（垂直排列，与班次Tab一致）
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 IconButton(
                     onClick = onMoveUp,
                     enabled = !isFirst,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(Icons.Default.KeyboardDoubleArrowUp, "\u4e0a\u79fb", modifier = Modifier.size(20.dp),
                         tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -733,7 +733,7 @@ private fun ExtraItemCard(
                 IconButton(
                     onClick = onMoveDown,
                     enabled = !isLast,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(Icons.Default.KeyboardDoubleArrowDown, "\u4e0b\u79fb", modifier = Modifier.size(20.dp),
                         tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -780,7 +780,7 @@ private fun ExtraItemEditorDialog(item: ExtraItem?, existingNames: List<String>,
                         }
                     },
                     label = { Text("\u91d1\u989d (\u5143)") },
-                    placeholder = { Text("\u00a5 0.00", color = Color(0xFFBBBBBB)) },
+                    placeholder = { Text("\u00a5 0.00", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) },
                     singleLine = true,
                     colors = stableLabelColors(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),

@@ -414,7 +414,7 @@ private fun PermissionManagementSection() {
                                         } catch (_: Exception) { }
                                     }
                                 ) {
-                                    Text("\u524d\u5f80\u5e94\u7528\u8bbe\u7f6e", fontSize = 12.sp)
+                                    Text("\u524d\u5f80\u5e94\u7528\u8bbe\u7f6e", style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -446,15 +446,15 @@ private fun PermissionItem(
             modifier = Modifier.size(18.dp)
         )
         Column(Modifier.weight(1f)) {
-            Text(name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            Text(description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (!granted) {
             TextButton(onClick = onAction, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                Text("\u524d\u5f80\u8bbe\u7f6e", fontSize = 12.sp)
+                Text("\u524d\u5f80\u8bbe\u7f6e", style = MaterialTheme.typography.labelSmall)
             }
         } else {
-            Text("\u5df2\u6388\u6743", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+            Text("\u5df2\u6388\u6743", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         }
     }
 }

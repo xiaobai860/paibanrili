@@ -63,6 +63,7 @@ import com.schedulecalendar.app.ui.navigation.*
 import com.schedulecalendar.app.ui.theme.Green100
 import com.schedulecalendar.app.ui.theme.Green700
 import com.schedulecalendar.app.ui.theme.HolidayRed
+import com.schedulecalendar.app.ui.theme.RedError
 import com.schedulecalendar.app.ui.theme.ScheduleCalendarTheme
 import com.tyme.solar.SolarDay
 import java.time.DayOfWeek
@@ -320,7 +321,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text("${state.year}年${state.month}月",
-                                    fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                    style = MaterialTheme.typography.headlineSmall)
                                 Spacer(Modifier.width(2.dp))
                                 Icon(
                                     Icons.Default.KeyboardArrowDown,
@@ -341,7 +342,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 Spacer(Modifier.width(6.dp))
                                 Text(
                                     text = "${pendingCount}条待办待处理",
-                                    fontSize = 11.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Medium,
                                     color = HolidayRed,
                                     modifier = Modifier.clickable {
@@ -365,16 +366,16 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 OutlinedButton(
                                     onClick = vm::goToToday,
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(24.dp),
-                                    border = BorderStroke(1.dp, Color.Red),
+                                    modifier = Modifier.height(48.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = Color.Red
+                                        contentColor = MaterialTheme.colorScheme.error
                                     )
                                 ) {
                                     Text(
                                         "今天",
-                                        fontSize = 12.sp,
-                                        color = Color.Red,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
                                         fontWeight = FontWeight.Medium
                                     )
                                 }
@@ -445,7 +446,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                 Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 2.dp, vertical = 0.dp)) {
                     WEEK_LABELS.forEachIndexed { i, label ->
                         Text(label, Modifier.weight(1f), textAlign = TextAlign.Center,
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = if (i == 5 || i == 6) HolidayRed
                                     else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium)
@@ -748,27 +749,27 @@ private fun DayCell(
     // 构建左侧状态角标列表
     val statusBadges = buildList<@Composable () -> Unit> {
         if (isEarlyLeave) add({ StatusMiniBadge("早", Color(0xFFF97316)) })
-        if (isLate) add({ StatusMiniBadge("迟", Color(0xFFEF4444)) })
+        if (isLate) add({ StatusMiniBadge("迟", RedError) })
         if (hasRemark) add({ StatusMiniBadge("注", Color(0xFF06B6D4)) })
     }
 
     // ── 视觉状态 ──────────────────────────────────────────────
     val interactionSource = remember { MutableInteractionSource() }
     val cellBg = when {
-        selected -> Color(0xFFDC2626).copy(alpha = 0.08f)          // 选中：浅红色填充（优先级最高）
+        selected -> HolidayRed.copy(alpha = 0.08f)          // 选中：浅红色填充（优先级最高）
         isToday -> Green100                                          // 今天：浅绿色填充
         shiftColor != null && !isRest -> shiftColor.copy(alpha = 0.12f)
         else -> Color.Transparent
     }
     val cellTextFg = when {
-        selected -> Color(0xFFDC2626)   // 选中：深红色文字（优先级最高）
+        selected -> HolidayRed   // 选中：深红色文字（优先级最高）
         isToday -> Green700          // 今天：深绿色文字
         isHoliday -> HolidayRed
         isWeekend -> HolidayRed.copy(alpha = 0.8f)
         else -> MaterialTheme.colorScheme.onSurface
     }
     val lunarTextFg = when {
-        selected -> Color(0xFFDC2626).copy(alpha = 0.7f)   // 选中：浅红文字（优先级最高）
+        selected -> HolidayRed.copy(alpha = 0.7f)   // 选中：浅红文字（优先级最高）
         isToday -> Green700.copy(alpha = 0.8f)   // 今天：浅绿文字
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -880,7 +881,7 @@ private fun DayCell(
                 drawContent()
                 drawRoundRect(color = outlineColor.copy(alpha = outlineColor.alpha * cellAlpha), cornerRadius = cr, style = Stroke(width = 0.5.dp.toPx()))
                 when {
-                    selected -> drawRoundRect(color = Color(0xFFDC2626), cornerRadius = cr, style = Stroke(width = 2.5.dp.toPx()))
+                    selected -> drawRoundRect(color = HolidayRed, cornerRadius = cr, style = Stroke(width = 2.5.dp.toPx()))
                     isToday -> drawRoundRect(color = Green700, cornerRadius = cr, style = Stroke(width = 2.5.dp.toPx()))
                 }
             }
@@ -1056,8 +1057,8 @@ private fun DayCell(
                                             modifier = Modifier.weight(1f).fillMaxHeight(),
                                             shape = RoundedCornerShape(2.dp),
                                             color = rowBgColor?.copy(alpha = 0.2f) ?: when {
-                                                selected -> Color(0xFFFECACA)
-                                                isToday -> Color(0xFFBBF7D0)
+                                                selected -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                                                isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                                                 else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
                                             }
                                         ) {
@@ -1071,7 +1072,7 @@ private fun DayCell(
                                                     overflow = TextOverflow.Clip,
                                                     fontWeight = FontWeight.Medium,
                                                     color = rowTextColor ?: when {
-                                                        selected -> Color(0xFFDC2626)
+                                                        selected -> HolidayRed
                                                         isToday -> Green700
                                                         else -> MaterialTheme.colorScheme.onSurface
                                                     },
@@ -1147,7 +1148,7 @@ private fun BatchToolbar(
                         contentPadding = PaddingValues(vertical = 6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer)
                     ) {
-                        Text("确认删除", fontSize = 13.sp)
+                        Text("确认删除", style = MaterialTheme.typography.bodyMedium)
                     }
                     OutlinedButton(
                         onClick  = onClearSel,
@@ -1156,7 +1157,7 @@ private fun BatchToolbar(
                         contentPadding = PaddingValues(vertical = 6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer)
                     ) {
-                        Text("取消选择", fontSize = 13.sp)
+                        Text("取消选择", style = MaterialTheme.typography.bodyMedium)
                     }
                     OutlinedButton(
                         onClick  = onCancel,
@@ -1164,7 +1165,7 @@ private fun BatchToolbar(
                         contentPadding = PaddingValues(vertical = 6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer)
                     ) {
-                        Text("退出", fontSize = 13.sp)
+                        Text("退出", style = MaterialTheme.typography.bodyMedium)
                     }
                 } else {
                     // 批量排班模式：应用排班、取消选择、退出
@@ -1176,7 +1177,7 @@ private fun BatchToolbar(
                     ) {
                         Icon(Icons.Default.Schedule, null, Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("应用排班", fontSize = 13.sp)
+                        Text("应用排班", style = MaterialTheme.typography.bodyMedium)
                     }
                     OutlinedButton(
                         onClick  = onClearSel,
@@ -1184,14 +1185,14 @@ private fun BatchToolbar(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 6.dp)
                     ) {
-                        Text("取消选择", fontSize = 13.sp)
+                        Text("取消选择", style = MaterialTheme.typography.bodyMedium)
                     }
                     OutlinedButton(
                         onClick  = onCancel,
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 6.dp)
                     ) {
-                        Text("退出", fontSize = 13.sp)
+                        Text("退出", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -1222,7 +1223,7 @@ private fun BatchToolbar(
                                 leadingIcon = if (isSelected) {
                                     { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                                 } else null,
-                                label = { Text(shift.name, fontSize = 12.sp) },
+                                label = { Text(shift.name, style = MaterialTheme.typography.bodySmall) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = shiftColor.copy(alpha = 0.18f)
                                 ),
@@ -1254,7 +1255,7 @@ private fun BatchToolbar(
                                     leadingIcon = if (isSelected) {
                                         { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                                     } else null,
-                                    label = { Text(status.name, fontSize = 12.sp) },
+                                    label = { Text(status.name, style = MaterialTheme.typography.bodySmall) },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = statusColor.copy(alpha = 0.18f)
                                     ),
@@ -1346,7 +1347,7 @@ private fun CopyMonthDialog(
                             modifier = Modifier.weight(1f).clickable { dstMonth = m }
                         ) {
                             Text("$m", textAlign = TextAlign.Center,
-                                fontSize  = 12.sp, fontWeight = FontWeight.Medium,
+                                style  = MaterialTheme.typography.bodySmall,
                                 color     = if (selected) MaterialTheme.colorScheme.onPrimary
                                             else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier  = Modifier.padding(vertical = 6.dp))
@@ -2000,7 +2001,7 @@ private fun DateDetailSection(
                 Text(
                     text = plumRainText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF5C6BC0),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -2320,7 +2321,7 @@ private fun AnniversaryEventSection(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(
-                            if (isAnniversary) Color(0xFFE53935).copy(alpha = 0.08f)
+                            if (isAnniversary) HolidayRed.copy(alpha = 0.08f)
                             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                         )
                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -2331,7 +2332,7 @@ private fun AnniversaryEventSection(
                         imageVector = if (isAnniversary) Icons.Default.Favorite else Icons.Default.Event,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
-                        tint = if (isAnniversary) Color(0xFFE53935) else MaterialTheme.colorScheme.primary
+                        tint = if (isAnniversary) HolidayRed else MaterialTheme.colorScheme.primary
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -2351,12 +2352,12 @@ private fun AnniversaryEventSection(
                     if (isAnniversary) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFFE53935).copy(alpha = 0.15f)
+                            color = HolidayRed.copy(alpha = 0.15f)
                         ) {
                             Text(
                                 text = "\u7eaa\u5ff5\u65e5",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFE53935),
+                                color = HolidayRed,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
