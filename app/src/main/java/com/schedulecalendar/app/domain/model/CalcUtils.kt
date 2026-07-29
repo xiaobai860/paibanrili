@@ -77,9 +77,7 @@ object CalcUtils {
         if (actualStart != null) {
             val aS   = timeToMin(actualStart)
             val sS   = timeToMin(shiftStart)
-            // 跨午夜修正：实际打卡时间数值上晚于班次开始，视为前一天
-            val adjAS = if (aS > sS) aS - 1440 else aS
-            val diff = sS - adjAS  // 正=早到 负=迟到
+            val diff = sS - aS  // 正=早到 负=迟到
             if (diff > 0) {
                 if (!ignoreEarlyArrival) {
                     val earlyOtMin = (floor(diff.toDouble() / grain) * grain).toInt()
@@ -291,11 +289,7 @@ object CalcUtils {
                     val shift = if (record.shiftId != null) shifts.find { s -> s.id == record.shiftId } else null
                     if (shift != null && shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) {
                         if (!record.actualStartTime.isNullOrEmpty()) {
-                            val pS = timeToMin(shift.startTime)
-                            val aS = timeToMin(record.actualStartTime)
-                            // 跨午夜修正：实际打卡时间早于计划上班时间（数值上），视为次日
-                            val adjAS = if (aS < pS) aS + 1440 else aS
-                            val lateMin = adjAS - pS
+                            val lateMin = timeToMin(record.actualStartTime) - timeToMin(shift.startTime)
                             if (lateMin > attendConfig.lateToleranceMin) lateCount++
                         }
                         if (record.actualEndTime != null) {
@@ -415,10 +409,7 @@ object CalcUtils {
             // 迟到/早退按分钟扣款（仅当配置了费率时）
             val shift = shifts.find { it.id == record.shiftId }
             if (shift != null && attendConfig.lateDeductionPerMin > 0 && !record.actualStartTime.isNullOrEmpty()) {
-                val pS = timeToMin(shift.startTime)
-                val aS = timeToMin(record.actualStartTime)
-                val adjAS = if (aS < pS) aS + 1440 else aS
-                val lateMin = adjAS - pS
+                val lateMin = timeToMin(record.actualStartTime) - timeToMin(shift.startTime)
                 if (lateMin > attendConfig.lateToleranceMin)
                     totalDeduction += lateMin * attendConfig.lateDeductionPerMin
             }

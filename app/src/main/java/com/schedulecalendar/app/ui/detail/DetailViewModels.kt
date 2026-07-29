@@ -18,6 +18,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import java.time.LocalDate
 
@@ -285,135 +286,135 @@ class HoursDetailViewModel @Inject constructor(
     init { load() }
 
     private fun load() = viewModelScope.launch {
-        val shifts      = shiftRepo.getAllWithBuiltin()
-        val breaks      = breakRepo.getAll()
-        val statuses    = shiftStatusRepo.getAllWithBuiltin()
-        val extras      = extraRepo.getAll()
-        val salaryConf  = prefs.salaryConfigFlow.first()
-        val attendConf  = prefs.attendConfigFlow.first()
-        val records     = scheduleRepo.getByMonth("%04d-%02d".format(year, month))
-        val schedules   = records.associateBy { it.date }
-        val details     = CalcUtils.getMonthScheduleDetails(year, month, schedules, shifts, breaks, extras, salaryConf, attendConf)
+        // 数据加载 + 工时计算移至 IO 线程，避免阻塞 Main 线程导致导航卡顿
+        val result = withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val shifts      = shiftRepo.getAllWithBuiltin()
+            val breaks      = breakRepo.getAll()
+            val statuses    = shiftStatusRepo.getAllWithBuiltin()
+            val extras      = extraRepo.getAll()
+            val salaryConf  = prefs.salaryConfigFlow.first()
+            val attendConf  = prefs.attendConfigFlow.first()
+            val records     = scheduleRepo.getByMonth("%04d-%02d".format(year, month))
+            val schedules   = records.associateBy { it.date }
+            val details     = CalcUtils.getMonthScheduleDetails(year, month, schedules, shifts, breaks, extras, salaryConf, attendConf)
 
-        val todayStr = "%04d-%02d-%02d".format(
-            LocalDate.now().year, LocalDate.now().monthValue, LocalDate.now().dayOfMonth
-        )
+            val todayStr = "%04d-%02d-%02d".format(
+                LocalDate.now().year, LocalDate.now().monthValue, LocalDate.now().dayOfMonth
+            )
 
-        val items = when (detailType) {
-            HoursDetailType.LATE -> {
-                details.filter { it.date <= todayStr && it.record != null }.mapNotNull { d ->
-                    val rec = d.record ?: return@mapNotNull null
-                    val shift = d.shift ?: return@mapNotNull null
-                    val actualStart = rec.actualStartTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
-                    val lateMinutes = calcLateMinutes(shift.startTime, actualStart, attendConf.lateToleranceMin)
-                    if (lateMinutes <= 0) return@mapNotNull null
-                    HoursDetailItem(
-                        date = d.date,
-                        shiftName = shift.name, shiftColor = shift.color,
-                        primaryText = "打卡 $actualStart（计划 ${shift.startTime}）",
-                        highlightText = "迟到 ${lateMinutes}分钟",
-                        isAlert = lateMinutes >= (attendConf.lateAlertCount * attendConf.lateToleranceMin)
-                    )
-                }
-            }
-            HoursDetailType.EARLY -> {
-                details.filter { it.date <= todayStr && it.record != null }.mapNotNull { d ->
-                    val rec = d.record ?: return@mapNotNull null
-                    val shift = d.shift ?: return@mapNotNull null
-                    val actualEnd = rec.actualEndTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
-                    val earlyMinutes = calcEarlyMinutes(shift.endTime, actualEnd, attendConf.earlyLeaveToleranceMin)
-                    if (earlyMinutes <= 0) return@mapNotNull null
-                    HoursDetailItem(
-                        date = d.date,
-                        shiftName = shift.name, shiftColor = shift.color,
-                        primaryText = "打卡 $actualEnd（计划 ${shift.endTime}）",
-                        highlightText = "早退 ${earlyMinutes}分钟",
-                        isAlert = earlyMinutes >= (attendConf.earlyLeaveAlertCount * attendConf.earlyLeaveToleranceMin)
-                    )
-                }
-            }
-            HoursDetailType.REMARK -> {
-                details.filter { it.date <= todayStr && !it.record?.remark.isNullOrBlank() }.map { d ->
-                    HoursDetailItem(
-                        date = d.date,
-                        shiftName = d.shift?.name, shiftColor = d.shift?.color,
-                        primaryText = d.record?.remark ?: ""
-                    )
-                }
-            }
-            HoursDetailType.MISSED -> {
-                details.filter { it.date <= todayStr && it.record != null && it.shift != null }.mapNotNull { d ->
-                    val rec = d.record ?: return@mapNotNull null
-                    val shift = d.shift ?: return@mapNotNull null
-                    if (shift.builtInType == "rest" || shift.builtInType == "swap") return@mapNotNull null
-                    val missingStart = rec.actualStartTime.isNullOrEmpty()
-                    val missingEnd   = rec.actualEndTime.isNullOrEmpty()
-                    if (!missingStart && !missingEnd) return@mapNotNull null
-                    val parts = buildList {
-                        if (missingStart) add("上班未打卡")
-                        if (missingEnd)   add("下班未打卡")
+            val items = when (detailType) {
+                HoursDetailType.LATE -> {
+                    details.filter { it.date <= todayStr && it.record != null }.mapNotNull { d ->
+                        val rec = d.record ?: return@mapNotNull null
+                        val shift = d.shift ?: return@mapNotNull null
+                        val actualStart = rec.actualStartTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
+                        val lateMinutes = calcLateMinutes(shift.startTime, actualStart, attendConf.lateToleranceMin)
+                        if (lateMinutes <= 0) return@mapNotNull null
+                        HoursDetailItem(
+                            date = d.date,
+                            shiftName = shift.name, shiftColor = shift.color,
+                            primaryText = "打卡 $actualStart（计划 ${shift.startTime}）",
+                            highlightText = "迟到 ${lateMinutes}分钟",
+                            isAlert = lateMinutes >= (attendConf.lateAlertCount * attendConf.lateToleranceMin)
+                        )
                     }
-                    HoursDetailItem(
-                        date = d.date,
-                        shiftName = shift.name, shiftColor = shift.color,
-                        primaryText = parts.joinToString("，"),
-                        secondaryText = "班次 ${shift.startTime}～${shift.endTime}",
-                        isAlert = true
-                    )
                 }
-            }
-            HoursDetailType.EXTRA -> {
-                details.filter { it.extras.isNotEmpty() }.map { d ->
-                    val subsidyTotal   = d.extras.filter { it.type == "allowance" }.sumOf { it.amount }
-                    val deductionTotal = d.extras.filter { it.type == "deduction" }.sumOf { it.amount }
-                    val parts = buildList {
-                        if (subsidyTotal > 0)   add("补贴 +¥%.2f".format(subsidyTotal))
-                        if (deductionTotal > 0) add("扣款 -¥%.2f".format(deductionTotal))
+                HoursDetailType.EARLY -> {
+                    details.filter { it.date <= todayStr && it.record != null }.mapNotNull { d ->
+                        val rec = d.record ?: return@mapNotNull null
+                        val shift = d.shift ?: return@mapNotNull null
+                        val actualEnd = rec.actualEndTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
+                        val earlyMinutes = calcEarlyMinutes(shift.endTime, actualEnd, attendConf.earlyLeaveToleranceMin)
+                        if (earlyMinutes <= 0) return@mapNotNull null
+                        HoursDetailItem(
+                            date = d.date,
+                            shiftName = shift.name, shiftColor = shift.color,
+                            primaryText = "打卡 $actualEnd（计划 ${shift.endTime}）",
+                            highlightText = "早退 ${earlyMinutes}分钟",
+                            isAlert = earlyMinutes >= (attendConf.earlyLeaveAlertCount * attendConf.earlyLeaveToleranceMin)
+                        )
                     }
-                    HoursDetailItem(
-                        date = d.date,
-                        shiftName = d.shift?.name, shiftColor = d.shift?.color,
-                        primaryText = parts.joinToString("，"),
-                        secondaryText = d.extras.joinToString("、") { it.name },
-                        highlightText = "共${d.extras.size}项"
-                    )
+                }
+                HoursDetailType.REMARK -> {
+                    details.filter { it.date <= todayStr && !it.record?.remark.isNullOrBlank() }.map { d ->
+                        HoursDetailItem(
+                            date = d.date,
+                            shiftName = d.shift?.name, shiftColor = d.shift?.color,
+                            primaryText = d.record?.remark ?: ""
+                        )
+                    }
+                }
+                HoursDetailType.MISSED -> {
+                    details.filter { it.date <= todayStr && it.record != null && it.shift != null }.mapNotNull { d ->
+                        val rec = d.record ?: return@mapNotNull null
+                        val shift = d.shift ?: return@mapNotNull null
+                        if (shift.builtInType == "rest" || shift.builtInType == "swap") return@mapNotNull null
+                        val missingStart = rec.actualStartTime.isNullOrEmpty()
+                        val missingEnd   = rec.actualEndTime.isNullOrEmpty()
+                        if (!missingStart && !missingEnd) return@mapNotNull null
+                        val parts = buildList {
+                            if (missingStart) add("上班未打卡")
+                            if (missingEnd)   add("下班未打卡")
+                        }
+                        HoursDetailItem(
+                            date = d.date,
+                            shiftName = shift.name, shiftColor = shift.color,
+                            primaryText = parts.joinToString("，"),
+                            secondaryText = "班次 ${shift.startTime}～${shift.endTime}",
+                            isAlert = true
+                        )
+                    }
+                }
+                HoursDetailType.EXTRA -> {
+                    details.filter { it.extras.isNotEmpty() }.map { d ->
+                        val subsidyTotal   = d.extras.filter { it.type == "allowance" }.sumOf { it.amount }
+                        val deductionTotal = d.extras.filter { it.type == "deduction" }.sumOf { it.amount }
+                        val parts = buildList {
+                            if (subsidyTotal > 0)   add("补贴 +¥%.2f".format(subsidyTotal))
+                            if (deductionTotal > 0) add("扣款 -¥%.2f".format(deductionTotal))
+                        }
+                        HoursDetailItem(
+                            date = d.date,
+                            shiftName = d.shift?.name, shiftColor = d.shift?.color,
+                            primaryText = parts.joinToString("，"),
+                            secondaryText = d.extras.joinToString("、") { it.name },
+                            highlightText = "共${d.extras.size}项"
+                        )
+                    }
+                }
+                HoursDetailType.ALL -> {
+                    details.filter { it.record != null }.map { d ->
+                        val total = d.normalHours + d.overtimeHours + d.weekendHours + d.holidayHours
+                        HoursDetailItem(
+                            date = d.date,
+                            shiftName = d.shift?.name, shiftColor = d.shift?.color,
+                            primaryText = if (total > 0) "工时 %.1fh".format(total) else d.record?.type?.name ?: "",
+                            secondaryText = buildString {
+                                if (d.overtimeHours > 0) append("加班%.1fh ".format(d.overtimeHours))
+                                if (d.record?.remark?.isNotBlank() == true) append("备注")
+                            },
+                            highlightText = if (d.salary > 0) "¥%.0f".format(d.salary) else ""
+                        )
+                    }
                 }
             }
-            HoursDetailType.ALL -> {
-                details.filter { it.record != null }.map { d ->
-                    val total = d.normalHours + d.overtimeHours + d.weekendHours + d.holidayHours
-                    HoursDetailItem(
-                        date = d.date,
-                        shiftName = d.shift?.name, shiftColor = d.shift?.color,
-                        primaryText = if (total > 0) "工时 %.1fh".format(total) else d.record?.type?.name ?: "",
-                        secondaryText = buildString {
-                            if (d.overtimeHours > 0) append("加班%.1fh ".format(d.overtimeHours))
-                            if (d.record?.remark?.isNotBlank() == true) append("备注")
-                        },
-                        highlightText = if (d.salary > 0) "¥%.0f".format(d.salary) else ""
-                    )
-                }
-            }
+            items
         }
 
-        _state.update { it.copy(items = items, loading = false) }
+        _state.update { it.copy(items = result, loading = false) }
     }
 
-    /** 计算迟到分钟数（超过容忍阈值才算），返回实际迟到分钟（支持跨午夜） */
+    /** 计算迟到分钟数（超过容忍阈值才算），返回实际迟到分钟 */
     private fun calcLateMinutes(planStart: String, actualStart: String, toleranceMin: Int): Int {
         val p = planStart.toMinutes(); val a = actualStart.toMinutes()
-        // 跨午夜修正：实际打卡时间早于计划上班时间，视为次日（前一天晚上）
-        val adjA = if (a < p) a + 1440 else a
-        val diff = adjA - p
+        val diff = a - p  // 正=迟到 负=早到
         return if (diff >= toleranceMin) diff else 0
     }
 
-    /** 计算早退分钟数（支持跨午夜） */
+    /** 计算早退分钟数 */
     private fun calcEarlyMinutes(planEnd: String, actualEnd: String, toleranceMin: Int): Int {
         val p = planEnd.toMinutes(); val a = actualEnd.toMinutes()
-        // 跨午夜修正：实际打卡时间早于计划下班时间，视为次日
-        val adjA = if (a < p) a + 1440 else a
-        val diff = p - adjA
+        val diff = p - a  // 正=早退 负=晚退
         return if (diff >= toleranceMin) diff else 0
     }
 

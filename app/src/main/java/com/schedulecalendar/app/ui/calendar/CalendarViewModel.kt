@@ -294,26 +294,16 @@ class CalendarViewModel @Inject constructor(
             // 加班待确认：早到/晚退分别独立判断（与小程序逻辑一致）
             // 早到加班待确认：有实际上班时间 & 比班次早 & 未忽略早到 & 未确认早到加班
             if (!record.actualStartTime.isNullOrEmpty() && !record.ignoreEarlyArrival && !record.confirmEarlyOT) {
-                val sS = CalcUtils.timeToMin(shift.startTime)
-                val aS = CalcUtils.timeToMin(record.actualStartTime)
-                // 跨午夜修正：实际打卡时间晚于班次开始时间（数值上），视为前一天
-                val adjAS = if (aS > sS) aS - 1440 else aS
-                val earlyMin = sS - adjAS
+                val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime)
                 val grain = attendConfig.overtimeGranMin
                 if (earlyMin >= grain) {
                     todos.add(TodoItem(dateStr, TodoType.PENDING_EARLY_OT, "早到加班待确认", shiftName = sn, shiftTime = st, overtimeMinutes = earlyMin, actualTime = record.actualStartTime))
                 }
             } else if (record.confirmEarlyOT) {
-                val sS = CalcUtils.timeToMin(shift.startTime)
-                val aS = CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
-                val adjAS = if (aS > sS) aS - 1440 else aS
-                val earlyMin = sS - adjAS
+                val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
                 todos.add(TodoItem(dateStr, TodoType.CONFIRMED_EARLY_OT, "已确认早到加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: ""))
             } else if (record.ignoreEarlyArrival) {
-                val sS = CalcUtils.timeToMin(shift.startTime)
-                val aS = CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
-                val adjAS = if (aS > sS) aS - 1440 else aS
-                val earlyMin = sS - adjAS
+                val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
                 todos.add(TodoItem(dateStr, TodoType.IGNORED_EARLY_OT, "忽略早到加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: ""))
             }
             // 晚退加班待确认：有实际下班时间 & 比班次晚 & 未忽略晚退 & 未确认晚退加班
