@@ -274,9 +274,9 @@ class CalendarViewModel @Inject constructor(
             val stLabel = if (isBuiltIn) {
                 if (applied!!.statusId == BUILTIN_STATUS_LEAVE) "请假" else "调休"
             } else ""
-            // 内置状态：检查 appliedStatus 时间；普通：检查 actualStartTime/actualEndTime
-            val startFilled = if (isBuiltIn) applied?.startTime != null else record.actualStartTime != null
-            val endFilled   = if (isBuiltIn) applied?.endTime != null else record.actualEndTime != null
+            // 内置状态：检查 appliedStatus 时间；普通：检查 actualStartTime/actualEndTime（空字符串也视为未填写）
+            val startFilled = if (isBuiltIn) !applied?.startTime.isNullOrEmpty() else !record.actualStartTime.isNullOrEmpty()
+            val endFilled   = if (isBuiltIn) !applied?.endTime.isNullOrEmpty() else !record.actualEndTime.isNullOrEmpty()
             val startVal    = if (isBuiltIn) applied?.startTime else record.actualStartTime
             val endVal      = if (isBuiltIn) applied?.endTime else record.actualEndTime
             // 漏打卡检测：有班次但缺少打卡记录，上班/下班分别独立判断
@@ -293,21 +293,31 @@ class CalendarViewModel @Inject constructor(
 
             // 加班待确认：早到/晚退分别独立判断（与小程序逻辑一致）
             // 早到加班待确认：有实际上班时间 & 比班次早 & 未忽略早到 & 未确认早到加班
-            if (record.actualStartTime != null && !record.ignoreEarlyArrival && !record.confirmEarlyOT) {
-                val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime)
+            if (!record.actualStartTime.isNullOrEmpty() && !record.ignoreEarlyArrival && !record.confirmEarlyOT) {
+                val sS = CalcUtils.timeToMin(shift.startTime)
+                val aS = CalcUtils.timeToMin(record.actualStartTime)
+                // 跨午夜修正：实际打卡时间晚于班次开始时间（数值上），视为前一天
+                val adjAS = if (aS > sS) aS - 1440 else aS
+                val earlyMin = sS - adjAS
                 val grain = attendConfig.overtimeGranMin
                 if (earlyMin >= grain) {
                     todos.add(TodoItem(dateStr, TodoType.PENDING_EARLY_OT, "早到加班待确认", shiftName = sn, shiftTime = st, overtimeMinutes = earlyMin, actualTime = record.actualStartTime))
                 }
             } else if (record.confirmEarlyOT) {
-                val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
+                val sS = CalcUtils.timeToMin(shift.startTime)
+                val aS = CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
+                val adjAS = if (aS > sS) aS - 1440 else aS
+                val earlyMin = sS - adjAS
                 todos.add(TodoItem(dateStr, TodoType.CONFIRMED_EARLY_OT, "已确认早到加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: ""))
             } else if (record.ignoreEarlyArrival) {
-                val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
+                val sS = CalcUtils.timeToMin(shift.startTime)
+                val aS = CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
+                val adjAS = if (aS > sS) aS - 1440 else aS
+                val earlyMin = sS - adjAS
                 todos.add(TodoItem(dateStr, TodoType.IGNORED_EARLY_OT, "忽略早到加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: ""))
             }
             // 晚退加班待确认：有实际下班时间 & 比班次晚 & 未忽略晚退 & 未确认晚退加班
-            if (record.actualEndTime != null && !record.ignoreLateLeave && !record.confirmLateOT) {
+            if (!record.actualEndTime.isNullOrEmpty() && !record.ignoreLateLeave && !record.confirmLateOT) {
                 val sS = CalcUtils.timeToMin(shift.startTime)
                 val (_, normSE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(shift.endTime))
                 val (_, normAE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(record.actualEndTime))
@@ -317,10 +327,16 @@ class CalendarViewModel @Inject constructor(
                     todos.add(TodoItem(dateStr, TodoType.PENDING_LATE_OT, "晚退加班待确认", shiftName = sn, shiftTime = st, overtimeMinutes = lateMin, actualTime = record.actualEndTime))
                 }
             } else if (record.confirmLateOT) {
-                val lateMin = CalcUtils.timeToMin(record.actualEndTime ?: shift.endTime) - CalcUtils.timeToMin(shift.endTime)
+                val sS = CalcUtils.timeToMin(shift.startTime)
+                val (_, normSE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(shift.endTime))
+                val (_, normAE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(record.actualEndTime ?: shift.endTime))
+                val lateMin = normAE - normSE
                 todos.add(TodoItem(dateStr, TodoType.CONFIRMED_LATE_OT, "已确认晚退加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, lateMin), actualTime = record.actualEndTime ?: ""))
             } else if (record.ignoreLateLeave) {
-                val lateMin = CalcUtils.timeToMin(record.actualEndTime ?: shift.endTime) - CalcUtils.timeToMin(shift.endTime)
+                val sS = CalcUtils.timeToMin(shift.startTime)
+                val (_, normSE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(shift.endTime))
+                val (_, normAE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(record.actualEndTime ?: shift.endTime))
+                val lateMin = normAE - normSE
                 todos.add(TodoItem(dateStr, TodoType.IGNORED_LATE_OT, "忽略晚退加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, lateMin), actualTime = record.actualEndTime ?: ""))
             }
         }
@@ -468,8 +484,23 @@ class CalendarViewModel @Inject constructor(
     }
 
     fun clockOut(date: String, time: String) = viewModelScope.launch {
-        val rec = (scheduleRepo.getByDate(date) ?: ScheduleRecord(date))
-        scheduleRepo.save(rec.copy(actualEndTime = time))
+        // 跨午夜修正：打卡时间早于班次结束时间，视为前一天班次的下班打卡
+        val rec = scheduleRepo.getByDate(date)
+        val shift = rec?.shiftId?.let { id -> shiftRepo.getById(id) }
+        val actualTargetDate = if (shift != null && shift.endTime.isNotEmpty()) {
+            val timeMin = CalcUtils.timeToMin(time)
+            val endMin = CalcUtils.timeToMin(shift.endTime)
+            if (timeMin < endMin) {
+                // 打卡时间早于班次结束 → 跨午夜，归属前一天
+                val prevDate = try {
+                    java.time.LocalDate.parse(date).minusDays(1).toString()
+                } catch (_: Exception) { date }
+                prevDate
+            } else date
+        } else date
+
+        val targetRec = scheduleRepo.getByDate(actualTargetDate) ?: ScheduleRecord(actualTargetDate)
+        scheduleRepo.save(targetRec.copy(actualEndTime = time))
         _uiEvent.send(CalendarUiEvent.ShowMessage("已记录下班打卡 $time"))
         syncClockInWidget()
     }
@@ -500,9 +531,31 @@ class CalendarViewModel @Inject constructor(
             )
             rec.copy(appliedStatus = newStatus)
         } else {
-            rec.copy(
-                actualStartTime = startTime?.ifBlank { null } ?: rec.actualStartTime,
-                actualEndTime   = endTime?.ifBlank { null } ?: rec.actualEndTime
+            // 跨午夜修正：下班打卡时间早于班次结束时间，视为前一天班次
+            var finalStartTime = startTime?.ifBlank { null } ?: rec.actualStartTime
+            var finalEndTime   = endTime?.ifBlank { null } ?: rec.actualEndTime
+            var targetDate     = date
+
+            if (endTime != null && endTime.isNotBlank()) {
+                val shift = rec.shiftId?.let { id -> shiftRepo.getById(id) }
+                if (shift != null && shift.endTime.isNotEmpty()) {
+                    val timeMin = CalcUtils.timeToMin(endTime)
+                    val endMin  = CalcUtils.timeToMin(shift.endTime)
+                    if (timeMin < endMin) {
+                        // 打卡时间早于班次结束 → 跨午夜，归属前一天
+                        val prevDate = try {
+                            java.time.LocalDate.parse(date).minusDays(1).toString()
+                        } catch (_: Exception) { date }
+                        targetDate = prevDate
+                        finalEndTime = endTime
+                    }
+                }
+            }
+
+            val targetRec = scheduleRepo.getByDate(targetDate) ?: ScheduleRecord(targetDate)
+            targetRec.copy(
+                actualStartTime = if (targetDate == date) finalStartTime else targetRec.actualStartTime,
+                actualEndTime   = if (targetDate == date) finalEndTime else finalEndTime
             )
         }
         scheduleRepo.save(updated)

@@ -304,7 +304,7 @@ class HoursDetailViewModel @Inject constructor(
                 details.filter { it.date <= todayStr && it.record != null }.mapNotNull { d ->
                     val rec = d.record ?: return@mapNotNull null
                     val shift = d.shift ?: return@mapNotNull null
-                    val actualStart = rec.actualStartTime ?: return@mapNotNull null
+                    val actualStart = rec.actualStartTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
                     val lateMinutes = calcLateMinutes(shift.startTime, actualStart, attendConf.lateToleranceMin)
                     if (lateMinutes <= 0) return@mapNotNull null
                     HoursDetailItem(
@@ -320,7 +320,7 @@ class HoursDetailViewModel @Inject constructor(
                 details.filter { it.date <= todayStr && it.record != null }.mapNotNull { d ->
                     val rec = d.record ?: return@mapNotNull null
                     val shift = d.shift ?: return@mapNotNull null
-                    val actualEnd = rec.actualEndTime ?: return@mapNotNull null
+                    val actualEnd = rec.actualEndTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
                     val earlyMinutes = calcEarlyMinutes(shift.endTime, actualEnd, attendConf.earlyLeaveToleranceMin)
                     if (earlyMinutes <= 0) return@mapNotNull null
                     HoursDetailItem(
@@ -346,8 +346,8 @@ class HoursDetailViewModel @Inject constructor(
                     val rec = d.record ?: return@mapNotNull null
                     val shift = d.shift ?: return@mapNotNull null
                     if (shift.builtInType == "rest" || shift.builtInType == "swap") return@mapNotNull null
-                    val missingStart = rec.actualStartTime == null
-                    val missingEnd   = rec.actualEndTime == null
+                    val missingStart = rec.actualStartTime.isNullOrEmpty()
+                    val missingEnd   = rec.actualEndTime.isNullOrEmpty()
                     if (!missingStart && !missingEnd) return@mapNotNull null
                     val parts = buildList {
                         if (missingStart) add("上班未打卡")
@@ -399,17 +399,21 @@ class HoursDetailViewModel @Inject constructor(
         _state.update { it.copy(items = items, loading = false) }
     }
 
-    /** 计算迟到分钟数（超过容忍阈值才算），返回实际迟到分钟 */
+    /** 计算迟到分钟数（超过容忍阈值才算），返回实际迟到分钟（支持跨午夜） */
     private fun calcLateMinutes(planStart: String, actualStart: String, toleranceMin: Int): Int {
         val p = planStart.toMinutes(); val a = actualStart.toMinutes()
-        val diff = a - p
+        // 跨午夜修正：实际打卡时间早于计划上班时间，视为次日（前一天晚上）
+        val adjA = if (a < p) a + 1440 else a
+        val diff = adjA - p
         return if (diff >= toleranceMin) diff else 0
     }
 
-    /** 计算早退分钟数 */
+    /** 计算早退分钟数（支持跨午夜） */
     private fun calcEarlyMinutes(planEnd: String, actualEnd: String, toleranceMin: Int): Int {
         val p = planEnd.toMinutes(); val a = actualEnd.toMinutes()
-        val diff = p - a
+        // 跨午夜修正：实际打卡时间早于计划下班时间，视为次日
+        val adjA = if (a < p) a + 1440 else a
+        val diff = p - adjA
         return if (diff >= toleranceMin) diff else 0
     }
 
