@@ -585,13 +585,13 @@ private fun HoursDailyRow(d: DayScheduleDetail) {
                 }
             }
             val rec = d.record
-            if (rec != null && (rec.actualStartTime != null || rec.actualEndTime != null || !rec.remark.isNullOrBlank())) {
+            if (rec != null && (!rec.actualStartTime.isNullOrEmpty() || !rec.actualEndTime.isNullOrEmpty() || !rec.remark.isNullOrBlank())) {
                 Spacer(Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    rec.actualStartTime?.let { t ->
+                    rec.actualStartTime?.takeIf { it.isNotEmpty() }?.let { t ->
                         Text("↑$t", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                     }
-                    rec.actualEndTime?.let { t ->
+                    rec.actualEndTime?.takeIf { it.isNotEmpty() }?.let { t ->
                         Text("↓$t", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                     }
                     rec.remark?.takeIf { it.isNotBlank() }?.let { remark ->
