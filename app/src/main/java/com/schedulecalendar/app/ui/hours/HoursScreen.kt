@@ -11,7 +11,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -67,30 +66,27 @@ fun HoursContent(
     onMonthChange: (Int, Int) -> Unit = { _, _ -> },
     vm: HoursViewModel = hiltViewModel()
 ) {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) vm.reload()
+    val isEmbedded = sharedYear != null
+
+    // 仅在非嵌入模式下监听生命周期 onResume 刷新（嵌入模式由 Pager 管理，避免不必要的 reload）
+    if (!isEmbedded) {
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) vm.reload()
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // 外部共享月份同步
+    // 外部共享月份同步（单向：父→子）
     LaunchedEffect(sharedYear, sharedMonth) {
         if (sharedYear != null && sharedMonth != null) {
             vm.goToMonth(sharedYear, sharedMonth)
         }
     }
     val state by vm.state.collectAsStateWithLifecycle()
-    // 回报当前月份给外部（跳过首次组合，避免 ViewModel 初始状态覆盖共享月份）
-    var skipFirstReport by rememberSaveable { mutableStateOf(true) }
-    LaunchedEffect(state.year, state.month) {
-        if (sharedYear != null && !skipFirstReport) {
-            onMonthChange(state.year, state.month)
-        }
-        skipFirstReport = false
-    }
 
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) {
@@ -105,7 +101,6 @@ fun HoursContent(
 
     var chartView by remember { mutableStateOf("daily") }
 
-    val isEmbedded = sharedYear != null
     val contentBlock: @Composable (PaddingValues) -> Unit = { padding ->
         if (state.loading) {
             Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
