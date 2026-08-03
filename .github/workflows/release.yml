@@ -47,6 +47,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: 设置 Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 33
+          build-tools: '33.0.2'
+
       - name: 注入签名配置到 local.properties
         run: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" >> local.properties
@@ -63,6 +69,8 @@ jobs:
         run: |
           # 使用 UTC+8 日期作为版本号前缀
           DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)
+          # 使用 gh CLI 前需要确保已用 GITHUB_TOKEN 登录
+          echo "$GITHUB_TOKEN" | gh auth login --with-token || true
           # 查询 GitHub 当天已有的 release 数量来确定迭代序号
           EXISTING=$(gh release list --limit 100 --json tagName --jq ".[].tagName" | grep "^v${DATE}" | wc -l)
           ITER=$(printf "%02d" $((EXISTING + 1)))
@@ -70,7 +78,7 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "版本号: ${VERSION}"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 更新 build.gradle.kts 版本号
         run: |
@@ -79,6 +87,14 @@ jobs:
           sed -i "s/versionName[[:space:]]*=[[:space:]]*\"[^\"]*\"/versionName = \"${VERSION}\"/" app/build.gradle.kts
           echo "已更新版本号为: ${VERSION}"
           grep -E "versionCode|versionName" app/build.gradle.kts || true
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties') }}-${{ steps.version.outputs.version }}
 
       # Debug step: print any Java/Gradle-related env vars so we can see what's被注入
       - name: 打印 Java / Gradle 环境变量（调试）
