@@ -1,0 +1,15 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: main
+nodes_managed: true
+exported_at: "2026-08-03T11:56:55Z"
+modules:
+    "":
+        dir_name: 排班日历 Android 应用（Compose + Hilt + Room）
+        title: 排班日历 Android 应用（Compose + Hilt + Room）
+        scope: []
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
