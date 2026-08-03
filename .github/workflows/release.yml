@@ -62,7 +62,9 @@ jobs:
           cat app/build.gradle.kts | grep -E "versionCode|versionName"
 
       - name: 构建 Release APK
-        run: ./gradlew assembleRelease --no-daemon
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon
 
       - name: 重命名 APK
         run: |
