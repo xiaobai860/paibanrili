@@ -104,6 +104,7 @@ fun ShiftsScreen(navController: NavController, vm: ShiftsViewModel = hiltViewMod
                         text = {
                             Text(
                                 text = title,
+                                fontSize = 18.sp,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                                 fontWeight = if (currentPage == i) FontWeight.SemiBold else FontWeight.Normal

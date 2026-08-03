@@ -82,9 +82,13 @@ fun HoursContent(
         }
     }
     val state by vm.state.collectAsStateWithLifecycle()
-    // 回报当前月份给外部
+    // 回报当前月份给外部（跳过首次组合，避免 ViewModel 初始状态覆盖共享月份）
+    var skipFirstReport by remember { mutableStateOf(true) }
     LaunchedEffect(state.year, state.month) {
-        if (sharedYear != null) onMonthChange(state.year, state.month)
+        if (sharedYear != null && !skipFirstReport) {
+            onMonthChange(state.year, state.month)
+        }
+        skipFirstReport = false
     }
 
     val snackbar = remember { SnackbarHostState() }
