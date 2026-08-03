@@ -55,14 +55,29 @@ jobs:
 
       - name: 注入签名配置到 local.properties
         run: |
+          set -eu
           echo "sdk.dir=$ANDROID_SDK_ROOT" >> local.properties
           echo "RELEASE_STORE_FILE=${{ github.workspace }}/keystore.jks" >> local.properties
           echo "RELEASE_STORE_PASSWORD=${{ secrets.RELEASE_STORE_PASSWORD }}" >> local.properties
           echo "RELEASE_KEY_ALIAS=${{ secrets.RELEASE_KEY_ALIAS }}" >> local.properties
           echo "RELEASE_KEY_PASSWORD=${{ secrets.RELEASE_KEY_PASSWORD }}" >> local.properties
+        shell: bash
 
-      - name: 解码签名文件
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
+      - name: 解码签名文件 (检查 secrets)
+        run: |
+          set -euxo pipefail
+          if [ -z "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "ERROR: KEYSTORE_BASE64 is empty. Please set the secret." >&2
+            exit 2
+          fi
+          # decode into workspace and check file
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
+          if [ ! -s keystore.jks ]; then
+            echo "ERROR: keystore.jks decode produced empty file" >&2
+            exit 2
+          fi
+          ls -la keystore.jks
+        shell: bash
 
       - name: 获取版本号（设备日期）
         id: version
@@ -72,13 +87,14 @@ jobs:
           # 使用 gh CLI 前需要确保已用 GITHUB_TOKEN 登录
           echo "$GITHUB_TOKEN" | gh auth login --with-token || true
           # 查询 GitHub 当天已有的 release 数量来确定迭代序号
-          EXISTING=$(gh release list --limit 100 --json tagName --jq ".[].tagName" | grep "^v${DATE}" | wc -l)
+          EXISTING=$(gh release list --limit 100 --json tagName --jq ".[].tagName" | grep "^v${DATE}" | wc -l || true)
           ITER=$(printf "%02d" $((EXISTING + 1)))
           VERSION="${DATE}${ITER}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "版本号: ${VERSION}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
 
       - name: 更新 build.gradle.kts 版本号
         run: |
@@ -87,6 +103,7 @@ jobs:
           sed -i "s/versionName[[:space:]]*=[[:space:]]*\"[^\"]*\"/versionName = \"${VERSION}\"/" app/build.gradle.kts
           echo "已更新版本号为: ${VERSION}"
           grep -E "versionCode|versionName" app/build.gradle.kts || true
+        shell: bash
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -95,6 +112,9 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties') }}-${{ steps.version.outputs.version }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-${{ hashFiles('**/gradle-wrapper.properties') }}-
+            ${{ runner.os }}-gradle-
 
       # Debug step: print any Java/Gradle-related env vars so we can see what's被注入
       - name: 打印 Java / Gradle 环境变量（调试）
@@ -104,18 +124,33 @@ jobs:
           echo "======================================"
         shell: bash
 
-      - name: 构建 Release APK
+      - name: 构建 Release APK (增强诊断)
         run: |
-          # 打印原始变量以便调试（如果有引用或不可见字符可以看到）
-          echo "==== BEFORE CLEANUP Java/Gradle env vars ===="
-          echo "JAVA_TOOL_OPTIONS=[${JAVA_TOOL_OPTIONS}]"
-          echo "_JAVA_OPTIONS=[${_JAVA_OPTIONS}]"
-          echo "GRADLE_OPTS=[${GRADLE_OPTS}]"
-          printf '%s' "${_JAVA_OPTIONS}" | od -An -t x1 || true
-          printf '%s' "${JAVA_TOOL_OPTIONS}" | od -An -t x1 || true
-          echo "============================================="
+          set -euxo pipefail
 
-          # 再次确保在当前 shell 里取消可能来自 runner 或其他地方的带引号的 JVM/Gradle 参数
+          echo ">>> 环境概览"
+          java -version || true
+          ./gradlew --version || true
+          echo "Runner OS: $RUNNER_OS"
+
+          echo ">>> 检查关键文件/变量"
+          echo "工作目录: $(pwd)"
+          ls -la || true
+
+          echo "local.properties preview:"
+          if [ -f local.properties ]; then
+            sed -n '1,200p' local.properties || true
+          else
+            echo "local.properties not found"
+          fi
+
+          echo "keystore.jks exists? $( [ -s keystore.jks ] && echo yes || echo no )"
+          if [ ! -s keystore.jks ]; then
+            echo "ERROR: keystore.jks is missing or empty. Did secrets.KEYSTORE_BASE64 decode correctly?" >&2
+            exit 2
+          fi
+
+          # 再次确保没有残留的 JVM 参数
           unset JAVA_TOOL_OPTIONS || true
           unset _JAVA_OPTIONS || true
           unset GRADLE_OPTS || true
@@ -125,10 +160,15 @@ jobs:
 
           chmod +x ./gradlew
 
-          # 使用 env -u 在命令级别移除这些变量，确保 gradle/Java 不会收到错误的 JVM 参数
-          env -u JAVA_TOOL_OPTIONS -u _JAVA_OPTIONS -u GRADLE_OPTS ./gradlew assembleRelease --no-daemon --no-build-cache
+          # 使用 --stacktrace 和 --info 输出完整诊断。禁用配置缓存以避免相关不确定性。
+          env -u JAVA_TOOL_OPTIONS -u _JAVA_OPTIONS -u GRADLE_OPTS \
+            ./gradlew clean assembleRelease \
+              --no-daemon --no-build-cache --no-configuration-cache \
+              --stacktrace --info || {
+                echo "Gradle 构建失败，已输出 --stacktrace/--info，请查看上面的详细日志。" >&2
+                exit 1
+              }
         env:
-          # 冗余但更安全：显式在此步骤层面保持为空
           GRADLE_OPTS: ''
           JAVA_TOOL_OPTIONS: ''
           _JAVA_OPTIONS: ''
@@ -140,6 +180,7 @@ jobs:
           mv app/build/outputs/apk/release/app-release.apk "paibanrili-v${VERSION}.apk"
           echo "APK_PATH=paibanrili-v${VERSION}.apk" >> $GITHUB_ENV
           echo "VERSION_TAG=v${VERSION}" >> $GITHUB_ENV
+        shell: bash
 
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
