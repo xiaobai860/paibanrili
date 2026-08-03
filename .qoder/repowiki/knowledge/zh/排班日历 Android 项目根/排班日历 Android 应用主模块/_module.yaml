@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: app_module
+title: 排班日历 Android 应用主模块
+scope:
+    - app/
+source_files: []
+depends_on: []
+related_to: []
