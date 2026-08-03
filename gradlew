@@ -37,7 +37,8 @@ APP_NAME="Gradle"
 APP_BASE_NAME=$(basename "$0")
 
 # JVM 参数
-DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
+# 移除变量内的字面双引号，确保 JVM 能正确识别 -Xmx/-Xms 作为选项
+DEFAULT_JVM_OPTS='-Xmx64m -Xms64m'
 
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
