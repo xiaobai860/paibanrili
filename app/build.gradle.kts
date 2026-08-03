@@ -21,11 +21,14 @@ android {
 
     signingConfigs {
         create("release") {
-                storeFile = null
-                storePassword = ""
-                keyAlias = ""
-                keyPassword = ""
+            val localProps = java.util.Properties().apply {
+                load(rootProject.file("local.properties").inputStream())
             }
+            storeFile     = file(localProps.getProperty("RELEASE_STORE_FILE"))
+            storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD")
+            keyAlias      = localProps.getProperty("RELEASE_KEY_ALIAS")
+            keyPassword   = localProps.getProperty("RELEASE_KEY_PASSWORD")
+        }
     }
 
     buildTypes {
