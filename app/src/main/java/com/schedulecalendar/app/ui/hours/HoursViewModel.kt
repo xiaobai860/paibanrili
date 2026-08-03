@@ -12,7 +12,6 @@ import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -63,8 +62,8 @@ class HoursViewModel @Inject constructor(
     private val _state   = MutableStateFlow(HoursUiState())
     val state            = _state.asStateFlow()
 
-    private val _uiEvent = Channel<HoursUiEvent>(Channel.BUFFERED)
-    val uiEvent          = _uiEvent.receiveAsFlow()
+    private val _uiEvent = MutableSharedFlow<HoursUiEvent>(extraBufferCapacity = 8)
+    val uiEvent          = _uiEvent.asSharedFlow()
 
     private var loadJob: Job? = null
 
@@ -79,7 +78,7 @@ class HoursViewModel @Inject constructor(
 
     fun navigateToDetail(type: String) {
         val s = _state.value
-        viewModelScope.launch { _uiEvent.send(HoursUiEvent.NavigateToDetail(s.year, s.month, type)) }
+        _uiEvent.tryEmit(HoursUiEvent.NavigateToDetail(s.year, s.month, type))
     }
 
     private fun loadMonth(year: Int, month: Int) {
@@ -141,7 +140,7 @@ class HoursViewModel @Inject constructor(
                 )}
             }.onFailure {
                 _state.update { it.copy(loading = false) }
-                _uiEvent.send(HoursUiEvent.ShowError("加载工时失败：${it.message}"))
+                _uiEvent.tryEmit(HoursUiEvent.ShowError("加载工时失败：${it.message}"))
             }
         }
     }
