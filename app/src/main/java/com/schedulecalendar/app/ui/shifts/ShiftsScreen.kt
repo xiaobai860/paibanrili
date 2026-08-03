@@ -2,6 +2,7 @@
 package com.schedulecalendar.app.ui.shifts
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -104,7 +106,7 @@ fun ShiftsScreen(navController: NavController, vm: ShiftsViewModel = hiltViewMod
                         text = {
                             Text(
                                 text = title,
-                                fontSize = 18.sp,
+                                fontSize = 14.sp,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                                 fontWeight = if (currentPage == i) FontWeight.SemiBold else FontWeight.Normal
