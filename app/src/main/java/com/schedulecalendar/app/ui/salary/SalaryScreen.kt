@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -73,7 +74,7 @@ fun SalaryContent(
     }
     val state by vm.state.collectAsStateWithLifecycle()
     // 回报当前月份给外部（跳过首次组合，避免 ViewModel 初始状态覆盖共享月份）
-    var skipFirstReport by remember { mutableStateOf(true) }
+    var skipFirstReport by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(state.year, state.month) {
         if (sharedYear != null && !skipFirstReport) {
             onMonthChange(state.year, state.month)

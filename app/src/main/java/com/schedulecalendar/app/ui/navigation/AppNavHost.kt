@@ -109,8 +109,12 @@ fun AppNavHost() {
             modifier         = Modifier.padding(paddingValues)
         ) {
             // ── Tab 主页面 ──────────────────────────────────────────
-            composable<RouteCalendar>   { CalendarScreen(navController, onSubModeChange = { calendarSubModeActive = it }) }
-            composable<RouteTodo>       { TodoScreen(navController) }
+            composable<RouteCalendar>(
+                content = { CalendarScreen(navController, onSubModeChange = { calendarSubModeActive = it }) }
+            )
+            composable<RouteTodo>(
+                content = { TodoScreen(navController) }
+            )
             composable<RouteShifts>     { ShiftsScreen(navController) }
             composable<RouteStatistics> { StatisticsScreen(navController) }
             composable<RouteHours>      { HoursScreen(navController) }    // 保留兼容
