@@ -25,9 +25,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 设置 Gradle
-        uses: gradle/actions/setup-gradle@v4
-
       - name: 注入签名配置到 local.properties
         run: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" >> local.properties
@@ -64,7 +61,8 @@ jobs:
       - name: 构建 Release APK
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleRelease --no-daemon
+          unset GRADLE_OPTS
+          ./gradlew assembleRelease --no-daemon --no-build-cache
 
       - name: 重命名 APK
         run: |
