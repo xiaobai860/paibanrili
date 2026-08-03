@@ -1,5 +1,5 @@
-name: Build & Release APK
-
+# Build & Release APK workflow
+# 已添加：job-level 环境变量清理 + checkout 后的 Sanitize 步骤，防止 JAVA_TOOL_OPTIONS/_JAVA_OPTIONS/GRADLE_OPTS 被错误注入
 on:
   workflow_dispatch:
     inputs:
@@ -12,12 +12,34 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 在 job 层级显式清空，防止任何步骤继承到错误的值
+    env:
+      JAVA_TOOL_OPTIONS: ''
+      _JAVA_OPTIONS: ''
+      GRADLE_OPTS: ''
 
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Sanitize Java/Gradle env vars (防止错误的 JVM 参数被注入)
+        run: |
+          # 立即清除可能由 runner 或上游步骤注入的 JVM/Gradle 参数
+          unset JAVA_TOOL_OPTIONS || true
+          unset _JAVA_OPTIONS || true
+          unset GRADLE_OPTS || true
+          export JAVA_TOOL_OPTIONS=""
+          export _JAVA_OPTIONS=""
+          export GRADLE_OPTS=""
+          # 打印以便排查不可见字符或多余引号（例如 0x22 是双引号）
+          echo "JAVA_TOOL_OPTIONS=[${JAVA_TOOL_OPTIONS}]"
+          echo "_JAVA_OPTIONS=[${_JAVA_OPTIONS}]"
+          echo "GRADLE_OPTS=[${GRADLE_OPTS}]"
+          printf '%s' "${_JAVA_OPTIONS}" | od -An -t x1 || true
+          printf '%s' "${JAVA_TOOL_OPTIONS}" | od -An -t x1 || true
+        shell: bash
 
       - name: 设置 JDK 17
         uses: actions/setup-java@v4
@@ -53,17 +75,18 @@ jobs:
       - name: 更新 build.gradle.kts 版本号
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          sed -i "s/versionCode   = [0-9]*/versionCode   = ${VERSION}/" app/build.gradle.kts
-          sed -i "s/versionName   = \"[^\"]*\"/versionName   = \"${VERSION}\"/" app/build.gradle.kts
+          sed -i "s/versionCode[[:space:]]*=[[:space:]]*[0-9]*/versionCode = ${VERSION}/" app/build.gradle.kts
+          sed -i "s/versionName[[:space:]]*=[[:space:]]*\"[^\"]*\"/versionName = \"${VERSION}\"/" app/build.gradle.kts
           echo "已更新版本号为: ${VERSION}"
-          cat app/build.gradle.kts | grep -E "versionCode|versionName"
+          grep -E "versionCode|versionName" app/build.gradle.kts || true
 
-      # Debug step: print any Java/Gradle-related env vars so we can see what's being injected
+      # Debug step: print any Java/Gradle-related env vars so we can see what's被注入
       - name: 打印 Java / Gradle 环境变量（调试）
         run: |
           echo "==== Java/Gradle related env vars ===="
           env | grep -E 'GRADLE_OPTS|JAVA_TOOL_OPTIONS|_JAVA_OPTIONS' || true
           echo "======================================"
+        shell: bash
 
       - name: 构建 Release APK
         run: |
@@ -76,23 +99,24 @@ jobs:
           printf '%s' "${JAVA_TOOL_OPTIONS}" | od -An -t x1 || true
           echo "============================================="
 
-          # 在 shell 里取消可能来自 runner 或其他地方的带引号的 JVM/Gradle 参数
+          # 再次确保在当前 shell 里取消可能来自 runner 或其他地方的带引号的 JVM/Gradle 参数
           unset JAVA_TOOL_OPTIONS || true
           unset _JAVA_OPTIONS || true
           unset GRADLE_OPTS || true
-          # 也明确导出为空以避免子进程继承
           export JAVA_TOOL_OPTIONS=""
           export _JAVA_OPTIONS=""
           export GRADLE_OPTS=""
 
           chmod +x ./gradlew
+
           # 使用 env -u 在命令级别移除这些变量，确保 gradle/Java 不会收到错误的 JVM 参数
           env -u JAVA_TOOL_OPTIONS -u _JAVA_OPTIONS -u GRADLE_OPTS ./gradlew assembleRelease --no-daemon --no-build-cache
         env:
-          # 保持 workflow 层面对这些变量的显式设置为空（冗余但更安全）
+          # 冗余但更安全：显式在此步骤层面保持为空
           GRADLE_OPTS: ''
           JAVA_TOOL_OPTIONS: ''
           _JAVA_OPTIONS: ''
+        shell: bash
 
       - name: 重命名 APK
         run: |
