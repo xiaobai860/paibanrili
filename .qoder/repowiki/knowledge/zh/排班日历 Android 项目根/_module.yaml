@@ -1,0 +1,14 @@
+schema_version: 1
+module_path: ""
+title: 排班日历 Android 项目根
+scope:
+    - .gitignore
+    - build.gradle.kts
+    - settings.gradle.kts
+    - gradle.properties
+    - README.md
+    - gradlew
+    - gradlew.bat
+source_files: []
+depends_on: []
+related_to: []

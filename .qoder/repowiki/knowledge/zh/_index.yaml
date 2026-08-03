@@ -3,12 +3,29 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-03T11:56:55Z"
+exported_at: "2026-08-03T14:32:55Z"
 modules:
     "":
-        dir_name: 排班日历 Android 应用（Compose + Hilt + Room）
-        title: 排班日历 Android 应用（Compose + Hilt + Room）
-        scope: []
+        dir_name: 排班日历 Android 项目根
+        title: 排班日历 Android 项目根
+        scope:
+            - .gitignore
+            - build.gradle.kts
+            - settings.gradle.kts
+            - gradle.properties
+            - README.md
+            - gradlew
+            - gradlew.bat
+        source_files: []
+        children:
+            - app_module
+        depends_on: []
+        related_to: []
+    app_module:
+        dir_name: 排班日历 Android 应用主模块
+        title: 排班日历 Android 应用主模块
+        scope:
+            - app/
         source_files: []
         children: []
         depends_on: []
