@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +8,13 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+}
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        load(FileInputStream(file))
+    }
 }
 
 android {
@@ -21,13 +31,10 @@ android {
 
     signingConfigs {
         create("release") {
-            val localProps = java.util.Properties().apply {
-                load(rootProject.file("local.properties").inputStream())
-            }
-            storeFile     = file(localProps.getProperty("RELEASE_STORE_FILE"))
-            storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD")
-            keyAlias      = localProps.getProperty("RELEASE_KEY_ALIAS")
-            keyPassword   = localProps.getProperty("RELEASE_KEY_PASSWORD")
+            storeFile     = file(localProperties.getProperty("RELEASE_STORE_FILE"))
+            storePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD")
+            keyAlias      = localProperties.getProperty("RELEASE_KEY_ALIAS")
+            keyPassword   = localProperties.getProperty("RELEASE_KEY_PASSWORD")
         }
     }
 
