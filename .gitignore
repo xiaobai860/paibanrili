@@ -16,3 +16,17 @@ crash_log.txt
 logcat_full.txt
 .qoderignore
 screenshot*.png
+
+# 签名密钥文件
+*.jks
+*.keystore
+
+# Android Studio 导航配置
+.navigation/
+
+# captures 目录
+captures/
+
+# External native build
+.externalNativeBuild/
+.cxx/
