@@ -33,6 +33,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import android.content.Intent
 import androidx.core.content.FileProvider
+import androidx.core.graphics.toColorInt
 
 @Composable
 fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewModel()) {
@@ -57,6 +58,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
     var showClearConfirm by remember { mutableStateOf(false) }
     var showPathPicker  by remember { mutableStateOf(false) }
     var showCleanupConfirm by remember { mutableStateOf(false) }
+    var showOrphanDetail by remember { mutableStateOf(false) }
 
     // 页面加载时扫描废弃数据
     LaunchedEffect(Unit) { vm.scanOrphanData() }
@@ -277,25 +279,87 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f))
                     ) {
-                        Row(
-                            Modifier.clickable { showCleanupConfirm = true }
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Icon(Icons.Default.CleaningServices, null,
-                                tint = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.size(28.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("清理废弃数据", fontWeight = FontWeight.Medium, fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.tertiary)
-                                val parts = mutableListOf<String>()
-                                if (state.orphanShiftsCount > 0) parts.add("${state.orphanShiftsCount} 个废弃班次")
-                                if (state.orphanStatusesCount > 0) parts.add("${state.orphanStatusesCount} 个废弃状态")
-                                if (state.orphanExtrasCount > 0) parts.add("${state.orphanExtrasCount} 个废弃项目")
-                                if (state.orphanBreaksCount > 0) parts.add("${state.orphanBreaksCount} 个废弃不计入时段")
-                                Text("可清理 ${parts.joinToString("、")}", fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Column {
+                            Row(
+                                Modifier.clickable { showOrphanDetail = !showOrphanDetail }
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(Icons.Default.CleaningServices, null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(28.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("清理废弃数据", fontWeight = FontWeight.Medium, fontSize = 14.sp,
+                                        color = MaterialTheme.colorScheme.tertiary)
+                                    val parts = mutableListOf<String>()
+                                    if (state.orphanShiftsCount > 0) parts.add("${state.orphanShiftsCount} 个废弃班次")
+                                    if (state.orphanStatusesCount > 0) parts.add("${state.orphanStatusesCount} 个废弃状态")
+                                    if (state.orphanExtrasCount > 0) parts.add("${state.orphanExtrasCount} 个废弃项目")
+                                    if (state.orphanBreaksCount > 0) parts.add("${state.orphanBreaksCount} 个废弃不计入时段")
+                                    Text("可清理 ${parts.joinToString("、")}", fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer)
+                                }
+                                Icon(
+                                    if (showOrphanDetail) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            // 展开详情列表
+                            if (showOrphanDetail) {
+                                HorizontalDivider(
+                                    Modifier.padding(horizontal = 14.dp),
+                                    color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
+                                )
+                                Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    // 废弃班次
+                                    if (state.orphanShifts.isNotEmpty()) {
+                                        OrphanGroupHeader("废弃班次", state.orphanShifts.size)
+                                        state.orphanShifts.forEach { item ->
+                                            OrphanDetailRow(item.name, item.extra, item.color)
+                                        }
+                                    }
+                                    // 废弃状态
+                                    if (state.orphanStatuses.isNotEmpty()) {
+                                        OrphanGroupHeader("废弃状态", state.orphanStatuses.size)
+                                        state.orphanStatuses.forEach { item ->
+                                            OrphanDetailRow(item.name, item.extra, item.color)
+                                        }
+                                    }
+                                    // 废弃项目
+                                    if (state.orphanExtras.isNotEmpty()) {
+                                        OrphanGroupHeader("废弃项目", state.orphanExtras.size)
+                                        state.orphanExtras.forEach { item ->
+                                            OrphanDetailRow(item.name, item.extra)
+                                        }
+                                    }
+                                    // 废弃不计入时段
+                                    if (state.orphanBreaks.isNotEmpty()) {
+                                        OrphanGroupHeader("废弃不计入时段", state.orphanBreaks.size)
+                                        state.orphanBreaks.forEach { item ->
+                                            OrphanDetailRow(item.name, item.extra)
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(6.dp))
+                            }
+                            // 清理按钮
+                            Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                                Spacer(Modifier.weight(1f))
+                                OutlinedButton(
+                                    onClick = { showCleanupConfirm = true },
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.tertiary
+                                    ),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f))
+                                ) {
+                                    Icon(Icons.Default.CleaningServices, null, Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("确认清理")
+                                }
                             }
                         }
                     }
@@ -643,4 +707,59 @@ private fun formatBytes(bytes: Long): String = when {
     bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
     bytes >= 1024        -> "%.1f KB".format(bytes / 1024.0)
     else                 -> "$bytes B"
+}
+
+// ── 废弃数据详情组件 ─────────────────────────────────────────────────────────
+
+@Composable
+private fun OrphanGroupHeader(label: String, count: Int) {
+    Row(
+        Modifier.padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            Modifier.width(3.dp).height(12.dp)
+                .background(MaterialTheme.colorScheme.tertiary, RoundedCornerShape(1.dp))
+        )
+        Text(
+            "$label ($count)",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onTertiaryContainer
+        )
+    }
+}
+
+@Composable
+private fun OrphanDetailRow(name: String, extra: String, color: String = "") {
+    Row(
+        Modifier.padding(start = 9.dp, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // 颜色指示圆点（仅班次/状态显示）
+        if (color.isNotEmpty()) {
+            val bgColor = runCatching { Color(color.toColorInt()) }.getOrNull() ?: Color(0xFF9E9E9E)
+            Box(
+                Modifier.size(8.dp)
+                    .background(bgColor, RoundedCornerShape(4.dp))
+            )
+        } else {
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(
+            name,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onTertiaryContainer,
+            modifier = Modifier.weight(1f)
+        )
+        if (extra.isNotEmpty()) {
+            Text(
+                extra,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+            )
+        }
+    }
 }

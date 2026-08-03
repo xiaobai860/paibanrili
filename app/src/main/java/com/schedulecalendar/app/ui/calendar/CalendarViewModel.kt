@@ -257,6 +257,7 @@ class CalendarViewModel @Inject constructor(
         for (d in 1..daysInMonth) {
             // 只检查历史日期（不含今天及未来）
             if (year > todayY) break
+            if (year == todayY && month > todayM) break  // 当前年份但月份在未来，整月跳过
             if (year == todayY && month == todayM && d >= todayD) break
 
             val dateStr = "%04d-%02d-%02d".format(year, month, d)

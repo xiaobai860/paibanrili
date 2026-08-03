@@ -41,6 +41,8 @@ data class HoursUiState(
     val future: HoursSummary?                      = null,
     /** 当月每日明细（仅有排班记录的天） */
     val details: List<DayScheduleDetail>           = emptyList(),
+    /** 最近14天每日明细（跨月，供图表使用） */
+    val recentDetails: List<DayScheduleDetail>     = emptyList(),
     /** 近8个月趋势 */
     val trend: List<MonthlyHoursTrend>             = emptyList(),
     /** 考勤配置（用于迟到阈值提示） */
@@ -118,6 +120,11 @@ class HoursViewModel @Inject constructor(
                 // 每日明细
                 val details = CalcUtils.getMonthScheduleDetails(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf)
 
+                // 最近14天每日明细（供图表使用，跨月）
+                val recentDetails = buildRecentDetails(
+                    shifts, breaks, extraItems, salaryConf, attendConf
+                )
+
                 // 近8个月趋势（不含未来月）
                 val trend = buildTrend(year, month, shifts, breaks, statuses, attendConf)
 
@@ -127,6 +134,7 @@ class HoursViewModel @Inject constructor(
                     actual      = actual,
                     future      = future,
                     details     = details,
+                    recentDetails = recentDetails,
                     trend       = trend,
                     attendConfig = attendConf,
                     loading     = false
@@ -136,6 +144,43 @@ class HoursViewModel @Inject constructor(
                 _uiEvent.send(HoursUiEvent.ShowError("加载工时失败：${it.message}"))
             }
         }
+    }
+
+    /** 构建最近7天的每日明细（跨月，供图表使用） */
+    private suspend fun buildRecentDetails(
+        shifts: List<Shift>, breaks: List<ShiftBreak>,
+        extraItems: List<ExtraItem>, salaryConf: SalaryConfig, attendConf: AttendConfig
+    ): List<DayScheduleDetail> {
+        val today = LocalDate.now()
+        val startDate = today.minusDays(6) // 最近7天
+        val endDate = today
+
+        // 加载涉及的两个月的排班记录
+        val months = mutableSetOf<String>()
+        var d = startDate
+        while (!d.isAfter(endDate)) {
+            months.add("%04d-%02d".format(d.year, d.monthValue))
+            d = d.plusDays(1)
+        }
+        val allRecords = mutableListOf<ScheduleRecord>()
+        for (m in months) {
+            allRecords.addAll(scheduleRepo.getByMonth(m))
+        }
+        val mergedSchedules = allRecords.associateBy { it.date }
+
+        // 为涉及的每个月分别计算明细，然后合并
+        val allDetails = mutableListOf<DayScheduleDetail>()
+        for (m in months) {
+            val parts = m.split("-")
+            val y = parts[0].toInt()
+            val mo = parts[1].toInt()
+            allDetails.addAll(CalcUtils.getMonthScheduleDetails(y, mo, mergedSchedules, shifts, breaks, extraItems, salaryConf, attendConf))
+        }
+
+        // 筛选最近7天
+        val startStr = "%04d-%02d-%02d".format(startDate.year, startDate.monthValue, startDate.dayOfMonth)
+        val endStr = "%04d-%02d-%02d".format(endDate.year, endDate.monthValue, endDate.dayOfMonth)
+        return allDetails.filter { it.date in startStr..endStr }
     }
 
     private suspend fun buildTrend(

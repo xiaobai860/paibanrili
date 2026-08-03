@@ -31,6 +31,15 @@ data class BackupFile(
     val isManual: Boolean = false
 )
 
+// ── 废弃数据详情项 ─────────────────────────────────────────────────────────────
+
+data class OrphanItemInfo(
+    val id: String,
+    val name: String,
+    val color: String = "",       // 班次/状态有颜色
+    val extra: String = ""        // 附加信息，如时间、金额等
+)
+
 // ── UiState / UiEvent ─────────────────────────────────────────────────────────
 
 data class StorageUiState(
@@ -48,7 +57,12 @@ data class StorageUiState(
     val orphanShiftsCount:    Int = 0,
     val orphanStatusesCount:  Int = 0,
     val orphanExtrasCount:    Int = 0,
-    val orphanBreaksCount:    Int = 0
+    val orphanBreaksCount:    Int = 0,
+    // 废弃数据详情列表
+    val orphanShifts:    List<OrphanItemInfo> = emptyList(),
+    val orphanStatuses:  List<OrphanItemInfo> = emptyList(),
+    val orphanExtras:    List<OrphanItemInfo> = emptyList(),
+    val orphanBreaks:    List<OrphanItemInfo> = emptyList()
 )
 
 sealed class StorageUiEvent {
@@ -294,7 +308,21 @@ class StorageViewModel @Inject constructor(
                     orphanShiftsCount = archivedShifts.size,
                     orphanStatusesCount = archivedStatuses.size,
                     orphanExtrasCount = archivedExtras.size,
-                    orphanBreaksCount = archivedBreaks.size
+                    orphanBreaksCount = archivedBreaks.size,
+                    orphanShifts = archivedShifts.map {
+                        OrphanItemInfo(it.id, it.name, it.color,
+                            if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
+                    },
+                    orphanStatuses = archivedStatuses.map {
+                        OrphanItemInfo(it.id, it.name, it.color, it.reportType ?: "")
+                    },
+                    orphanExtras = archivedExtras.map {
+                        OrphanItemInfo(it.id, it.name, extra = "${if (it.type == "deduction") "-" else "+"}¥${"%.2f".format(it.amount)}")
+                    },
+                    orphanBreaks = archivedBreaks.map {
+                        OrphanItemInfo(it.id, it.label, extra =
+                            if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
+                    }
                 )
             }
         }.onFailure {
