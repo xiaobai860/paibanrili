@@ -139,10 +139,15 @@ class CalendarViewModel @Inject constructor(
 
     init {
         loadCurrentMonth()
-        // 应用启动时自动备份应用数据（每天最新一条）
-        viewModelScope.launch { backupManager.autoBackupAppData() }
-        // 应用启动时确保日历账户已创建（AccountManager 注册 + Calendar Provider 创建）
-        viewModelScope.launch { calendarEventRepo.getOrCreateLocalCalendarId() }
+        // 延迟执行非关键初始化，避免阻塞首帧渲染
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(500)
+            backupManager.autoBackupAppData()
+        }
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(1000)
+            calendarEventRepo.getOrCreateLocalCalendarId()
+        }
     }
 
     private fun loadCurrentMonth() {
