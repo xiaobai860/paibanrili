@@ -73,6 +73,10 @@ fun AppNavHost() {
     // 用 Compose MutableState 追踪日历子模式状态，保证 BackHandler 可响应状态变化
     var calendarSubModeActive by remember { mutableStateOf(false) }
 
+    // 底部导航防抖：限制最小点击间隔，避免快速连续点击触发多次导航
+    var lastNavClickTime by remember { mutableLongStateOf(0L) }
+    val navDebounceIntervalMs = 300L
+
     Scaffold(
         bottomBar = {
             AnimatedVisibility(
@@ -88,6 +92,12 @@ fun AppNavHost() {
                             label    = { Text(tab.label) },
                             selected = selected,
                             onClick  = {
+                                // 已选中的 Tab 不重复导航
+                                if (selected) return@NavigationBarItem
+                                // 防抖：限制最小点击间隔，避免快速切换导致重组任务堆积
+                                val now = android.os.SystemClock.elapsedRealtime()
+                                if (now - lastNavClickTime < navDebounceIntervalMs) return@NavigationBarItem
+                                lastNavClickTime = now
                                 navController.navigate(tab.route) {
                                     popUpTo(navController.graph.startDestinationRoute ?: return@navigate) {
                                         saveState = true

@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -30,9 +31,9 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun StatisticsScreen(navController: NavController) {
-    // 共享月份状态（工时/薪资页同步，单向流动：父→子）
-    var sharedYear  by remember { mutableIntStateOf(java.time.YearMonth.now().year) }
-    var sharedMonth by remember { mutableIntStateOf(java.time.YearMonth.now().monthValue) }
+    // 共享月份状态（工时/薪资页同步，单向流动：父→子，rememberSaveable 保持导航返回后的月份）
+    var sharedYear  by rememberSaveable { mutableIntStateOf(java.time.YearMonth.now().year) }
+    var sharedMonth by rememberSaveable { mutableIntStateOf(java.time.YearMonth.now().monthValue) }
 
     val tabTitles = listOf("工时", "薪资")
     val pagerState = rememberPagerState(pageCount = { tabTitles.size })
