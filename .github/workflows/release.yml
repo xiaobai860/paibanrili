@@ -67,7 +67,16 @@ jobs:
 
       - name: 构建 Release APK
         run: |
-          # 先在 shell 里取消可能来自 runner 或其他地方的带引号的 JVM/Gradle 参数
+          # 打印原始变量以便调试（如果有引用或不可见字符可以看到）
+          echo "==== BEFORE CLEANUP Java/Gradle env vars ===="
+          echo "JAVA_TOOL_OPTIONS=[${JAVA_TOOL_OPTIONS}]"
+          echo "_JAVA_OPTIONS=[${_JAVA_OPTIONS}]"
+          echo "GRADLE_OPTS=[${GRADLE_OPTS}]"
+          printf '%s' "${_JAVA_OPTIONS}" | od -An -t x1 || true
+          printf '%s' "${JAVA_TOOL_OPTIONS}" | od -An -t x1 || true
+          echo "============================================="
+
+          # 在 shell 里取消可能来自 runner 或其他地方的带引号的 JVM/Gradle 参数
           unset JAVA_TOOL_OPTIONS || true
           unset _JAVA_OPTIONS || true
           unset GRADLE_OPTS || true
@@ -77,8 +86,8 @@ jobs:
           export GRADLE_OPTS=""
 
           chmod +x ./gradlew
-          # 确保没有意外的 JVM/Gradle 参数被传递到子进程
-          ./gradlew assembleRelease --no-daemon --no-build-cache
+          # 使用 env -u 在命令级别移除这些变量，确保 gradle/Java 不会收到错误的 JVM 参数
+          env -u JAVA_TOOL_OPTIONS -u _JAVA_OPTIONS -u GRADLE_OPTS ./gradlew assembleRelease --no-daemon --no-build-cache
         env:
           # 保持 workflow 层面对这些变量的显式设置为空（冗余但更安全）
           GRADLE_OPTS: ''
