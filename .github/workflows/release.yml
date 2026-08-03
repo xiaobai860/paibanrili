@@ -58,11 +58,22 @@ jobs:
           echo "已更新版本号为: ${VERSION}"
           cat app/build.gradle.kts | grep -E "versionCode|versionName"
 
+      # Debug step: print any Java/Gradle-related env vars so we can see what's being injected
+      - name: 打印 Java / Gradle 环境变量（调试）
+        run: |
+          echo "==== Java/Gradle related env vars ===="
+          env | grep -E 'GRADLE_OPTS|JAVA_TOOL_OPTIONS|_JAVA_OPTIONS' || true
+          echo "======================================"
+
       - name: 构建 Release APK
         run: |
           chmod +x ./gradlew
-          unset GRADLE_OPTS
+          # 确保没有意外的 JVM/Gradle 参数被传递到子进程
           ./gradlew assembleRelease --no-daemon --no-build-cache
+        env:
+          GRADLE_OPTS: ''
+          JAVA_TOOL_OPTIONS: ''
+          _JAVA_OPTIONS: ''
 
       - name: 重命名 APK
         run: |
