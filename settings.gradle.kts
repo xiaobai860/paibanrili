@@ -1,17 +1,18 @@
 pluginManagement {
     repositories {
-        // 官方优先：插件门户和官方仓库，确保插件解析不会被镜像短暂故障阻断
+        // 插件解析优先使用稳定的官方源，避免镜像短暂不可用导致 UnknownPluginException
         gradlePluginPortal()
         mavenCentral()
         google()
-        // 阿里云镜像（备用，速度快但可能临时不可用）
+
+        // 以下为镜像/备用源，保留以加速下载或作为兜底
         maven { url = uri("https://maven.aliyun.com/repository/google") }
         maven { url = uri("https://maven.aliyun.com/repository/public") }
         maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
-        // 华为云镜像（备用，覆盖阿里云未同步的 artifact）
         maven { url = uri("https://repo.huaweicloud.com/repository/maven/") }
     }
 }
+
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
 }
@@ -19,16 +20,15 @@ plugins {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        // 阿里云镜像（最快）
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/public") }
-        // 华为云镜像（备用）
-        maven { url = uri("https://repo.huaweicloud.com/repository/maven/") }
-        // JitPack（WheelPickerCompose 等第三方库）
-        maven { url = uri("https://jitpack.io") }
-        // 官方源（兜底）
+        // 依赖解析也优先使用官方仓库，镜像作为可选加速或兜底
         google()
         mavenCentral()
+        // 加速镜像/备用
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
+        maven { url = uri("https://repo.huaweicloud.com/repository/maven/") }
+        // JitPack（如你的项目依赖了 WheelPickerCompose）
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
