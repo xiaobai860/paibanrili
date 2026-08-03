@@ -158,12 +158,12 @@ fun HoursContent(
                 }
 
                 // ── 图表 ──────────────────────────────────────────────────
-                if (details.any { it.record != null }) {
+                if (state.recentDetails.any { it.record != null } || details.any { it.record != null }) {
                     item {
                         HoursChartCard(
                             chartView = chartView,
                             onChartViewChange = { chartView = it },
-                            details = details,
+                            recentDetails = state.recentDetails,
                             trend = state.trend
                         )
                     }
@@ -358,7 +358,7 @@ private fun HoursStatCell(
 @Composable
 private fun HoursChartCard(
     chartView: String, onChartViewChange: (String) -> Unit,
-    details: List<DayScheduleDetail>,
+    recentDetails: List<DayScheduleDetail>,
     trend: List<MonthlyHoursTrend>
 ) {
     Card(
@@ -398,8 +398,8 @@ private fun HoursChartCard(
             val maxBarH = 140.dp     // 柱体区最大高度
             val refDailyMax = 8.0    // 每日参考满刻度（8小时）
             val refMonthlyMax = 200.0 // 月度参考满刻度（200小时）
-            val dailyMax = remember(details) {
-                if (details.isEmpty()) 1.0 else details.maxOf { it.normalHours + it.overtimeHours }.coerceAtLeast(1.0)
+            val dailyMax = remember(recentDetails) {
+                if (recentDetails.isEmpty()) 1.0 else recentDetails.maxOf { it.normalHours + it.overtimeHours }.coerceAtLeast(1.0)
             }
             val monthlyMax = remember(trend) {
                 if (trend.isEmpty()) 1.0 else trend.maxOf { it.total }.coerceAtLeast(1.0)
@@ -427,7 +427,7 @@ private fun HoursChartCard(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                DailyHoursBar(details)
+                DailyHoursBar(recentDetails)
             } else {
                 MonthlyHoursBar(trend)
             }
@@ -437,15 +437,12 @@ private fun HoursChartCard(
 
 @Composable
 private fun DailyHoursBar(details: List<DayScheduleDetail>) {
-    val todayStr = remember {
-        LocalDate.now().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
-    }
-    val prefix = remember(details) { details.firstOrNull()?.date?.substring(0, 7) ?: "" }
-    val chartDays = remember(details, todayStr, prefix) {
-        (7 downTo 0).mapNotNull { offset ->
+    // 固定显示最近7天（不受选中月份影响，可跨月）
+    val chartDays = remember(details) {
+        (6 downTo 0).mapNotNull { offset ->
             val d  = LocalDate.now().minusDays(offset.toLong())
             val ds = "%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)
-            if (ds.startsWith(prefix)) details.firstOrNull { it.date == ds } ?: DayScheduleDetail(date = ds) else null
+            details.firstOrNull { it.date == ds } ?: DayScheduleDetail(date = ds)
         }
     }
     val maxH = chartDays.maxOf { it.normalHours + it.overtimeHours }.coerceAtLeast(1.0)
