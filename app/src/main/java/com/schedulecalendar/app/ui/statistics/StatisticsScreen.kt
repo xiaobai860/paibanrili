@@ -66,7 +66,7 @@ fun StatisticsScreen(navController: NavController) {
                             text = {
                                 Text(
                                     title,
-                                    fontSize = 18.sp,
+                                    fontSize = 14.sp,
                                     fontWeight = if (currentPage == i) FontWeight.SemiBold else FontWeight.Normal
                                 )
                             }

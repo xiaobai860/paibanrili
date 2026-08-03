@@ -127,7 +127,7 @@ fun TodoScreen(
                             text = {
                                 Text(
                                     text = title,
-                                    fontSize = 18.sp,
+                                    fontSize = 14.sp,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                     fontWeight = if (currentPage == i) FontWeight.SemiBold else FontWeight.Normal
