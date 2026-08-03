@@ -67,10 +67,20 @@ jobs:
 
       - name: 构建 Release APK
         run: |
+          # 先在 shell 里取消可能来自 runner 或其他地方的带引号的 JVM/Gradle 参数
+          unset JAVA_TOOL_OPTIONS || true
+          unset _JAVA_OPTIONS || true
+          unset GRADLE_OPTS || true
+          # 也明确导出为空以避免子进程继承
+          export JAVA_TOOL_OPTIONS=""
+          export _JAVA_OPTIONS=""
+          export GRADLE_OPTS=""
+
           chmod +x ./gradlew
           # 确保没有意外的 JVM/Gradle 参数被传递到子进程
           ./gradlew assembleRelease --no-daemon --no-build-cache
         env:
+          # 保持 workflow 层面对这些变量的显式设置为空（冗余但更安全）
           GRADLE_OPTS: ''
           JAVA_TOOL_OPTIONS: ''
           _JAVA_OPTIONS: ''
