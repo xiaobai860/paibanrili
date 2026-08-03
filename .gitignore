@@ -20,6 +20,7 @@ screenshot*.png
 # 签名密钥文件
 *.jks
 *.keystore
+keystore_base64.txt
 
 # Android Studio 导航配置
 .navigation/
