@@ -22,6 +22,9 @@ screenshot*.png
 *.keystore
 keystore_base64.txt
 
+# Gradle 自动生成的工具链配置（含公开下载 URL）
+gradle/gradle-daemon-jvm.properties
+
 # Android Studio 导航配置
 .navigation/
 

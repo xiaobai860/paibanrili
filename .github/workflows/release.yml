@@ -137,13 +137,6 @@ jobs:
           echo "工作目录: $(pwd)"
           ls -la || true
 
-          echo "local.properties preview:"
-          if [ -f local.properties ]; then
-            sed -n '1,200p' local.properties || true
-          else
-            echo "local.properties not found"
-          fi
-
           echo "keystore.jks exists? $( [ -s keystore.jks ] && echo yes || echo no )"
           if [ ! -s keystore.jks ]; then
             echo "ERROR: keystore.jks is missing or empty. Did secrets.KEYSTORE_BASE64 decode correctly?" >&2
