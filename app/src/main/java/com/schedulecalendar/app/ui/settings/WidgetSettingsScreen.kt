@@ -18,7 +18,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModel
 import androidx.navigation.NavController
 import com.schedulecalendar.app.data.prefs.AppPreferences
@@ -27,8 +26,6 @@ import com.schedulecalendar.app.widget.WIDGET_TYPE_CALENDAR
 import com.schedulecalendar.app.widget.WIDGET_TYPE_SCHEDULE
 import com.schedulecalendar.app.widget.WidgetConfigActivity
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -38,7 +35,6 @@ fun WidgetSettingsScreen(
     navController: NavController,
     vm: WidgetSettingsViewModel = hiltViewModel()
 ) {
-    val uiState by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     
     Scaffold(
@@ -132,14 +128,7 @@ private fun SettingsCard(
 
 // ── ViewModel ──────────────────────────────────────────────────────────
 
-data class WidgetSettingsUiState(
-)
-
 @HiltViewModel
 class WidgetSettingsViewModel @Inject constructor(
     private val prefs: AppPreferences
-) : ViewModel() {
-
-    private val _state = MutableStateFlow(WidgetSettingsUiState())
-    val state = _state.asStateFlow()
-}
+) : ViewModel()

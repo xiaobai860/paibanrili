@@ -153,8 +153,6 @@ class MainActivity : ComponentActivity() {
         }
         onBackPressedDispatcher.addCallback(this, tabBackCallback!!)
 
-        handleShortcutIntent(intent)
-
         setContent {
             ScheduleCalendarTheme {
                 Surface(

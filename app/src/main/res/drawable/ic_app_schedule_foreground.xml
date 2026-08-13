@@ -5,34 +5,23 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 日历主体白色底板，全部元素控制在安全圈66dp范围内 -->
+    <!-- 日历主体白色底板 -->
     <path
         android:fillColor="#FFFFFF"
         android:pathData="M21,15h66c3.31,0 6,2.69 6,6v66c0,3.31 -2.69,6 -6,6H21c-3.31,0 -6,-2.69 -6,-6V21c0,-3.31 2.69,-6 6,-6z"/>
 
     <!-- 日历顶部挂耳 -->
-    <rect
+    <path
         android:fillColor="#FFFFFF"
-        android:x="33"
-        android:y="9"
-        android:width="6"
-        android:height="12"
-        android:rx="3"/>
-    <rect
+        android:pathData="M33,9 H39 V21 H33 Z"/>
+    <path
         android:fillColor="#FFFFFF"
-        android:x="69"
-        android:y="9"
-        android:width="6"
-        android:height="12"
-        android:rx="3"/>
+        android:pathData="M69,9 H75 V21 H69 Z"/>
 
     <!-- 日历顶栏分割 -->
-    <rect
+    <path
         android:fillColor="#E3F2FD"
-        android:x="15"
-        android:y="33"
-        android:width="78"
-        android:height="6"/>
+        android:pathData="M15,33 H93 V39 H15 Z"/>
 
     <!-- 排班网格线 -->
     <path
@@ -43,11 +32,9 @@
 
     <!-- 右下角黄色工时时钟（内移，确保落在安全区不被裁切） -->
     <group android:translateX="66" android:translateY="66">
-        <circle
+        <path
             android:fillColor="#FFC107"
-            android:cx="13"
-            android:cy="13"
-            android:r="11"/>
+            android:pathData="M2,13 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0 Z"/>
         <path
             android:strokeColor="#2196F3"
             android:strokeWidth="3"

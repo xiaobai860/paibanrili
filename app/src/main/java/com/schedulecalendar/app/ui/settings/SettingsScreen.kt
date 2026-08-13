@@ -229,22 +229,9 @@ private fun PermissionManagementSection() {
     }
 
     // 精确闹钟权限
-    // Android 13+(API 33): USE_EXACT_ALARM 为普通权限，安装时自动授予
-    // Android 12(API 31-32): 需要 SCHEDULE_EXACT_ALARM，默认拒绝，需用户手动授权
-    val hasExactAlarm = remember(refreshTrigger) {
-        if (Build.VERSION.SDK_INT >= 33) {
-            // Android 13+: USE_EXACT_ALARM 始终已授予
-            true
-        } else if (Build.VERSION.SDK_INT >= 31) {
-            // Android 12: 检查 SCHEDULE_EXACT_ALARM
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
-            alarmManager.canScheduleExactAlarms()
-        } else true
-    }
-    // Android 12 需要用户手动授权精确闹钟
-    val needsExactAlarmAction = remember(refreshTrigger) {
-        Build.VERSION.SDK_INT in 31..32 && !hasExactAlarm
-    }
+    // minSdk = 34 (Android 14)，USE_EXACT_ALARM 为安装时自动授予的普通权限，始终已授予
+    val hasExactAlarm = true
+    val needsExactAlarmAction = false
 
     // 电池优化白名单状态
     val isBatteryOptimizationIgnored = remember(refreshTrigger) {
@@ -335,27 +322,13 @@ private fun PermissionManagementSection() {
                         onAction = { permLauncher.launch(Manifest.permission.WRITE_CALENDAR) }
                     )
 
-                    // 精确闹钟权限
-                    if (Build.VERSION.SDK_INT >= 31) {
-                        PermissionItem(
-                            name = "精确闹钟",
-                            description = if (Build.VERSION.SDK_INT >= 33)
-                                "已自动授予，闹钟提醒可精确触发（安装时自动授予）"
-                            else if (hasExactAlarm)
-                                "已授予，闹钟提醒可精确触发"
-                            else
-                                "未授予，点击前往系统设置手动开启",
-                            granted = hasExactAlarm,
-                            onAction = {
-                                if (needsExactAlarmAction) {
-                                    try {
-                                        val intent = Intent(AndroidSettings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                                        context.startActivity(intent)
-                                    } catch (_: Exception) { }
-                                }
-                            }
-                        )
-                    }
+                    // 精确闹钟权限（minSdk 34：USE_EXACT_ALARM 安装时自动授予，始终已授予）
+                    PermissionItem(
+                        name = "精确闹钟",
+                        description = "已自动授予，闹钟提醒可精确触发（安装时自动授予）",
+                        granted = hasExactAlarm,
+                        onAction = { }
+                    )
                     
                     // 电池优化白名单
                     PermissionItem(

@@ -9,20 +9,12 @@
         android:fillColor="#000000"
         android:pathData="M21,15h66c3.31,0 6,2.69 6,6v66c0,3.31 -2.69,6 -6,6H21c-3.31,0 -6,-2.69 -6,-6V21c0,-3.31 2.69,-6 6,-6z"/>
 
-    <rect
+    <path
         android:fillColor="#000000"
-        android:x="33"
-        android:y="9"
-        android:width="6"
-        android:height="12"
-        android:rx="3"/>
-    <rect
+        android:pathData="M33,9 H39 V21 H33 Z"/>
+    <path
         android:fillColor="#000000"
-        android:x="69"
-        android:y="9"
-        android:width="6"
-        android:height="12"
-        android:rx="3"/>
+        android:pathData="M69,9 H75 V21 H69 Z"/>
 
     <path
         android:strokeColor="#FFFFFF"
@@ -31,11 +23,9 @@
         android:pathData="M36 33 L36 87 M54 33 L54 87 M72 33 L72 87 M15 51 L93 51 M15 69 L93 69"/>
 
     <group android:translateX="66" android:translateY="66">
-        <circle
+        <path
             android:fillColor="#FFFFFF"
-            android:cx="13"
-            android:cy="13"
-            android:r="11"/>
+            android:pathData="M2,13 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0 Z"/>
         <path
             android:strokeColor="#000000"
             android:strokeWidth="3"

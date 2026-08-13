@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.data.calendar.CalendarEventRepository
@@ -306,8 +305,8 @@ class ReminderScheduler @Inject constructor(
         shiftName: String
     ) {
         try {
-            // 防御性检查：确认精确闹钟权限可用
-            if (Build.VERSION.SDK_INT >= 31 && !alarmManager.canScheduleExactAlarms()) {
+            // 防御性检查：确认精确闹钟权限可用（USE_EXACT_ALARM 安装时自动授予，恒为 true）
+            if (!alarmManager.canScheduleExactAlarms()) {
                 return
             }
 
