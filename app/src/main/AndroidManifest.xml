@@ -30,16 +30,6 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-
-            <!-- 快捷方式 Intent Filters -->
-            <intent-filter>
-                <action android:name="com.schedulecalendar.app.ACTION_CLOCK_IN"/>
-            </intent-filter>
-            <intent-filter>
-                <action android:name="com.schedulecalendar.app.ACTION_CLOCK_OUT"/>
-            </intent-filter>
-
-            <!-- 快捷方式已移至动态管理 -->
         </activity>
 
         <!-- 文件分享 FileProvider -->

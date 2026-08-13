@@ -254,24 +254,6 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
         vm.exitAllModes()
     }
 
-    LaunchedEffect(Unit) {
-        val activity = context as? MainActivity
-        activity?.let { mainActivity ->
-            // 检查并处理快捷方式动作
-            val action = mainActivity.consumeShortcutAction()
-            if (action != null) {
-                val now = java.time.LocalDate.now()
-                val todayStr = "%04d-%02d-%02d".format(now.year, now.monthValue, now.dayOfMonth)
-                val time = java.time.LocalTime.now()
-                val timeStr = "%02d:%02d".format(time.hour, time.minute)
-                when (action) {
-                    MainActivity.ACTION_CLOCK_IN -> vm.clockIn(todayStr, timeStr)
-                    MainActivity.ACTION_CLOCK_OUT -> vm.clockOut(todayStr, timeStr)
-                }
-            }
-        }
-    }
-
     // 处理小组件点击日期导航 → 进入日历主页并选中该日期
     LaunchedEffect(Unit) {
         val activity = context as? MainActivity

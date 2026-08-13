@@ -426,9 +426,7 @@ class BackupManager @Inject constructor(
             breakOrder = prefs.getBreakOrder(),
             // ── 颜色索引 ──
             shiftColorIndex = prefs.getShiftColorIndex(),
-            statusColorIndex = prefs.getStatusColorIndex(),
-            // ── 快捷方式 ──
-            shortcutEnabled = prefs.isShortcutEnabled()
+            statusColorIndex = prefs.getStatusColorIndex()
         )
         return gson.toJson(backup)
     }
@@ -483,8 +481,6 @@ class BackupManager @Inject constructor(
         // ── 恢复颜色索引 ──
         if (backup.shiftColorIndex != null) prefs.saveShiftColorIndex(backup.shiftColorIndex)
         if (backup.statusColorIndex != null) prefs.saveStatusColorIndex(backup.statusColorIndex)
-        // ── 恢复快捷方式开关 ──
-        if (backup.shortcutEnabled != null) prefs.saveShortcutEnabled(backup.shortcutEnabled)
     }
 
     private suspend fun restoreShiftConfig(json: String) {
@@ -573,6 +569,5 @@ private data class AppDataBackup(
     val extraOrder: List<String>? = null,
     val breakOrder: List<String>? = null,
     val shiftColorIndex: Int? = null,
-    val statusColorIndex: Int? = null,
-    val shortcutEnabled: Boolean? = null
+    val statusColorIndex: Int? = null
 )

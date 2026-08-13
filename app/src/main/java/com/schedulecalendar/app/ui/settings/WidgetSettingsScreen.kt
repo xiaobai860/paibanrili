@@ -1,17 +1,12 @@
 package com.schedulecalendar.app.ui.settings
 
-import android.content.Context
 import android.content.Intent
-import android.content.pm.ShortcutInfo
-import android.content.pm.ShortcutManager
-import android.graphics.drawable.Icon
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Shortcut
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.ViewModel
 import androidx.navigation.NavController
 import com.schedulecalendar.app.data.prefs.AppPreferences
@@ -82,45 +76,6 @@ fun WidgetSettingsScreen(
                     context.startActivity(intent)
                 }
             )
-
-            // ── 长按快捷方式开关 ──
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Shortcut,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "长按快捷方式",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            "关闭后将不显示应用图标的快捷操作",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = uiState.shortcutEnabled,
-                        onCheckedChange = { vm.toggleShortcut(context, it) }
-                    )
-                }
-            }
         }
     }
 }
@@ -178,7 +133,6 @@ private fun SettingsCard(
 // ── ViewModel ──────────────────────────────────────────────────────────
 
 data class WidgetSettingsUiState(
-    val shortcutEnabled: Boolean = true
 )
 
 @HiltViewModel
@@ -188,51 +142,4 @@ class WidgetSettingsViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(WidgetSettingsUiState())
     val state = _state.asStateFlow()
-
-    init {
-        viewModelScope.launch {
-            prefs.shortcutEnabledFlow.collect { enabled ->
-                _state.value = WidgetSettingsUiState(shortcutEnabled = enabled)
-            }
-        }
-    }
-
-    fun toggleShortcut(context: Context, enabled: Boolean) {
-        viewModelScope.launch {
-            prefs.saveShortcutEnabled(enabled)
-            updateDynamicShortcuts(context, enabled)
-        }
-    }
-
-    companion object {
-        /** 更新动态快捷方式 */
-        fun updateDynamicShortcuts(context: Context, enabled: Boolean) {
-            try {
-                val shortcutManager = context.getSystemService(Context.SHORTCUT_SERVICE) as ShortcutManager
-                if (enabled) {
-                    val clockInIntent = Intent(context, com.schedulecalendar.app.MainActivity::class.java).apply {
-                        action = com.schedulecalendar.app.MainActivity.ACTION_CLOCK_IN
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                    }
-                    val clockOutIntent = Intent(context, com.schedulecalendar.app.MainActivity::class.java).apply {
-                        action = com.schedulecalendar.app.MainActivity.ACTION_CLOCK_OUT
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                    }
-                    val clockInShortcut = ShortcutInfo.Builder(context, "clock_in")
-                        .setShortLabel(context.getString(com.schedulecalendar.app.R.string.shortcut_clock_in_short))
-                        .setIcon(Icon.createWithResource(context, com.schedulecalendar.app.R.drawable.ic_shortcut_clock_in))
-                        .setIntent(clockInIntent)
-                        .build()
-                    val clockOutShortcut = ShortcutInfo.Builder(context, "clock_out")
-                        .setShortLabel(context.getString(com.schedulecalendar.app.R.string.shortcut_clock_out_short))
-                        .setIcon(Icon.createWithResource(context, com.schedulecalendar.app.R.drawable.ic_shortcut_clock_out))
-                        .setIntent(clockOutIntent)
-                        .build()
-                    shortcutManager.setDynamicShortcuts(listOf(clockInShortcut, clockOutShortcut))
-                } else {
-                    shortcutManager.removeAllDynamicShortcuts()
-                }
-            } catch (_: Exception) { }
-        }
-    }
 }

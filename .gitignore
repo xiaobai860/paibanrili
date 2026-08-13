@@ -34,3 +34,6 @@ captures/
 # External native build
 .externalNativeBuild/
 .cxx/
+
+# CodeBuddy 工作区数据
+.codebuddy/

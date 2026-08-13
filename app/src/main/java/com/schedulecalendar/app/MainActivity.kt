@@ -41,9 +41,6 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_NAVIGATE_DATE = "navigate_date"
     }
 
-    var pendingShortcutAction: String? = null
-        private set
-
     var pendingNavigateDate: String? = null
         private set
 
@@ -158,12 +155,6 @@ class MainActivity : ComponentActivity() {
 
         handleShortcutIntent(intent)
 
-        CoroutineScope(Dispatchers.Main).launch {
-            if (appPreferences.isShortcutEnabled()) {
-                WidgetSettingsViewModel.updateDynamicShortcuts(this@MainActivity, true)
-            }
-        }
-
         setContent {
             ScheduleCalendarTheme {
                 Surface(
@@ -228,30 +219,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleShortcutIntent(intent)
-    }
-
-    private fun handleShortcutIntent(intent: Intent?) {
-        intent?.getStringExtra(EXTRA_NAVIGATE_DATE)?.let { date ->
+        intent.getStringExtra(EXTRA_NAVIGATE_DATE)?.let { date ->
             pendingNavigateDate = date
             intent.removeExtra(EXTRA_NAVIGATE_DATE)
         }
-        when (intent?.action) {
-            ACTION_CLOCK_IN -> {
-                pendingShortcutAction = ACTION_CLOCK_IN
-                intent.action = Intent.ACTION_MAIN
-            }
-            ACTION_CLOCK_OUT -> {
-                pendingShortcutAction = ACTION_CLOCK_OUT
-                intent.action = Intent.ACTION_MAIN
-            }
-        }
-    }
-
-    fun consumeShortcutAction(): String? {
-        val action = pendingShortcutAction
-        pendingShortcutAction = null
-        return action
     }
 
     fun consumeNavigateDate(): String? {
