@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 日历主体白色底板，全部元素控制在安全圈66dp范围内 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M21,15h66c3.31,0 6,2.69 6,6v66c0,3.31 -2.69,6 -6,6H21c-3.31,0 -6,-2.69 -6,-6V21c0,-3.31 2.69,-6 6,-6z"/>
+
+    <!-- 日历顶部挂耳 -->
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="33"
+        android:y="9"
+        android:width="6"
+        android:height="12"
+        android:rx="3"/>
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="69"
+        android:y="9"
+        android:width="6"
+        android:height="12"
+        android:rx="3"/>
+
+    <!-- 日历顶栏分割 -->
+    <rect
+        android:fillColor="#E3F2FD"
+        android:x="15"
+        android:y="33"
+        android:width="78"
+        android:height="6"/>
+
+    <!-- 排班网格线 -->
+    <path
+        android:strokeColor="#E3F2FD"
+        android:strokeWidth="3.8"
+        android:strokeLineCap="round"
+        android:pathData="M36 33 L36 87 M54 33 L54 87 M72 33 L72 87 M15 51 L93 51 M15 69 L93 69"/>
+
+    <!-- 右下角黄色工时时钟（内移，确保落在安全区不被裁切） -->
+    <group android:translateX="66" android:translateY="66">
+        <circle
+            android:fillColor="#FFC107"
+            android:cx="13"
+            android:cy="13"
+            android:r="11"/>
+        <path
+            android:strokeColor="#2196F3"
+            android:strokeWidth="3"
+            android:strokeLineCap="round"
+            android:pathData="M13 13 L13 7 L19 13"/>
+    </group>
+</vector>
