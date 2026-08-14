@@ -234,13 +234,26 @@ class BackupManager @Inject constructor(
         }?.forEach { it.delete() }
     }
 
-    /** 删除 SAF 目录中当天的自动备份文件 */
+    /** 删除 SAF 目录中当天的自动备份文件（单次 query 枚举，避免 DocumentFile.listFiles 的 N 次 IPC） */
     private fun deleteTodaySafAutoBackups(treeUri: Uri, today: String) {
-        val docDir = DocumentFile.fromTreeUri(context, treeUri) ?: return
-        docDir.listFiles().filter { doc ->
-            val n = doc.name ?: ""
-            n.startsWith("应用数据_") && n.contains(today) && !n.contains("_manual") && n.endsWith(".json")
-        }.forEach { it.delete() }
+        val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, rootDocId)
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME
+        )
+        context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+            val idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(nameCol) ?: continue
+                if (!name.startsWith("应用数据_") || name.contains(today).not()
+                    || name.contains("_manual") || !name.endsWith(".json")
+                ) continue
+                val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, cursor.getString(idCol))
+                runCatching { context.contentResolver.delete(docUri, null, null) }
+            }
+        }
     }
 
     // ── 班次配置自动备份（每次修改生成新备份） ──────────

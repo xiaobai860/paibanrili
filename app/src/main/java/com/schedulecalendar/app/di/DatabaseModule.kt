@@ -3,6 +3,7 @@ package com.schedulecalendar.app.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.RoomDatabase
 import com.schedulecalendar.app.data.db.AppDatabase
 import com.schedulecalendar.app.data.db.dao.ExtraItemDao
 import com.schedulecalendar.app.data.db.dao.ScheduleRecordDao
@@ -24,6 +25,12 @@ object DatabaseModule {
     fun provideDatabase(@ApplicationContext ctx: Context): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, "schedule_calendar.db")
             .fallbackToDestructiveMigration(dropAllTables = true)   // Room 2.7+ 新签名：v1→v2 破坏性迁移
+            .addCallback(object : RoomDatabase.Callback() {
+                override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    super.onOpen(db)
+                    AppDatabase.configure(db)   // 开启 WAL + synchronous=NORMAL
+                }
+            })
             .build()
 
     @Provides fun provideShiftDao(db: AppDatabase): ShiftDao = db.shiftDao()

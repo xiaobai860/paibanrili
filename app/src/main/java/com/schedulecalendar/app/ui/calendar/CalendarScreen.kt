@@ -762,8 +762,11 @@ private fun DayCell(
     val outlineColor = MaterialTheme.colorScheme.outlineVariant
 
     // ── 无障碍描述 ──────────────────────────────────────────────
+    // dateParts/lunarText 仅依赖 dateStr，用 remember 缓存，避免每次重组重复解析+农历换算
     val dateParts = dateStr.split("-")
-    val lunarText = LunarCalendar.getLunarDayText(dateParts[0].toInt(), dateParts[1].toInt(), dateParts[2].toInt())
+    val lunarText = remember(dateStr) {
+        LunarCalendar.getLunarDayText(dateParts[0].toInt(), dateParts[1].toInt(), dateParts[2].toInt())
+    }
     val shiftText = shift?.name ?: "\u65e0\u73ed\u6b21"
     val accessibilityDescription = buildString {
         append("${dateParts[1]}\u6708${day}\u65e5\uff0c$shiftText\uff0c$lunarText")
@@ -774,19 +777,23 @@ private fun DayCell(
     }
 
     // ── 农历/节假日名称 ──────────────────────────────────────────
-    val holidayName = if (isHoliday) HolidayData.getHolidayName(dateStr) else null
-    val isMakeupDay = HolidayData.isMakeupDay(dateStr)
+    val holidayName = remember(dateStr, isHoliday) {
+        if (isHoliday) HolidayData.getHolidayName(dateStr) else null
+    }
+    val isMakeupDay = remember(dateStr) { HolidayData.isMakeupDay(dateStr) }
     val badgeText = when {
         isHoliday -> "\u4f11"; isMakeupDay -> "\u8865"; else -> null
     }
     // 判断是否为法定节假日的第一天（用于农历行显示节日名）
-    val isHolidayFirstDay = if (isHoliday) {
-        val prevDate = try {
-            val p = java.time.LocalDate.parse(dateStr).minusDays(1)
-            "%04d-%02d-%02d".format(p.year, p.monthValue, p.dayOfMonth)
-        } catch (_: Exception) { null }
-        prevDate == null || !HolidayData.isLegalHoliday(prevDate)
-    } else false
+    val isHolidayFirstDay = remember(dateStr, isHoliday) {
+        if (isHoliday) {
+            val prevDate = try {
+                val p = java.time.LocalDate.parse(dateStr).minusDays(1)
+                "%04d-%02d-%02d".format(p.year, p.monthValue, p.dayOfMonth)
+            } catch (_: Exception) { null }
+            prevDate == null || !HolidayData.isLegalHoliday(prevDate)
+        } else false
+    }
 
     // ── 农历行显示内容（按优先级）──────────────────────────────
     // 1. 法定节假日名称（最高优先级，保持现有逻辑）
@@ -795,7 +802,7 @@ private fun DayCell(
     // 4. 官方纪念日名称
     // 5. 热门国际节假日名称
     // 6. 普通农历日期（最低优先级）
-    val festivalInfo = HolidayData.getFullFestivalInfo(dateStr)
+    val festivalInfo = remember(dateStr) { HolidayData.getFullFestivalInfo(dateStr) }
     val lunarDisplayText = when {
         isHolidayFirstDay && holidayName != null -> holidayName
         festivalInfo.isNotEmpty() -> festivalInfo.first()

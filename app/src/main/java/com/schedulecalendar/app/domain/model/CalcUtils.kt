@@ -17,11 +17,24 @@ object CalcUtils {
 
     // ── 基础时间工具 ─────────────────────────────────────────────────
 
-    /** "HH:mm" → 分钟数 */
+    /**
+     * "HH:mm" → 分钟数
+     *
+     * 该函数在月统计/日明细/薪资计算中会被高频调用（每个日期、每条记录多次），
+     * 使用固定上限的 LRU 缓存避免重复字符串 split + 解析，降低 GC 压力与 CPU 开销。
+     */
+    private val timeToMinCache = object : LinkedHashMap<String, Int>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Int>): Boolean = size > 128
+    }
+
     fun timeToMin(t: String): Int {
-        val parts = t.split(":")
-        if (parts.size < 2) return 0
-        return (parts[0].toIntOrNull() ?: 0) * 60 + (parts[1].toIntOrNull() ?: 0)
+        return timeToMinCache[t] ?: run {
+            val parts = t.split(":")
+            val v = if (parts.size < 2) 0
+            else (parts[0].toIntOrNull() ?: 0) * 60 + (parts[1].toIntOrNull() ?: 0)
+            timeToMinCache[t] = v
+            v
+        }
     }
 
     /** 分钟数 → "HH:mm"（自动取 mod 1440，支持跨天） */
@@ -518,13 +531,14 @@ object CalcUtils {
      * @param dateStr 格式 "YYYY-MM-DD"
      */
     fun autoSalaryMode(dateStr: String): SalaryMode {
+        // 复用一次字符串解析结果，避免 isWeekend 内再次 split + LocalDate 构造
         val parts = dateStr.split("-")
         val y = parts.getOrNull(0)?.toIntOrNull() ?: 0
-        val m = parts.getOrNull(1)?.toIntOrNull()?.minus(1) ?: 0
+        val m = parts.getOrNull(1)?.toIntOrNull() ?: 0  // 1-based
         val d = parts.getOrNull(2)?.toIntOrNull() ?: 0
         return when {
             HolidayData.isLegalHoliday(dateStr) -> SalaryMode.HOLIDAY
-            isWeekend(y, m, d)                  -> SalaryMode.WEEKEND
+            isWeekend(y, m - 1, d)              -> SalaryMode.WEEKEND
             else                                 -> SalaryMode.NORMAL
         }
     }
@@ -540,6 +554,24 @@ object CalcUtils {
         if (HolidayData.isMakeupDay(dateStr)) return false
         val dow = LocalDate.of(year, month + 1, day).dayOfWeek
         return dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY
+    }
+
+    /**
+     * 批量计算整月每日计薪方式（复用同一日期解析，避免月统计中对每天重复 split + LocalDate 构造）。
+     * 返回下标 1..days 的 SalaryMode 数组，供 [calcMonthHours]/[calcMonthSalary]/[getMonthScheduleDetails] 复用。
+     */
+    fun computeMonthSalaryModes(year: Int, month: Int): Array<SalaryMode> {
+        val days = daysInMonth(year, month)
+        val result = Array(days + 1) { SalaryMode.NORMAL }
+        for (d in 1..days) {
+            val dateStr = "%04d-%02d-%02d".format(year, month, d)
+            result[d] = when {
+                HolidayData.isLegalHoliday(dateStr) -> SalaryMode.HOLIDAY
+                isWeekend(year, month - 1, d)        -> SalaryMode.WEEKEND
+                else                                 -> SalaryMode.NORMAL
+            }
+        }
+        return result
     }
 
     // ── 工具方法 ──────────────────────────────────────────────────────

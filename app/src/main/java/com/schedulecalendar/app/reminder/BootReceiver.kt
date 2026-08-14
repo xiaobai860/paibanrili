@@ -37,9 +37,17 @@ class BootReceiver : BroadcastReceiver() {
             .fromApplication(context, BootReceiverEntryPoint::class.java)
             .reminderScheduler()
 
-        // 在 IO 调度器中重新调度未来 7 天的提醒
+        // 使用 goAsync() 将广播生命周期延长至协程真正完成，避免系统因 onReceive 过早返回而杀进程；
+        // 限定作用域仅在进程存活期有效，进程退出即停止，不会泄漏到进程外线程。
+        val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
-            scheduler.scheduleUpcomingReminders()
+            try {
+                scheduler.scheduleUpcomingReminders()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                pendingResult.finish()
+            }
         }
     }
 }

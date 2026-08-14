@@ -171,10 +171,10 @@ class CalendarViewModel @Inject constructor(
             val rangeTo   = "%04d-%02d-%02d".format(nextYM.year, nextYM.monthValue, nextYM.lengthOfMonth())
 
             combine(
-                shiftRepo.observeAll(),
-                scheduleRepo.observeByRange(rangeFrom, rangeTo),
-                prefs.displaySchemesFlow,
-                prefs.scheduleRuleFlow
+                shiftRepo.observeAll().distinctUntilChanged(),
+                scheduleRepo.observeByRange(rangeFrom, rangeTo).distinctUntilChanged(),
+                prefs.displaySchemesFlow.distinctUntilChanged(),
+                prefs.scheduleRuleFlow.distinctUntilChanged()
             ) { shifts, records, schemes, rule ->
                 Triple(shifts, records, Pair(schemes, rule))
             }.collect { (rawShifts, records, pair) ->
@@ -435,20 +435,23 @@ class CalendarViewModel @Inject constructor(
             val datesWithEvents = try {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     val disabledIds = prefs.getDisabledAccountIds()
-                    val allEvents = calendarEventRepo.getAllEvents()
-                        .filter { it.calendarId !in disabledIds }
-                    val dates = mutableSetOf<String>()
                     val fromDate = try { java.time.LocalDate.parse(rangeFrom) } catch (_: Exception) { null }
                     val toDate = try { java.time.LocalDate.parse(rangeTo) } catch (_: Exception) { null }
-                    if (fromDate != null && toDate != null) {
-                        for (event in allEvents) {
-                            // 将事件的 dtStart 转换为日期字符串
+                    if (fromDate == null || toDate == null) {
+                        emptySet<String>()
+                    } else {
+                        // 一次性按月区间在 ContentProvider 端过滤，避免 getAllEvents() 全量拉取
+                        val rangeStartMs = fromDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                        val rangeEndMs = toDate.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                        val events = calendarEventRepo.getAllEventsInRange(rangeStartMs, rangeEndMs)
+                            .filter { it.calendarId !in disabledIds }
+                        val dates = mutableSetOf<String>()
+                        for (event in events) {
                             val eventDate = try {
                                 java.time.Instant.ofEpochMilli(event.dtStart)
                                     .atZone(java.time.ZoneId.systemDefault())
                                     .toLocalDate()
                             } catch (_: Exception) { continue }
-                            // 检查是否在范围内
                             if (!eventDate.isBefore(fromDate) && !eventDate.isAfter(toDate)) {
                                 dates.add(eventDate.toString())
                             }
@@ -464,8 +467,8 @@ class CalendarViewModel @Inject constructor(
                                 }
                             }
                         }
+                        dates
                     }
-                    dates
                 }
             } catch (_: Exception) { emptySet() }
             _state.update { it.copy(datesWithEvents = datesWithEvents) }

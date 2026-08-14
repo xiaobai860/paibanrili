@@ -771,6 +771,71 @@ class CalendarEventRepository @Inject constructor(
      * @param dateStr 日期字符串，格式 "yyyy-MM-dd"
      * @return 当天所有的事件列表（纪念日 + 日程）
      */
+    /**
+     * 获取指定日期区间内的事件（在 ContentProvider 端用 DTSTART/DTEND 过滤，避免全量拉取）。
+     * 用于按日期/按月高效查询，替代 [getAllEvents] 的全量扫描。
+     * @param rangeStartMs 区间起始毫秒（含）
+     * @param rangeEndMs 区间结束毫秒（不含）
+     */
+    /**
+     * 获取指定日期区间内的事件（在 ContentProvider 端用 DTSTART/DTEND 过滤，避免全量拉取）。
+     * 用于按日期/按月高效查询，替代 [getAllEvents] 的全量扫描。
+     * @param rangeStartMs 区间起始毫秒（含）
+     * @param rangeEndMs 区间结束毫秒（不含）
+     */
+    fun getAllEventsInRange(rangeStartMs: Long, rangeEndMs: Long): List<CalendarEventInfo> {
+        val events = mutableListOf<CalendarEventInfo>()
+        val projection = arrayOf(
+            CalendarContract.Events._ID,
+            CalendarContract.Events.CALENDAR_ID,
+            CalendarContract.Events.TITLE,
+            CalendarContract.Events.DESCRIPTION,
+            CalendarContract.Events.DTSTART,
+            CalendarContract.Events.DTEND,
+            CalendarContract.Events.ALL_DAY,
+            CalendarContract.Events.EVENT_LOCATION,
+            CalendarContract.Events.RRULE
+        )
+        // 选择参数为 (DTEND > rangeStart) AND (DTSTART < rangeEnd)，覆盖区间内发生或跨越边界的事件
+        val selection = "(${CalendarContract.Events.DTEND} > ?) AND (${CalendarContract.Events.DTSTART} < ?)"
+        val selectionArgs = arrayOf(rangeStartMs.toString(), rangeEndMs.toString())
+
+        val calendarInfoMap = loadAllCalendarInfo()
+        context.contentResolver.query(
+            CalendarContract.Events.CONTENT_URI,
+            projection, selection, selectionArgs,
+            "${CalendarContract.Events.DTSTART} ASC"
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val eventId = cursor.getLong(0)
+                val calendarId = cursor.getLong(1)
+                val calInfo = calendarInfoMap[calendarId]
+                events.add(
+                    CalendarEventInfo(
+                        id = eventId, calendarId = calendarId,
+                        title = cursor.getString(2) ?: "无标题",
+                        description = cursor.getString(3),
+                        dtStart = cursor.getLong(4),
+                        dtEnd = cursor.getLong(5),
+                        allDay = cursor.getInt(6) == 1,
+                        eventLocation = cursor.getString(7),
+                        accountName = calInfo?.accountName ?: "",
+                        calendarDisplayName = calInfo?.displayName ?: "",
+                        rrule = cursor.getString(8)
+                    )
+                )
+            }
+        }
+        return events
+    }
+
+    /**
+     * 获取指定日期的所有事件（含年度重复纪念日）
+     * 优化：使用 [queryEventsInRange] 在 ContentProvider 端按区间过滤，
+     * 仅把当天相关事件拉入 JVM，避免每次点选日期都全量扫描所有日历事件。
+     * @param dateStr 日期字符串，格式 "yyyy-MM-dd"
+     * @return 当天所有的事件列表（纪念日 + 日程）
+     */
     fun getEventsForDate(dateStr: String): List<CalendarEventInfo> {
         val parts = dateStr.split("-")
         if (parts.size != 3) return emptyList()
@@ -778,11 +843,16 @@ class CalendarEventRepository @Inject constructor(
         val month = parts[1].toIntOrNull() ?: return emptyList()
         val day = parts[2].toIntOrNull() ?: return emptyList()
 
-        val anniversaryCalId = getOrCreateAnniversaryCalendarId()
-        val allEvents = getAllEvents()
-        val result = mutableListOf<CalendarEventInfo>()
+        val selCal = java.util.Calendar.getInstance().apply {
+            set(year, month - 1, day, 0, 0, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val rangeStart = selCal.timeInMillis
+        val rangeEnd = rangeStart + 86400000L
 
-        for (event in allEvents) {
+        val events = getAllEventsInRange(rangeStart, rangeEnd)
+        val result = mutableListOf<CalendarEventInfo>()
+        for (event in events) {
             if (event.allDay) {
                 val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
                 cal.timeInMillis = event.dtStart
@@ -793,17 +863,10 @@ class CalendarEventRepository @Inject constructor(
                     continue
                 }
                 if (event.rrule?.contains("FREQ=YEARLY") == true) continue
-            }
-            val startDay = java.util.Calendar.getInstance().apply { timeInMillis = event.dtStart }
-            val endDay = java.util.Calendar.getInstance().apply { timeInMillis = event.dtEnd }
-            val selCal = java.util.Calendar.getInstance().apply {
-                set(year, month - 1, day, 0, 0, 0)
-                set(java.util.Calendar.MILLISECOND, 0)
-            }
-            val selStart = selCal.timeInMillis
-            val selEnd = selStart + 86400000L
-            if (event.dtStart < selEnd && event.dtEnd > selStart) {
-                result.add(event)
+            } else {
+                if (event.dtStart < rangeEnd && event.dtEnd > rangeStart) {
+                    result.add(event)
+                }
             }
         }
         return result

@@ -12,6 +12,17 @@ import com.tyme.lunar.LunarMonth as TymeLunarMonth
  */
 object LunarCalendar {
 
+    // ── 计算结果缓存 ─────────────────────────────────────────────────
+    // tyme4j 的公历→农历换算涉及对象图遍历，属于 CPU 重计算。
+    // 小组件（单页约 42 个日期格）与黄历详情页会高频重复调用同一日期，
+    // 使用固定上限的 LRU 缓存避免重复计算、降低卡顿与电量消耗。
+    private val lunarDayTextCache = object : LinkedHashMap<Triple<Int, Int, Int>, String>(128, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Triple<Int, Int, Int>, String>): Boolean = size > 256
+    }
+    private val fullHuangLiCache = object : LinkedHashMap<Triple<Int, Int, Int>, FullHuangLi>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Triple<Int, Int, Int>, FullHuangLi>): Boolean = size > 128
+    }
+
     private val lunarMonth = arrayOf("正","二","三","四","五","六","七","八","九","十","冬","腊")
     private val lunarDay = arrayOf(
         "初一","初二","初三","初四","初五","初六","初七","初八","初九","初十",
@@ -67,8 +78,13 @@ object LunarCalendar {
     }
 
     fun getLunarDayText(year: Int, month: Int, day: Int): String {
-        val l = solarToLunar(year, month, day)
-        return if (l.lunarDay == 1) l.monthText else l.dayText
+        val key = Triple(year, month, day)
+        return lunarDayTextCache[key] ?: run {
+            val l = solarToLunar(year, month, day)
+            val text = if (l.lunarDay == 1) l.monthText else l.dayText
+            lunarDayTextCache[key] = text
+            text
+        }
     }
 
     fun getMonthGanZhi(year: Int, month: Int, day: Int): String {
@@ -170,6 +186,8 @@ object LunarCalendar {
 
     /** 获取完整黄历信息 */
     fun getFullHuangLi(year: Int, month: Int, day: Int): FullHuangLi {
+        val key = Triple(year, month, day)
+        fullHuangLiCache[key]?.let { return it }
         val lunar = solarToLunar(year, month, day)
         val huangLi = getHuangLiInfo(year, month, day)
         val solarTerm = HolidayData.getSolarTerm("%04d-%02d-%02d".format(year, month, day))
@@ -191,10 +209,12 @@ object LunarCalendar {
         val naYinWuXing = naYinWuXing(dayGanZhi)
         val taiShen = getTaiShen(dayNum)
         val shiChen = getShiChen(dayGanZhi)
-        return FullHuangLi(year, month, day, lunar, solarTerm, huangLi,
+        val result = FullHuangLi(year, month, day, lunar, solarTerm, huangLi,
             wuXing, yearWuXing, monthWuXing, chongSha, zhiShen, xingXiu,
             pengZu, jiShen, xiongSha, zhiChu, solarTerm, festival, constellation,
             naYinWuXing, taiShen, shiChen)
+        fullHuangLiCache[key] = result
+        return result
     }
 
     // ── 纳音五行 ──────────────────────────────────────────────────
