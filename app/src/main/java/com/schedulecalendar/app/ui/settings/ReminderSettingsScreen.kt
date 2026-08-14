@@ -167,6 +167,55 @@ fun ReminderSettingsScreen(
                     }
                 }
 
+                // ── 通知栏提醒 ──────────────────────────────────
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "提醒通知",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                if (state.notifyBarLocked) {
+                                    if (state.method == "calendar") {
+                                        "开启提醒后，系统日历提醒默认开启且不可关闭"
+                                    } else {
+                                        "开启提醒后，本应用通知栏提醒默认开启且不可关闭"
+                                    }
+                                } else if (state.notifyBar) {
+                                    if (state.method == "calendar") {
+                                        "开启后由系统日历在事件时间发声提醒"
+                                    } else {
+                                        "精确闹钟到点时在本应用通知栏推送提醒（可单独开启）"
+                                    }
+                                } else {
+                                    if (state.method == "calendar") {
+                                        "关闭后不影响系统日历事件本身，但可去掉提醒铃声"
+                                    } else {
+                                        "关闭后精确闹钟将静默，不再弹通知栏提醒"
+                                    }
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = state.notifyBar,
+                            enabled = !state.notifyBarLocked,
+                            onCheckedChange = { vm.toggleNotifyBar() }
+                        )
+                    }
+                }
+
                 // ── 提醒内容 ──────────────────────────────────
                 Card(
                     modifier = Modifier.fillMaxWidth(),

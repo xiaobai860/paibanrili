@@ -30,7 +30,8 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
-            intent.action != Intent.ACTION_LOCKED_BOOT_COMPLETED
+            intent.action != Intent.ACTION_LOCKED_BOOT_COMPLETED &&
+            intent.action != Intent.ACTION_MY_PACKAGE_REPLACED
         ) return
 
         val scheduler = EntryPointAccessors
@@ -42,6 +43,10 @@ class BootReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+                    // 应用更新安装后系统会清除所有 AlarmManager 闹钟，需全量重调度
+                    scheduler.cancelAllReminders()
+                }
                 scheduler.scheduleUpcomingReminders()
             } catch (e: Exception) {
                 e.printStackTrace()

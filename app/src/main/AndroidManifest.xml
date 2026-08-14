@@ -6,8 +6,6 @@
     <uses-permission android:name="android.permission.READ_CALENDAR"/>
     <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
-    <!-- 精确闹钟权限（Android 14+ 普通权限，安装时自动授予） -->
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.AUTHENTICATE_ACCOUNTS"/>
 
@@ -90,13 +88,24 @@
             android:name=".reminder.AnniversaryReminderReceiver"
             android:exported="false" />
 
-        <!-- 开机自启动接收器：设备重启后重新调度闹钟提醒 -->
+        <!-- 开机自启动接收器：设备重启 / 应用更新后重新调度闹钟提醒 -->
         <receiver
             android:name=".reminder.BootReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 时间/时区变更接收器：跨时区飞行或手动改时间后，修正已注册的绝对毫秒闹钟 -->
+        <receiver
+            android:name=".reminder.TimeChangeReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
 

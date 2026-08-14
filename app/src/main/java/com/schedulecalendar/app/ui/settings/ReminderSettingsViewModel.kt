@@ -27,6 +27,8 @@ data class ReminderSettingsState(
     val reminderClockOut: Boolean = false,   // 提醒下班
     val clockInAdvanceMinutes: Int = 15,     // 上班提前分钟
     val clockOutAdvanceMinutes: Int = 0,     // 下班提前分钟
+    val notifyBar: Boolean = true,           // 通知栏提醒开关（默认开启）
+    val notifyBarLocked: Boolean = false,     // 总开关开启时通知栏提醒被强制锁定为开启
     val pendingCalendarPermission: Boolean = false // 是否需要请求日历权限
 )
 
@@ -61,6 +63,9 @@ class ReminderSettingsViewModel @Inject constructor(
             val clockOut = prefs.getReminderClockOut()
             val clockInMin = prefs.getReminderClockInMinutes()
             val clockOutMin = prefs.getReminderClockOutMinutes()
+            // 总开关关闭时通知栏提醒可通过自身开关单独控制；总开关开启时强制开启且锁定
+            val notifyBarLocked = enabled
+            val notifyBar = if (notifyBarLocked) true else prefs.getReminderNotifyBar()
 
             _state.update {
                 ReminderSettingsState(
@@ -69,7 +74,9 @@ class ReminderSettingsViewModel @Inject constructor(
                     reminderClockIn = clockIn,
                     reminderClockOut = clockOut,
                     clockInAdvanceMinutes = clockInMin,
-                    clockOutAdvanceMinutes = clockOutMin
+                    clockOutAdvanceMinutes = clockOutMin,
+                    notifyBar = notifyBar,
+                    notifyBarLocked = notifyBarLocked
                 )
             }
         }
@@ -79,7 +86,13 @@ class ReminderSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val newEnabled = !_state.value.enabled
             prefs.saveReminderEnabled(newEnabled)
-            _state.update { it.copy(enabled = newEnabled) }
+            if (newEnabled) {
+                // 开启总开关后，通知栏提醒默认开启且不可关闭
+                prefs.saveReminderNotifyBar(true)
+                _state.update { it.copy(enabled = newEnabled, notifyBar = true, notifyBarLocked = true) }
+            } else {
+                _state.update { it.copy(enabled = newEnabled, notifyBarLocked = false) }
+            }
         }
     }
 
@@ -149,6 +162,16 @@ class ReminderSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             prefs.saveReminderClockOutMinutes(minutes)
             _state.update { it.copy(clockOutAdvanceMinutes = minutes) }
+        }
+    }
+
+    fun toggleNotifyBar() {
+        // 总开关开启时通知栏提醒被锁定，不允许切换
+        if (_state.value.notifyBarLocked) return
+        viewModelScope.launch {
+            val newVal = !_state.value.notifyBar
+            prefs.saveReminderNotifyBar(newVal)
+            _state.update { it.copy(notifyBar = newVal) }
         }
     }
 

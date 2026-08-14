@@ -371,9 +371,16 @@ private fun PermissionManagementSection() {
                                         "\u2022 \u81ea\u542f\u52a8\u7ba1\u7406\uff08\u5f00\u673a\u540e\u81ea\u52a8\u6062\u590d\u95f9\u949f\u63d0\u9192\uff09\n" +
                                         "\u2022 \u7701\u7535\u7b56\u7565 \u2192 \u65e0\u9650\u5236\uff08\u9632\u6b62\u540e\u53f0\u88ab\u7cfb\u7edf\u6740\u6b7b\uff09\n" +
                                         "\u2022 \u540e\u53f0\u5f39\u51fa\u754c\u9762\uff08\u70b9\u51fb\u901a\u77e5\u540e\u6253\u5f00\u5e94\u7528\uff09\n" +
-                                        "\u2022 \u684c\u9762\u5feb\u6377\u65b9\u5f0f\uff08\u957f\u6309\u56fe\u6807\u663e\u793a\u6253\u5361\u5feb\u6377\u65b9\u5f0f\uff09",
+                                        "\u2022 \u684c\u9762\u5feb\u6377\u65b9\u5f0f\uff08\u957f\u6309\u56fe\u6807\u663e\u793a\u6253\u5361\u5feb\u6377\u65b9\u5f0f\uff09\n" +
+                                        "\u2022 \u9501\u5c4f\u901a\u77e5 / \u901a\u77e5\u680f\u663e\u793a\uff08\u26a0\ufe0f \u52a1\u5fc5\u5f00\u542f\uff0c\u5426\u5219\u5230\u70b9\u63d0\u9192\u4e0d\u5f39\u7a97\u3001\u4e0d\u54cd\u94c3\uff0c\u529f\u80fd\u5c06\u5931\u6548\uff09",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = "\u63d0\u793a\uff1a\u82e5\u5df2\u5f00\u542f\u4e0a\u8ff0\u6743\u9650\u4f46\u4ecd\u6536\u4e0d\u5230\u63d0\u9192\uff0c\u591a\u662f\u7cfb\u7edf\u300c\u901a\u77e5\u7ba1\u7406\u300d\u4e2d\u5173\u95ed\u4e86\u672c\u5e94\u7528\u901a\u77e5\u6216\u300c\u9501\u5c4f\u901a\u77e5\u300d\u88ab\u9690\u85cf\uff0c\u8bf7\u5230\u7cfb\u7edf\u8bbe\u7f6e \u2192 \u901a\u77e5\u7ba1\u7406\u4e2d\u786e\u8ba4\u5df2\u5141\u8bb8\u3002",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 TextButton(

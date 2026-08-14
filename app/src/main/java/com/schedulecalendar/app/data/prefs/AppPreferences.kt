@@ -56,6 +56,7 @@ class AppPreferences @Inject constructor(
         val KEY_REMINDER_CLOCK_OUT       = stringPreferencesKey("reminder_clock_out")
         val KEY_REMINDER_CLOCK_IN_MINUTES = intPreferencesKey("reminder_clock_in_minutes")
         val KEY_REMINDER_CLOCK_OUT_MINUTES = intPreferencesKey("reminder_clock_out_minutes")
+        val KEY_REMINDER_NOTIFY_BAR        = stringPreferencesKey("reminder_notify_bar")
         val KEY_DISABLED_ACCOUNT_IDS     = stringPreferencesKey("disabled_calendar_accounts")
         val KEY_ACCOUNT_CATEGORIES         = stringPreferencesKey("account_categories")
         val KEY_ACCOUNTS_INITIALIZED     = stringPreferencesKey("accounts_initialized")
@@ -239,6 +240,16 @@ class AppPreferences @Inject constructor(
     suspend fun saveReminderClockOutMinutes(minutes: Int) = context.dataStore.edit {
         it[KEY_REMINDER_CLOCK_OUT_MINUTES] = minutes
     }
+    /** 通知栏提醒开关：是否通过通知栏推送提醒（默认开启，关闭后仅日历事件可见、不弹通知） */
+    suspend fun getReminderNotifyBar(): Boolean =
+        context.dataStore.data.first()[KEY_REMINDER_NOTIFY_BAR] != "false"
+    suspend fun saveReminderNotifyBar(enabled: Boolean) = context.dataStore.edit {
+        it[KEY_REMINDER_NOTIFY_BAR] = enabled.toString()
+    }
+    val reminderNotifyBarFlow: Flow<Boolean> = context.dataStore.data.map {
+        it[KEY_REMINDER_NOTIFY_BAR] != "false"
+    }
+
     val reminderSettingsFlow = kotlinx.coroutines.flow.combine(
         reminderEnabledFlow, reminderMethodFlow
     ) { enabled, method ->

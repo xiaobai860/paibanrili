@@ -110,6 +110,8 @@ class ReminderScheduler @Inject constructor(
         val clockOutEnabled = prefs.getReminderClockOut()
         val clockInMinutes = prefs.getReminderClockInMinutes()
         val clockOutMinutes = prefs.getReminderClockOutMinutes()
+        // 总开关开启后，通知栏提醒默认强制开启且不可关闭（保证提醒一定会弹通知）
+        val notifyBar = true
 
         if (!clockInEnabled && !clockOutEnabled) {
             cancelAllReminders()
@@ -147,7 +149,8 @@ class ReminderScheduler @Inject constructor(
                         timeStr = clockInTime,
                         advanceMinutes = clockInMinutes,
                         isClockIn = true,
-                        shiftName = shiftTimes.third
+                        shiftName = shiftTimes.third,
+                        notifyBar = notifyBar
                     )
                 }
                 if (clockOutEnabled && clockOutTime.isNotBlank()) {
@@ -156,7 +159,8 @@ class ReminderScheduler @Inject constructor(
                         timeStr = clockOutTime,
                         advanceMinutes = clockOutMinutes,
                         isClockIn = false,
-                        shiftName = shiftTimes.third
+                        shiftName = shiftTimes.third,
+                        notifyBar = notifyBar
                     )
                 }
             }
@@ -289,13 +293,13 @@ class ReminderScheduler @Inject constructor(
      * 设置单个提醒
      *
      * 使用 setAlarmClock 保证最高可靠性——
-     * 系统会将其视为用户设置的闹钟，即使在 Doze 模式、
-     * 电池优化、省电模式下也能准时触发。
+     * 系统会将其视为用户设置的闹钟，由系统进程（非应用进程）到点唤醒并投递广播，
+     * 即使在 Doze 模式、电池优化、省电模式下也能准时触发，且**无需应用常驻后台**。
      *
      * 权限说明：
-     * - 应用声明 USE_EXACT_ALARM 权限（安装时自动授予），
-     *   等效于 SCHEDULE_EXACT_ALARM 但无需用户手动授权
-     * - setAlarmClock 需要精确闹钟权限，USE_EXACT_ALARM 已满足
+     * - setAlarmClock 是 API 21+ 的用户闹钟语义，由系统保证触发，
+     *   不受 SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM 精确闹钟权限约束（该权限仅约束 setExact*），
+     *   因此在国产 ROM 下也能稳定触发，无需在此做 canScheduleExactAlarms() 校验。
      */
     private fun scheduleReminder(
         date: LocalDate,
@@ -305,11 +309,6 @@ class ReminderScheduler @Inject constructor(
         shiftName: String
     ) {
         try {
-            // 防御性检查：确认精确闹钟权限可用（USE_EXACT_ALARM 安装时自动授予，恒为 true）
-            if (!alarmManager.canScheduleExactAlarms()) {
-                return
-            }
-
             val timeParts = timeStr.split(":")
             val hour = timeParts[0].toIntOrNull() ?: return
             val minute = timeParts[1].toIntOrNull() ?: return
@@ -338,9 +337,8 @@ class ReminderScheduler @Inject constructor(
             )
 
             // 闹钟和日历提醒方式均使用 setAlarmClock 保证最高可靠性
-            val showIntent = Intent(context, context.javaClass).apply {
-                action = "com.schedulecalendar.app.REMINDER_ALARM"
-            }
+            // 点击系统闹钟 UI 时打开应用主界面（不再指向 Application，避免无效 action）
+            val showIntent = Intent(context, MainActivity::class.java)
             val showPendingIntent = PendingIntent.getActivity(
                 context, requestCode, showIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -386,7 +384,8 @@ class ReminderScheduler @Inject constructor(
         timeStr: String,
         advanceMinutes: Int,
         isClockIn: Boolean,
-        shiftName: String
+        shiftName: String,
+        notifyBar: Boolean = true
     ) {
         try {
             val timeParts = timeStr.split(":")
@@ -414,6 +413,9 @@ class ReminderScheduler @Inject constructor(
 
             val description = "日期：$dateStr\n班次：$shiftName\n时间：$timeStr\n提前${advanceMinutes}分钟提醒"
 
+            // 关闭通知栏提醒时仅创建日历事件（用于可视化），不写入 Reminders 提醒记录
+            val reminderMinutes: Int? = if (notifyBar) advanceMinutes else null
+
             calendarRepo.createEvent(
                 title = title,
                 description = description,
@@ -421,7 +423,7 @@ class ReminderScheduler @Inject constructor(
                 dtEnd = dtEnd,
                 allDay = false,
                 calendarId = calendarRepo.getOrCreateReminderCalendarId(), // 强制使用提醒专用日历
-                reminderMinutes = advanceMinutes
+                reminderMinutes = reminderMinutes
             )
         } catch (e: Exception) {
             // silently handle error
@@ -451,6 +453,56 @@ class ReminderScheduler @Inject constructor(
             }
         } catch (e: Exception) {
             // silently handle error
+        }
+    }
+
+    /**
+     * 时区/系统时间变更时重排系统日历提醒事件。
+     *
+     * 日历事件基于绝对毫秒存储，跨时区或手动改时间后会错位。
+     * 此处先清理全部旧事件，再按当前窗口与设置重建，确保日历事件时间正确。
+     * 与总开关/提醒方式无关：即使当前为闹钟模式，也会清理可能残留的日历事件。
+     */
+    suspend fun rescheduleCalendarReminders() {
+        try {
+            forceCleanupCalendarReminders()
+            val enabled = prefs.getReminderEnabled()
+            val method = prefs.getReminderMethod()
+            if (!enabled || method != "calendar") return
+
+            val clockInEnabled = prefs.getReminderClockIn()
+            val clockOutEnabled = prefs.getReminderClockOut()
+            val clockInMinutes = prefs.getReminderClockInMinutes()
+            val clockOutMinutes = prefs.getReminderClockOutMinutes()
+            if (!clockInEnabled && !clockOutEnabled) return
+
+            val today = LocalDate.now()
+            for (dayOffset in -REMINDER_PAST_DAYS..REMINDER_FUTURE_DAYS) {
+                val date = today.plusDays(dayOffset.toLong())
+                val record = getShiftForDate(date.toString()) ?: continue
+                val shiftTimes = getShiftTimes(record.shiftId) ?: continue
+                val effectiveTimes = computeEffectiveReminderTimes(
+                    shiftTimes.first, shiftTimes.second, record.appliedStatus
+                ) ?: continue
+                val (clockInTime, clockOutTime) = effectiveTimes
+                val isCrossMidnight = CalcUtils.timeToMin(clockOutTime) < CalcUtils.timeToMin(clockInTime)
+                val clockOutDate = if (isCrossMidnight) date.plusDays(1) else date
+
+                if (clockInEnabled && clockInTime.isNotBlank()) {
+                    scheduleCalendarReminder(
+                        date = date, timeStr = clockInTime, advanceMinutes = clockInMinutes,
+                        isClockIn = true, shiftName = shiftTimes.third, notifyBar = true
+                    )
+                }
+                if (clockOutEnabled && clockOutTime.isNotBlank()) {
+                    scheduleCalendarReminder(
+                        date = clockOutDate, timeStr = clockOutTime, advanceMinutes = clockOutMinutes,
+                        isClockIn = false, shiftName = shiftTimes.third, notifyBar = true
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
