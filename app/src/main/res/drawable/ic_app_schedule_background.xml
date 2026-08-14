@@ -4,5 +4,16 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <solid android:color="#2196F3"/>
+    <!-- 薰衣草紫斜向渐变背景（左上浅紫 #C9B5F0 → 右下深紫 #7E6BD5），对应设计图配色 -->
+    <path
+        android:pathData="M0,0 H108 V108 H0 Z">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0" android:startY="0"
+                android:endX="108" android:endY="108"
+                android:startColor="#C9B5F0"
+                android:endColor="#7E6BD5"/>
+        </aapt:attr>
+    </path>
 </vector>
