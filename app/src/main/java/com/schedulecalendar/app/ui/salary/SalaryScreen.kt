@@ -479,14 +479,6 @@ private fun SalaryDailyRow(d: DayScheduleDetail) {
     }
 }
 
-// DayScheduleDetail 有 salary 字段但没有 overtimeSalary，需要从 normalSalary 推算
-// 注意：overtimeHours 已包含 weekend + holiday，不可重复相加
-private val DayScheduleDetail.overtimeSalary: Double
-    get() = if (overtimeHours > 0 && salary > 0) {
-        val totalH = normalHours + overtimeHours
-        if (totalH > 0) salary * (overtimeHours / totalH) else 0.0
-    } else 0.0
-
 @Composable
 private fun SalaryBadge(label: String, bgColor: Color, textColor: Color) {
     Surface(shape = RoundedCornerShape(4.dp), color = bgColor) {

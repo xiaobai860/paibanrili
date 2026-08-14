@@ -14,6 +14,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.FlowPreview
 import java.time.LocalDate
 import javax.inject.Inject
 
@@ -49,6 +50,7 @@ data class HoursUiState(
     val loading: Boolean                           = true
 )
 
+@OptIn(FlowPreview::class)
 @HiltViewModel
 class HoursViewModel @Inject constructor(
     private val shiftRepo: ShiftRepository,
@@ -68,9 +70,9 @@ class HoursViewModel @Inject constructor(
     private var loadJob: Job? = null
 
     init {
-        // 排班数据变更时自动刷新
+        // 排班数据变更时自动刷新；debounce 合并短时间内的连续变更，避免每次数据库写都重算整月+趋势
         viewModelScope.launch {
-            scheduleRepo.refreshSignal.collect { reload() }
+            scheduleRepo.refreshSignal.debounce(300).collect { reload() }
         }
     }
 
@@ -104,15 +106,21 @@ class HoursViewModel @Inject constructor(
                 val isFutureMonth  = year > today.year ||
                     (year == today.year && month > today.monthValue)
 
+                // 全月工时（基础计算，actual/future 复用，避免重复整月重算）
+                val fullSummary = CalcUtils.calcMonthHours(year, month, schedules, shifts, breaks, statuses, attendConf)
+
                 // 实际：历史月=全月，当前月=≤今天，未来月=空
-                val actual = if (isFutureMonth) HoursSummary()
-                else CalcUtils.calcMonthHours(year, month, schedules, shifts, breaks, statuses, attendConf) {
-                    if (isCurrentMonth) it <= todayStr else true
+                val actual = when {
+                    isFutureMonth -> HoursSummary()
+                    isCurrentMonth -> CalcUtils.calcMonthHours(year, month, schedules, shifts, breaks, statuses, attendConf) {
+                        it <= todayStr
+                    }
+                    else -> fullSummary   // 历史月实际 = 全月
                 }
                 // 预计：历史月=null，当前月=>今天，未来月=全月
                 val future = when {
                     !isCurrentMonth && !isFutureMonth -> null
-                    isFutureMonth -> CalcUtils.calcMonthHours(year, month, schedules, shifts, breaks, statuses, attendConf)
+                    isFutureMonth -> fullSummary   // 未来月预计 = 全月
                     else -> CalcUtils.calcMonthHours(year, month, schedules, shifts, breaks, statuses, attendConf) { it > todayStr }
                 }
 

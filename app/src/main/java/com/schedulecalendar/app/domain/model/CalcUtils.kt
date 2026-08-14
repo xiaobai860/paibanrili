@@ -288,7 +288,6 @@ object CalcUtils {
                     when (effectiveType) {
                         ScheduleType.SWAP  -> swapDays++
                         ScheduleType.REST  -> restDays++
-                        else -> {}
                     }
                 } else {
                     normalHours   += hours.normal
@@ -316,7 +315,6 @@ object CalcUtils {
                 }
             } else when (effectiveType) {
                 ScheduleType.LEAVE -> leaveDaysCount++
-                else -> {}
             }
 
             // 状态时间段工时汇总（所有排班类型均处理，含请假）

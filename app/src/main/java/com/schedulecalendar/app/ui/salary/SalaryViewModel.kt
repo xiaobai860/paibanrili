@@ -14,6 +14,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.FlowPreview
 import java.time.LocalDate
 import javax.inject.Inject
 
@@ -45,6 +46,7 @@ data class SalaryUiState(
     val loading: Boolean                       = true
 )
 
+@OptIn(FlowPreview::class)
 @HiltViewModel
 class SalaryViewModel @Inject constructor(
     private val shiftRepo: ShiftRepository,
@@ -63,9 +65,9 @@ class SalaryViewModel @Inject constructor(
     private var loadJob: Job? = null
 
     init {
-        // 排班数据变更时自动刷新
+        // 排班数据变更时自动刷新；debounce 合并短时间内的连续变更，避免每次数据库写都重算整月+趋势
         viewModelScope.launch {
-            scheduleRepo.refreshSignal.collect { reload() }
+            scheduleRepo.refreshSignal.debounce(300).collect { reload() }
         }
     }
 
@@ -93,18 +95,36 @@ class SalaryViewModel @Inject constructor(
                 val isFutureMonth  = year > today.year ||
                     (year == today.year && month > today.monthValue)
 
+                // 全月薪资（基础计算，actual/future/全月估算复用，避免重复整月重算）
+                val fullSummary = CalcUtils.calcMonthSalary(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf)
+
                 // 实际薪资
-                val actual = if (isFutureMonth) SalarySummary(
-                    baseSalary = salaryConf.baseSalary, basePerformance = salaryConf.basePerformance)
-                else CalcUtils.calcMonthSalary(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf) {
-                    if (isCurrentMonth) it <= todayStr else true
+                val actual = when {
+                    isFutureMonth -> SalarySummary(
+                        baseSalary = salaryConf.baseSalary, basePerformance = salaryConf.basePerformance)
+                    isCurrentMonth -> CalcUtils.calcMonthSalary(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf) {
+                        it <= todayStr
+                    }
+                    else -> fullSummary   // 历史月实际 = 全月
                 }
                 // 预计薪资（不含底薪/绩效/社保/公积金，仅工时部分）
                 val future = when {
                     !isCurrentMonth && !isFutureMonth -> null
+                    isFutureMonth -> {
+                        // 未来月预计 = 全月工时部分（由 fullSummary 推导，无需重算）
+                        val hoursTotal = fullSummary.normalSalary + fullSummary.overtimeSalary + fullSummary.weekendSalary +
+                                fullSummary.holidaySalary + fullSummary.totalSubsidy - fullSummary.totalDeduction
+                        fullSummary.copy(
+                            baseSalary = 0.0,
+                            basePerformance = 0.0,
+                            socialInsurance = 0.0,
+                            housingFundDeduction = 0.0,
+                            totalSalary = CalcUtils.roundD2(hoursTotal.coerceAtLeast(0.0))
+                        )
+                    }
                     else -> {
                         val raw = CalcUtils.calcMonthSalary(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf) {
-                            if (isCurrentMonth) it > todayStr else true
+                            it > todayStr
                         }
                         val hoursTotal = raw.normalSalary + raw.overtimeSalary + raw.weekendSalary +
                                 raw.holidaySalary + raw.totalSubsidy - raw.totalDeduction
@@ -117,8 +137,7 @@ class SalaryViewModel @Inject constructor(
                         )
                     }
                 }
-                // 全月估算
-                val fullEstimate = CalcUtils.calcMonthSalary(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf)
+                val fullEstimate = fullSummary
 
                 // 每日明细
                 val details = CalcUtils.getMonthScheduleDetails(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf)
