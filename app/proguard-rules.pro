@@ -32,6 +32,21 @@
 -keepclassmembers class com.schedulecalendar.app.widget.** { *; }
 -keep class com.schedulecalendar.app.widget.** { *; }
 
+# ── Glance 运行时（Action / Composition / 内部 Provider，防止 R8 破坏反射路径）────
+-keep class androidx.glance.** { *; }
+-keepclassmembers class androidx.glance.** { *; }
+-keep class androidx.glance.appwidget.** { *; }
+-keepclassmembers class androidx.glance.appwidget.** { *; }
+# Glance 通过 WorkManager 在后台进程执行 provideGlance 的 composition，
+# 必须保留 androidx.work 全部类及其无参构造，否则 OverwritingInputMerger 等
+# 内部类被 R8 破坏 → worker 实例化失败 → widget 永远"载入出错"
+-keep class androidx.work.** { *; }
+-keepclassmembers class androidx.work.** { *; }
+-keep class * extends androidx.work.InputMerger { *; }
+-keep class * extends androidx.work.Worker { *; }
+-keep class * extends androidx.work.ListenableWorker { *; }
+-dontwarn androidx.work.**
+
 # ── 备份管理 Gson 数据类（AppDataBackup / ShiftExportData）───────────────────────
 -keepclassmembers class com.schedulecalendar.app.ui.settings.** { *; }
 -keep class com.schedulecalendar.app.ui.settings.** { *; }

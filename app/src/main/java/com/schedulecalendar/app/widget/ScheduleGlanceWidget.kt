@@ -12,9 +12,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.*
 import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
@@ -22,10 +22,7 @@ import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
-import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.layout.*
-import androidx.glance.state.GlanceStateDefinition
-import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.text.FontWeight
 import androidx.glance.text.TextAlign
 import androidx.glance.text.Text
@@ -43,6 +40,23 @@ import dagger.hilt.components.SingletonComponent
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
+
+// ── 打开小组件样式配置页 ──────────────────────────────────────────
+class OpenWidgetConfigAction : ActionCallback {
+    companion object { val KEY_TYPE = ActionParameters.Key<String>("widget_type") }
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: ActionParameters
+    ) {
+        val type = parameters[KEY_TYPE] ?: return
+        val intent = Intent(context, WidgetConfigActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra("widget_type", type)
+        }
+        context.startActivity(intent)
+    }
+}
 
 // ── 快捷打卡小组件数据模型 ──────────────────────────────────────────
 
@@ -69,9 +83,7 @@ data class ClockInWidgetData(
     val widgetClockOutTime: String = ""
 )
 
-// ── Glance 状态键 ──────────────────────────────────────────────────
-
-internal val KEY_CLOCK_IN_WIDGET = stringPreferencesKey("clock_in_widget_data")
+// ── 存储键 ──────────────────────────────────────────────────
 
 private const val CLOCK_IN_PREFS = "clock_in_widget_prefs"
 private const val KEY_CLOCK_IN_DATE = "clock_in_date"
@@ -84,26 +96,27 @@ private const val KEY_WIDGET_JSON = "widget_json"
 
 class ScheduleGlanceWidget : GlanceAppWidget() {
 
-    override val stateDefinition: GlanceStateDefinition<*> = PreferencesGlanceStateDefinition
-
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent { ClockInWidgetContent() }
+        logWidget("schedule provideGlance ENTER")
+        try {
+            provideContent { SafeContent("schedule") { ClockInWidgetContent() } }
+            logWidget("schedule provideGlance OK")
+        } catch (t: Throwable) {
+            logWidget("schedule provideGlance EXCEPTION")
+            dumpWidgetCrash("schedule_provide", t)
+            provideContent { Text("") }
+        }
     }
 
     companion object {
         suspend fun updateWidgetData(context: Context, data: ClockInWidgetData) {
             val gson = Gson()
-            // 同步保存到 SharedPreferences，供 ActionCallback 读取
+            // 保存到 SharedPreferences，供 content 与 ActionCallback 读取
             context.getSharedPreferences(WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
                 .edit { putString(KEY_WIDGET_JSON, gson.toJson(data)) }
             val widget = ScheduleGlanceWidget()
             val manager = GlanceAppWidgetManager(context)
             manager.getGlanceIds(ScheduleGlanceWidget::class.java).forEach { glanceId ->
-                updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
-                    prefs.toMutablePreferences().also {
-                        it[KEY_CLOCK_IN_WIDGET] = gson.toJson(data)
-                    }
-                }
                 widget.update(context, glanceId)
             }
         }
@@ -369,8 +382,8 @@ private fun getHolidayCountdownText(): String {
 @Suppress("LocalContextConfigurationRead")
 @Composable
 private fun ClockInWidgetContent() {
-    val prefs = currentState<androidx.datastore.preferences.core.Preferences>()
-    val jsonStr = prefs[KEY_CLOCK_IN_WIDGET]
+    val prefs = androidx.glance.LocalContext.current.getSharedPreferences(WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
+    val jsonStr = prefs.getString(KEY_WIDGET_JSON, "")
     val data = if (!jsonStr.isNullOrBlank())
         runCatching { Gson().fromJson(jsonStr, ClockInWidgetData::class.java) }
             .getOrElse { ClockInWidgetData() }
@@ -429,7 +442,7 @@ private fun ClockInWidgetContent() {
                 .clickable(actionRunCallback<OpenAppAction>()),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 第一行：班次名 + 附加状态（同一行）
+            // 第一行：班次名（占满剩余空间） + 右侧小齿轮样式入口（与班次名同行，不单独占行、不挤压正文）
             val shiftDisplayName = buildString {
                 if (data.shiftName.isNotEmpty()) append(data.shiftName)
                 if (data.statusName.isNotEmpty()) {
@@ -437,20 +450,33 @@ private fun ClockInWidgetContent() {
                     append(data.statusName)
                 }
             }
-            if (shiftDisplayName.isNotEmpty()) {
+            Row(
+                modifier = GlanceModifier.fillMaxWidth().padding(bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = shiftDisplayName,
-                    style = TextStyle(
-                        color = shiftColor,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
+                    text = shiftDisplayName.ifEmpty { "\u4eca\u65e5\u65e0\u6392\u73ed" },
+                    style = if (shiftDisplayName.isNotEmpty())
+                        TextStyle(color = shiftColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    else
+                        TextStyle(color = pickColor(utc.copy(alpha = 0.55f), utcDark.copy(alpha = 0.55f), isDark), fontSize = 13.sp),
+                    modifier = GlanceModifier.defaultWeight(),
                     maxLines = 1
                 )
-            } else {
+                // 小齿轮：样式设置入口（点击跳转小组件样式配置页），固定小尺寸不挤压文字
                 Text(
-                    text = "\u4eca\u65e5\u65e0\u6392\u73ed",
-                    style = TextStyle(color = pickColor(utc.copy(alpha = 0.55f), utcDark.copy(alpha = 0.55f), isDark), fontSize = 13.sp),
+                    text = "\u2699",
+                    modifier = GlanceModifier
+                        .padding(start = 6.dp)
+                        .clickable(
+                            actionRunCallback<OpenWidgetConfigAction>(
+                                parameters = actionParametersOf(OpenWidgetConfigAction.KEY_TYPE to WIDGET_TYPE_SCHEDULE)
+                            )
+                        ),
+                    style = TextStyle(
+                        color = pickColor(utc.copy(alpha = 0.4f), utcDark.copy(alpha = 0.4f), isDark),
+                        fontSize = 13.sp
+                    ),
                     maxLines = 1
                 )
             }

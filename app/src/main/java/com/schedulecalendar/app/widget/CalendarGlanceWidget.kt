@@ -8,11 +8,11 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.core.content.edit
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.*
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
@@ -22,12 +22,10 @@ import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
+import com.schedulecalendar.app.widget.OpenWidgetConfigAction.Companion.KEY_TYPE
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
-import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.layout.*
-import androidx.glance.state.GlanceStateDefinition
-import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
@@ -37,6 +35,9 @@ import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.domain.model.HolidayData
 import com.schedulecalendar.app.domain.model.LunarCalendar
 import java.time.LocalDate
+
+private const val CALENDAR_WIDGET_DATA_PREFS = "calendar_widget_data_prefs"
+private const val KEY_CALENDAR_WIDGET_JSON = "calendar_widget_json"
 
 data class CalendarWidgetDay(
     val day: Int = 0, val dateStr: String = "",
@@ -49,23 +50,31 @@ data class CalendarWidgetInfo(
     val weekStartOffset: Int = 0, val totalRows: Int = 5
 )
 
-internal val KEY_CALENDAR_WIDGET = stringPreferencesKey("calendar_widget_data")
-
 class CalendarGlanceWidget : GlanceAppWidget() {
-    override val stateDefinition = PreferencesGlanceStateDefinition
     override val sizeMode = SizeMode.Exact
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent { CalendarWidgetContent() }
+        logWidget("calendar provideGlance ENTER")
+        val sizes = runCatching { GlanceAppWidgetManager(context).getAppWidgetSizes(id) }.getOrNull()
+        val maxH = sizes?.maxOfOrNull { it.height }?.value ?: 180f
+        val isLarge = maxH >= 220f
+        val baseHeight = maxH.dp
+        try {
+            provideContent { SafeContent("calendar") { CalendarWidgetContent(isLarge, baseHeight) } }
+            logWidget("calendar provideGlance OK")
+        } catch (t: Throwable) {
+            logWidget("calendar provideGlance EXCEPTION")
+            dumpWidgetCrash("calendar_provide", t)
+            provideContent { Text("") }
+        }
     }
     companion object {
         suspend fun updateWidgetData(context: Context, data: CalendarWidgetInfo) {
             val gson = Gson()
             val widget = CalendarGlanceWidget()
             val manager = GlanceAppWidgetManager(context)
+            context.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
+                .edit { putString(KEY_CALENDAR_WIDGET_JSON, gson.toJson(data)) }
             manager.getGlanceIds(CalendarGlanceWidget::class.java).forEach { gid ->
-                updateAppWidgetState(context, PreferencesGlanceStateDefinition, gid) { p ->
-                    p.toMutablePreferences().also { it[KEY_CALENDAR_WIDGET] = gson.toJson(data) }
-                }
                 widget.update(context, gid)
             }
         }
@@ -98,9 +107,9 @@ class RefreshWidgetAction : ActionCallback {
 
 @Suppress("LocalContextConfigurationRead")
 @Composable
-private fun CalendarWidgetContent() {
-    val prefs = currentState<androidx.datastore.preferences.core.Preferences>()
-    val jsonStr = prefs[KEY_CALENDAR_WIDGET]
+private fun CalendarWidgetContent(isLarge: Boolean, baseHeight: androidx.compose.ui.unit.Dp) {
+    val prefs = androidx.glance.LocalContext.current.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
+    val jsonStr = prefs.getString(KEY_CALENDAR_WIDGET_JSON, "")
     val data = if (!jsonStr.isNullOrBlank())
         runCatching { Gson().fromJson(jsonStr, CalendarWidgetInfo::class.java) }.getOrElse { CalendarWidgetInfo() }
     else CalendarWidgetInfo()
@@ -117,8 +126,6 @@ private fun CalendarWidgetContent() {
     val utcDark = hexToWidgetColor(textHex, Color(0xFFE0E0E0)).copy(alpha = bgAlpha.coerceAtLeast(0.5f))
     // 检测深色模式
     val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-    val ws = LocalSize.current
-    val isLarge = ws.height >= 220.dp
     val today = LocalDate.now()
     val isCurMon = data.year == today.year && data.month == today.monthValue
     val headerText = if (data.month > 0) "${data.year}\u5e74${data.month}\u6708" else "${today.year}\u5e74${today.monthValue}\u6708"
@@ -131,7 +138,7 @@ private fun CalendarWidgetContent() {
     val lfs = 7.sp
     // 农历显示条件：物理高度足够 AND (月份行数≤4 OR 每行高度≥50dp)
     // 确保3行小组件不显示(防裁切)，4行小组件始终显示(空间充裕)
-    val heightPerRow = (ws.height - 34.dp) / data.totalRows.coerceAtLeast(1)
+    val heightPerRow = (baseHeight - 34.dp) / data.totalRows.coerceAtLeast(1)
     val showLunar = isLarge && (data.totalRows <= 4 || heightPerRow >= 50.dp)
     val headerFs = if (isLarge) 17.sp else 14.sp
     val refreshSize = if (isLarge) 28.dp else 24.dp
@@ -154,6 +161,24 @@ private fun CalendarWidgetContent() {
                     style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = headerFs, fontWeight = FontWeight.Bold)
                 )
                 Spacer(modifier = GlanceModifier.defaultWeight())
+                Box(
+                    modifier = GlanceModifier
+                        .width(refreshSize).height(refreshSize)
+                        .background(ColorProvider(utc.copy(alpha = 0.08f * bgAlpha)))
+                        .cornerRadius(8.dp)
+                        .clickable(
+                            actionRunCallback<OpenWidgetConfigAction>(
+                                parameters = actionParametersOf(KEY_TYPE to WIDGET_TYPE_CALENDAR)
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "\u2699",
+                        style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = refreshIconFs, fontWeight = FontWeight.Bold)
+                    )
+                }
+                Spacer(modifier = GlanceModifier.width(4.dp))
                 Box(
                     modifier = GlanceModifier
                         .width(refreshSize).height(refreshSize)

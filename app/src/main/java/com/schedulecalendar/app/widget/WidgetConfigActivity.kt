@@ -58,6 +58,9 @@ class WidgetConfigActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
+        // 本 Activity 仅由 App 内「设置 → 小组件样式」入口启动（widget_type 不为空）。
+        // 桌面添加小组件已不再配置（android:configure 已移除），避免部分 ROM 在
+        // 配置完成前抢先渲染导致「载入窗口小部件时出现问题」。
         val widgetType = intent?.getStringExtra("widget_type")
         val isFromSettings = widgetType != null
 
@@ -68,14 +71,9 @@ class WidgetConfigActivity : ComponentActivity() {
             appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
             isScheduleWidget = widgetType == WIDGET_TYPE_SCHEDULE
         } else {
-            appWidgetId = intent?.extras?.getInt(
-                AppWidgetManager.EXTRA_APPWIDGET_ID,
-                AppWidgetManager.INVALID_APPWIDGET_ID
-            ) ?: AppWidgetManager.INVALID_APPWIDGET_ID
-
-            val appWidgetManager = AppWidgetManager.getInstance(this)
-            val info = appWidgetManager.getAppWidgetInfo(appWidgetId)
-            isScheduleWidget = info?.provider?.className?.contains("ScheduleGlanceReceiver") == true
+            // 兜底：若被意外以桌面配置方式启动，直接以默认配置结束
+            appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+            isScheduleWidget = true
         }
 
         setContent {
