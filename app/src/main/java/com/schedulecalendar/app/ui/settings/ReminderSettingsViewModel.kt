@@ -27,8 +27,6 @@ data class ReminderSettingsState(
     val reminderClockOut: Boolean = false,   // 提醒下班
     val clockInAdvanceMinutes: Int = 15,     // 上班提前分钟
     val clockOutAdvanceMinutes: Int = 0,     // 下班提前分钟
-    val notifyBar: Boolean = true,           // 通知栏提醒开关（默认开启）
-    val notifyBarLocked: Boolean = false,     // 总开关开启时通知栏提醒被强制锁定为开启
     val pendingCalendarPermission: Boolean = false // 是否需要请求日历权限
 )
 
@@ -57,15 +55,17 @@ class ReminderSettingsViewModel @Inject constructor(
 
     private fun loadSettings() {
         viewModelScope.launch {
+            // 首次进入时写入默认配置（启用提醒 + 仅通知栏 + 通知栏开启），并立即注册提醒
+            val justInitialized = prefs.ensureReminderDefaults()
+            if (justInitialized) {
+                scheduler.scheduleActiveReminders()
+            }
             val enabled = prefs.getReminderEnabled()
             val method = prefs.getReminderMethod()
             val clockIn = prefs.getReminderClockIn()
             val clockOut = prefs.getReminderClockOut()
             val clockInMin = prefs.getReminderClockInMinutes()
             val clockOutMin = prefs.getReminderClockOutMinutes()
-            // 总开关关闭时通知栏提醒可通过自身开关单独控制；总开关开启时强制开启且锁定
-            val notifyBarLocked = enabled
-            val notifyBar = if (notifyBarLocked) true else prefs.getReminderNotifyBar()
 
             _state.update {
                 ReminderSettingsState(
@@ -74,9 +74,7 @@ class ReminderSettingsViewModel @Inject constructor(
                     reminderClockIn = clockIn,
                     reminderClockOut = clockOut,
                     clockInAdvanceMinutes = clockInMin,
-                    clockOutAdvanceMinutes = clockOutMin,
-                    notifyBar = notifyBar,
-                    notifyBarLocked = notifyBarLocked
+                    clockOutAdvanceMinutes = clockOutMin
                 )
             }
         }
@@ -87,12 +85,13 @@ class ReminderSettingsViewModel @Inject constructor(
             val newEnabled = !_state.value.enabled
             prefs.saveReminderEnabled(newEnabled)
             if (newEnabled) {
-                // 开启总开关后，通知栏提醒默认开启且不可关闭
+                // 开启总开关后，通知栏提醒默认开启（保证提醒一定会弹通知）
                 prefs.saveReminderNotifyBar(true)
-                _state.update { it.copy(enabled = newEnabled, notifyBar = true, notifyBarLocked = true) }
             } else {
-                _state.update { it.copy(enabled = newEnabled, notifyBarLocked = false) }
+                // 关闭总开关后，立即清理三种提醒方式（闹钟/日历/仅通知栏）的残留调度
+                scheduler.scheduleActiveReminders()
             }
+            _state.update { it.copy(enabled = newEnabled) }
         }
     }
 
@@ -165,35 +164,13 @@ class ReminderSettingsViewModel @Inject constructor(
         }
     }
 
-    fun toggleNotifyBar() {
-        // 总开关开启时通知栏提醒被锁定，不允许切换
-        if (_state.value.notifyBarLocked) return
-        viewModelScope.launch {
-            val newVal = !_state.value.notifyBar
-            prefs.saveReminderNotifyBar(newVal)
-            _state.update { it.copy(notifyBar = newVal) }
-        }
-    }
-
     /**
-     * 退出页面时统一应用：根据当前设置执行一次调度
-     * - 总开关关闭 → 取消所有提醒
-     * - 闹钟模式 → 清理日历事件 + 重新设置闹钟
-     * - 日历模式 → 重新创建日历提醒事件
+     * 退出页面时统一应用：根据当前设置执行一次调度。
+     * 统一入口会按当前方式（闹钟 / 日历 / 仅通知栏）自动清理其它模式残留并重新注册。
      */
     fun applyChanges() {
         viewModelScope.launch {
-            val s = _state.value
-            if (!s.enabled) {
-                scheduler.cancelAllReminders()
-                scheduler.forceCleanupCalendarReminders()
-            } else if (s.method == "alarm") {
-                // 切换为闹钟模式时清理日历事件
-                scheduler.forceCleanupCalendarReminders()
-                scheduler.scheduleUpcomingReminders()
-            } else {
-                scheduler.scheduleUpcomingReminders()
-            }
+            scheduler.scheduleActiveReminders()
         }
     }
 }

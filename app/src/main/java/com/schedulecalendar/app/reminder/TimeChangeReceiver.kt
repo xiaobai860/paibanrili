@@ -39,11 +39,8 @@ class TimeChangeReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // 重排精确闹钟（基于绝对毫秒，时区变更后需重建）
-                scheduler.cancelAllReminders()
-                scheduler.scheduleUpcomingReminders()
-                // 重排系统日历提醒事件（跨时区/改时间后旧事件毫秒会错位）
-                scheduler.rescheduleCalendarReminders()
+                // 按当前方式统一重排（基于绝对毫秒，时区变更后需重建）
+                scheduler.scheduleActiveReminders()
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {

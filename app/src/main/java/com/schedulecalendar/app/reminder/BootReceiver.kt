@@ -47,7 +47,7 @@ class BootReceiver : BroadcastReceiver() {
                     // 应用更新安装后系统会清除所有 AlarmManager 闹钟，需全量重调度
                     scheduler.cancelAllReminders()
                 }
-                scheduler.scheduleUpcomingReminders()
+                scheduler.scheduleActiveReminders()
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
