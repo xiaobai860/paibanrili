@@ -12,5 +12,6 @@
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen"
+    android:appCategory="productivity"
     android:description="@string/calendar_widget_description"
     android:previewImage="@drawable/preview_calendar_widget" />

@@ -53,19 +53,11 @@ data class CalendarWidgetInfo(
 class CalendarGlanceWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        logWidget("calendar provideGlance ENTER")
         val sizes = runCatching { GlanceAppWidgetManager(context).getAppWidgetSizes(id) }.getOrNull()
         val maxH = sizes?.maxOfOrNull { it.height }?.value ?: 180f
         val isLarge = maxH >= 220f
         val baseHeight = maxH.dp
-        try {
-            provideContent { SafeContent("calendar") { CalendarWidgetContent(isLarge, baseHeight) } }
-            logWidget("calendar provideGlance OK")
-        } catch (t: Throwable) {
-            logWidget("calendar provideGlance EXCEPTION")
-            dumpWidgetCrash("calendar_provide", t)
-            provideContent { Text("") }
-        }
+        provideContent { CalendarWidgetContent(isLarge, baseHeight) }
     }
     companion object {
         suspend fun updateWidgetData(context: Context, data: CalendarWidgetInfo) {

@@ -24,8 +24,8 @@ android {
         applicationId = "com.schedulecalendar.app"
         minSdk        = 34
         targetSdk     = 36
-        versionCode   = 2026081907
-        versionName   = "2026081907"
+        versionCode   = 2026081909
+        versionName   = "2026081909"
     }
 
     signingConfigs {

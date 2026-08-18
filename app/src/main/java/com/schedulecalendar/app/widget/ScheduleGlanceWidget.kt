@@ -97,15 +97,7 @@ private const val KEY_WIDGET_JSON = "widget_json"
 class ScheduleGlanceWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        logWidget("schedule provideGlance ENTER")
-        try {
-            provideContent { SafeContent("schedule") { ClockInWidgetContent() } }
-            logWidget("schedule provideGlance OK")
-        } catch (t: Throwable) {
-            logWidget("schedule provideGlance EXCEPTION")
-            dumpWidgetCrash("schedule_provide", t)
-            provideContent { Text("") }
-        }
+        provideContent { ClockInWidgetContent() }
     }
 
     companion object {

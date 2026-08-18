@@ -10,5 +10,6 @@
     android:resizeMode="none"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen"
+    android:appCategory="productivity"
     android:description="@string/widget_description"
     android:previewImage="@drawable/preview_schedule_widget" />
