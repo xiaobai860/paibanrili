@@ -17,7 +17,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.*
 
 import androidx.navigation.compose.*
-import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.ui.calendar.CalendarScreen
 import com.schedulecalendar.app.ui.detail.DisplaySchemesScreen
 import com.schedulecalendar.app.ui.detail.ExtraItemsScreen
@@ -64,11 +63,6 @@ fun AppNavHost() {
     val showBottomBar = currentDest?.route in tabRouteNames
 
     val context = LocalContext.current
-    // 通知 Activity 当前是否在 Tab 页面
-    val activity = context as? MainActivity
-    if (activity != null && activity.isOnTabPage != showBottomBar) {
-        activity.isOnTabPage = showBottomBar
-    }
 
     // 用 Compose MutableState 追踪日历子模式状态，保证 BackHandler 可响应状态变化
     var calendarSubModeActive by remember { mutableStateOf(false) }
@@ -158,9 +152,9 @@ fun AppNavHost() {
             composable<RouteWidgetSettings> { WidgetSettingsScreen(navController) }
         }
 
-        // 重写返回键：当在 Tab 页面时拦截 popBackStack，直接 finish Activity
-        // 使用 Compose MutableState calendarSubModeActive（可响应重组），
-        // 避免 JVM 属性 activity.calendarSubModeActive 无法触发重组的问题
+        // 重写返回键：当在 Tab 页面时拦截 popBackStack，直接 finish Activity。
+        // BackHandler 放在 NavHost 之后组合（后注册 → 优先级高于 NavHost 的返回处理），
+        // 确保在任意 Tab 页按返回一次直接退出，而不会被 NavHost 先 popBackStack 回退到上一级。
         BackHandler(enabled = showBottomBar && !calendarSubModeActive) {
             val act = context as? Activity
             if (act != null && !act.isFinishing) {

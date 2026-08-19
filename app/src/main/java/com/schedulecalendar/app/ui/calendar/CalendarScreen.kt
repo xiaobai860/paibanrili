@@ -236,17 +236,9 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
     // 处理快捷方式Intent
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    // 同步子模式状态（批量排班/复制排班/删除排班）到 Activity，使返回键先退出模式再退出应用
-    val hostActivity = context as? MainActivity
-    val isInSubMode = state.batchMode || state.copyMode || state.deleteMode
-    DisposableEffect(isInSubMode) {
-        hostActivity?.calendarSubModeActive = isInSubMode
-        onDispose {
-            hostActivity?.calendarSubModeActive = false
-        }
-    }
-    // 通过回调同步子模式状态到 AppNavHost 的 Compose MutableState，
+    // 同步子模式状态（批量排班/复制排班/删除排班）到 AppNavHost 的 Compose MutableState，
     // 保证 BackHandler 的 enabled 条件能响应状态变化触发重组
+    val isInSubMode = state.batchMode || state.copyMode || state.deleteMode
     LaunchedEffect(isInSubMode) {
         onSubModeChange(isInSubMode)
     }
