@@ -239,7 +239,9 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
     // 同步子模式状态（批量排班/复制排班/删除排班）到 AppNavHost 的 Compose MutableState，
     // 保证 BackHandler 的 enabled 条件能响应状态变化触发重组
     val isInSubMode = state.batchMode || state.copyMode || state.deleteMode
-    LaunchedEffect(isInSubMode) {
+    // 使用 SideEffect 在每次成功重组后同步子模式状态到 AppNavHost 的 Compose MutableState，
+    // 相比 LaunchedEffect 能覆盖初始化即为 true 的场景，保证 BackHandler 的 enabled 条件准确响应。
+    SideEffect {
         onSubModeChange(isInSubMode)
     }
     BackHandler(enabled = isInSubMode) {
