@@ -58,6 +58,22 @@ class CalendarEventRepository @Inject constructor(
         private const val ANNIVERSARY_SUFFIX = "-纪念日"
         /** 提醒日历显示名称后缀 */
         private const val REMINDER_SUFFIX = "-提醒"
+        /** getAllEvents 结果缓存有效时长（毫秒）：短 TTL 避免首次/频繁进入时反复全量拉取系统日历 */
+        private const val EVENTS_CACHE_TTL_MS = 5_000L
+    }
+
+    /** getAllEvents 结果缓存（带失效），减少首次进入事项 Tab 时的全量 ContentProvider 查询 */
+    @Volatile
+    private var allEventsCache: List<CalendarEventInfo>? = null
+    @Volatile
+    private var allEventsCacheTime: Long = 0L
+
+    /**
+     * 使 getAllEvents 缓存失效（系统日历事件变化时由观察者调用），确保下次查询拿到最新数据
+     */
+    fun invalidateEventsCache() {
+        allEventsCache = null
+        allEventsCacheTime = 0L
     }
 
     /**
@@ -161,6 +177,12 @@ class CalendarEventRepository @Inject constructor(
      * 优化：批量加载日历信息，避免 N+1 查询
      */
     fun getAllEvents(): List<CalendarEventInfo> {
+        // 命中有效缓存则直接复用，避免每次进入事项 Tab 都全量查询系统日历
+        val cached = allEventsCache
+        if (cached != null && System.currentTimeMillis() - allEventsCacheTime < EVENTS_CACHE_TTL_MS) {
+            return cached
+        }
+
         val events = mutableListOf<CalendarEventInfo>()
 
         val projection = arrayOf(
@@ -207,6 +229,8 @@ class CalendarEventRepository @Inject constructor(
                 )
             }
         }
+        allEventsCache = events
+        allEventsCacheTime = System.currentTimeMillis()
         return events
     }
 

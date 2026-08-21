@@ -282,6 +282,8 @@ class CalendarEventViewModel @Inject constructor(
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         observer = object : android.database.ContentObserver(handler) {
             override fun onChange(selfChange: Boolean) {
+                // 系统日历变化：先失效缓存再重新加载，确保拿到最新事件
+                calendarRepo.invalidateEventsCache()
                 loadEvents()
             }
         }

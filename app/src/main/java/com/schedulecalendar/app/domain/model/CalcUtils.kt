@@ -27,6 +27,26 @@ object CalcUtils {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Int>): Boolean = size > 128
     }
 
+    /**
+     * [getMonthScheduleDetails] 结果缓存：按"年月 + 参与计算的集合数据指纹"命中。
+     * 日历页 collect 每次数据变化都会对当月/上月/下月重复调用该函数（逐日工时+薪资计算，CPU 密集）。
+     * 数据未变化时直接复用上次结果，避免每次 collect 都重算 3 个月，显著降低首次/切换 Tab 时的卡顿。
+     * 数据一旦变化（指纹不同）即自动失效重算。
+     */
+    private data class MonthDetailsKey(
+        val year: Int,
+        val month: Int,
+        val schedulesFp: Int,
+        val shiftsFp: Int,
+        val breaksFp: Int,
+        val extraFp: Int,
+        val salaryFp: Int,
+        val attendFp: Int
+    )
+    private val monthDetailsCache = object : LinkedHashMap<MonthDetailsKey, List<DayScheduleDetail>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<MonthDetailsKey, List<DayScheduleDetail>>): Boolean = size > 64
+    }
+
     fun timeToMin(t: String): Int {
         return timeToMinCache[t] ?: run {
             val parts = t.split(":")
@@ -465,6 +485,17 @@ object CalcUtils {
         salaryConfig: SalaryConfig,
         attendConfig: AttendConfig
     ): List<DayScheduleDetail> {
+        val key = MonthDetailsKey(
+            year = year, month = month,
+            schedulesFp = schedules.hashCode(),
+            shiftsFp = shifts.hashCode(),
+            breaksFp = breaks.hashCode(),
+            extraFp = extraItems.hashCode(),
+            salaryFp = salaryConfig.hashCode(),
+            attendFp = attendConfig.hashCode()
+        )
+        monthDetailsCache[key]?.let { return it }
+
         val days   = daysInMonth(year, month)
         val result = mutableListOf<DayScheduleDetail>()
         for (d in 1..days) {
@@ -493,6 +524,7 @@ object CalcUtils {
                 extras        = extras
             ))
         }
+        monthDetailsCache[key] = result
         return result
     }
 

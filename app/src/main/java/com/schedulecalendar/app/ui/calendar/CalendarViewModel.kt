@@ -22,10 +22,14 @@ import com.schedulecalendar.app.widget.isBuiltInStatus
 import java.time.LocalTime
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import javax.inject.Inject
@@ -137,6 +141,9 @@ class CalendarViewModel @Inject constructor(
     /** 当前月份数据收集 Job，切月时取消旧 Job 再启新 Job，防止 collector 累积泄漏 */
     private var collectJob: Job? = null
 
+    /** Widget 同步去抖 Job：数据变化后延迟合并写盘，避免每次 collect 都立即同步小组件 */
+    private var widgetSyncJob: Job? = null
+
     init {
         loadCurrentMonth()
         // 延迟执行非关键初始化，避免阻塞首帧渲染
@@ -179,63 +186,77 @@ class CalendarViewModel @Inject constructor(
                 Triple(shifts, records, Pair(schemes, rule))
             }.collect { (rawShifts, records, pair) ->
                 val (schemes, rule) = pair
-                val schedules  = records.associateBy { it.date }
-                val scheme     = schemes.firstOrNull { it.isActive } ?: DisplayScheme(
-                    id = NO_SCHEME_ID, name = "预设方案", isNoScheme = true, builtIn = true, isActive = true
-                )
-                val breaks     = breakRepo.getAll()
-                val extraItems = extraRepo.getAll()
-                val rawStatuses = statusRepo.getAllWithBuiltin()
-                val salaryConf = prefs.salaryConfigFlow.first()
-                val attendConf = prefs.attendConfigFlow.first()
-                // 按用户自定义排序（与 ShiftsScreen 保持一致），并过滤已归档项
-                val shiftOrder = prefs.getShiftOrder()
-                val statusOrder = prefs.getStatusOrder()
-                val activeShifts = rawShifts.filter { it.archivedAt == null }
-                val activeStatuses = rawStatuses.filter { it.archivedAt == null }
-                val shifts = if (shiftOrder.isEmpty()) activeShifts else {
-                    val byId = activeShifts.associateBy { it.id }
-                    val ordered = shiftOrder.mapNotNull { byId[it] }
-                    val remaining = activeShifts.filter { it.id !in shiftOrder.toSet() }
-                    ordered + remaining
+                // 将数据加载与重计算整体移到后台线程，避免首次/切换 Tab 时阻塞主线程导致卡顿。
+                // 所有输入（Room 查询结果、SharedPreferences）均为内存数据，线程安全；_state.update 为原子操作可跨线程。
+                withContext(Dispatchers.Default) {
+                    val schedules  = records.associateBy { it.date }
+                    val scheme     = schemes.firstOrNull { it.isActive } ?: DisplayScheme(
+                        id = NO_SCHEME_ID, name = "预设方案", isNoScheme = true, builtIn = true, isActive = true
+                    )
+                    val breaks     = breakRepo.getAll()
+                    val extraItems = extraRepo.getAll()
+                    val rawStatuses = statusRepo.getAllWithBuiltin()
+                    val salaryConf = prefs.salaryConfigFlow.first()
+                    val attendConf = prefs.attendConfigFlow.first()
+                    // 按用户自定义排序（与 ShiftsScreen 保持一致），并过滤已归档项
+                    val shiftOrder = prefs.getShiftOrder()
+                    val statusOrder = prefs.getStatusOrder()
+                    val activeShifts = rawShifts.filter { it.archivedAt == null }
+                    val activeStatuses = rawStatuses.filter { it.archivedAt == null }
+                    val shifts = if (shiftOrder.isEmpty()) activeShifts else {
+                        val byId = activeShifts.associateBy { it.id }
+                        val ordered = shiftOrder.mapNotNull { byId[it] }
+                        val remaining = activeShifts.filter { it.id !in shiftOrder.toSet() }
+                        ordered + remaining
+                    }
+                    val shiftStatuses = if (statusOrder.isEmpty()) activeStatuses else {
+                        val byId = activeStatuses.associateBy { it.id }
+                        val ordered = statusOrder.mapNotNull { byId[it] }
+                        val remaining = activeStatuses.filter { it.id !in statusOrder.toSet() }
+                        ordered + remaining
+                    }
+                    // 完整列表用于历史数据展示查找（含已归档项）
+                    val allShifts = rawShifts
+                    val allShiftStatuses = rawStatuses
+                    // 计算当月详情（使用完整列表，确保历史归档班次也能正确计算）
+                    val curDetails = CalcUtils.getMonthScheduleDetails(
+                        s.year, s.month, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
+                    ).associateBy { it.date }
+                    // 计算完整相邻月份详情（支持滑动联动时显示相邻月份网格）
+                    val prevDetails = CalcUtils.getMonthScheduleDetails(
+                        prevYM.year, prevYM.monthValue, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
+                    ).associateBy { it.date }
+                    val nextDetails = CalcUtils.getMonthScheduleDetails(
+                        nextYM.year, nextYM.monthValue, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
+                    ).associateBy { it.date }
+                    val allDetails = curDetails + prevDetails + nextDetails
+                    val todos      = buildTodos(s.year, s.month, schedules, allShifts, attendConf)
+                    _state.update { it.copy(
+                        shifts         = shifts,
+                        allShifts      = allShifts,
+                        schedules      = schedules,
+                        displayScheme  = scheme,
+                        scheduleRule   = rule,
+                        dayDetails     = allDetails,
+                        todos          = todos,
+                        extraItems     = extraItems,
+                        shiftStatuses  = shiftStatuses,
+                        allShiftStatuses = allShiftStatuses,
+                        loading        = false
+                    )}
+                    // Widget 同步（去抖合并 + 后台线程，避免每次数据变化立即写盘、避免占主线程）
+                    widgetSyncJob?.cancel()
+                    widgetSyncJob = viewModelScope.launch(Dispatchers.Default) {
+                        kotlinx.coroutines.delay(150)
+                        syncWidget(allShifts, schedules)
+                        syncCalendarWidget(
+                            year = s.year, month = s.month,
+                            allShifts = allShifts, schedules = schedules,
+                            allShiftStatuses = allShiftStatuses,
+                            selectedDate = _state.value.selectedDate
+                        )
+                    }
                 }
-                val shiftStatuses = if (statusOrder.isEmpty()) activeStatuses else {
-                    val byId = activeStatuses.associateBy { it.id }
-                    val ordered = statusOrder.mapNotNull { byId[it] }
-                    val remaining = activeStatuses.filter { it.id !in statusOrder.toSet() }
-                    ordered + remaining
-                }
-                // 完整列表用于历史数据展示查找（含已归档项）
-                val allShifts = rawShifts
-                val allShiftStatuses = rawStatuses
-                // 计算当月详情（使用完整列表，确保历史归档班次也能正确计算）
-                val curDetails = CalcUtils.getMonthScheduleDetails(
-                    s.year, s.month, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
-                ).associateBy { it.date }
-                // 计算完整相邻月份详情（支持滑动联动时显示相邻月份网格）
-                val prevDetails = CalcUtils.getMonthScheduleDetails(
-                    prevYM.year, prevYM.monthValue, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
-                ).associateBy { it.date }
-                val nextDetails = CalcUtils.getMonthScheduleDetails(
-                    nextYM.year, nextYM.monthValue, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
-                ).associateBy { it.date }
-                val allDetails = curDetails + prevDetails + nextDetails
-                val todos      = buildTodos(s.year, s.month, schedules, allShifts, attendConf)
-                _state.update { it.copy(
-                    shifts         = shifts,
-                    allShifts      = allShifts,
-                    schedules      = schedules,
-                    displayScheme  = scheme,
-                    scheduleRule   = rule,
-                    dayDetails     = allDetails,
-                    todos          = todos,
-                    extraItems     = extraItems,
-                    shiftStatuses  = shiftStatuses,
-                    allShiftStatuses = allShiftStatuses,
-                    loading        = false
-                )}
-                syncWidget(allShifts, schedules)
-                syncCalendarWidget(year = s.year, month = s.month, allShifts = allShifts, schedules = schedules, allShiftStatuses = allShiftStatuses, selectedDate = _state.value.selectedDate)
                 // 加载选中日期的纪念日与日程（首次加载或切月后）
                 val selDate = _state.value.selectedDate ?: "%04d-%02d-%02d".format(s.year, s.month, LocalDate.now().dayOfMonth)
                 loadSelectedDateEvents(selDate)
