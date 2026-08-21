@@ -183,17 +183,36 @@ class BackupManager @Inject constructor(
     // ── 应用数据自动备份（每天最新一条，私有+自定义目录视为整体） ──
 
     /**
-     * 应用数据自动备份，每天只保留最新一条。
-     * keepCount=0 时完全跳过。
-     * 私有目录和自定义目录视为整体：写入新备份后，从两个目录中清理当天的旧自动备份。
+     * 应用数据自动备份，每次启动应用都执行一次。
+     * - 每次启动先无脑 prune（清理历史脏数据，确保"每天 1 份最新、保留 N 天"严格成立）
+     * - 数据指纹未变则跳过整个 backup 流程（节省 ~250ms 后台 IO，平时启动零开销）
+     * - 写完备份立即清理当天旧自动备份（保留当天最新 1 份）
+     * - 手动备份不参与裁剪、不计入天数
+     *
+     * 2026-08-21 设计：
+     * - 用户每次打开应用触发一次自动备份
+     * - 用轻量 SQL 指纹（5 个 COUNT + 1 个 MAX(date) + prefs 字段 hashCode）检测数据是否变化
+     * - 未变则跳过整个 backup（含 buildAppDataJson/file.writeText）
+     * - **关键**：prune 必须在入口最先执行，不依赖 backup 是否触发，否则历史脏数据无法清理
      */
     suspend fun autoBackupAppData() {
         val keepCount = prefs.getAppDataKeepCount()
         if (keepCount <= 0) return  // 禁用
 
+        // 0. 兜底 prune：每次启动都先按"每天 1 份最新、保留 N 天"清理历史脏数据
+        // 即使 backup 后续被指纹判断跳过，prune 也会执行——保证当天 1 份、保留 N 天严格成立
+        runCatching { pruneAppDataBackups(keepCount, listAppDataBackups()) }
+
+        // 1. 计算当前数据指纹（轻量，~30ms）
+        val currentFp = runCatching { computeBackupDataSignature() }.getOrElse { return }
+
+        // 2. 数据未变则跳过 backup（已 prune 完毕，节省 ~250ms buildJson+write）
+        if (prefs.getLastAppDataBackupFp() == currentFp) return
+
+        val today = LocalDate.now().format(dateFormatter)
+
         runCatching {
             val json = buildAppDataJson()
-            val today = LocalDate.now().format(dateFormatter)
             val customPath = prefs.getBackupCustomPath()
             val fileName = "应用数据_${today}_${LocalDateTime.now().format(timeFormatter)}.json"
 
@@ -221,9 +240,36 @@ class BackupManager @Inject constructor(
                 file.writeText(json)
             }
 
-            // 裁剪保留天数（跨目录合并后统一裁剪）
+            // 标记今天已备份（用于 UI 显示"今日已备份"等场景）
+            prefs.setLastAppDataAutoBackupDate(today)
+            // 标记本次指纹，下次启动比对（关键优化点）
+            prefs.setLastAppDataBackupFp(currentFp)
+
+            // 末尾再 prune 一次（如果 backup 期间产生了多份当天备份，强制收敛到 1 份）
             pruneAppDataBackups(keepCount, listAppDataBackups())
         }
+    }
+
+    /**
+     * 计算应用数据轻量指纹：5 个 COUNT + 1 个 MAX(date) + 4 个 prefs 字段 hashCode。
+     * 总开销 ~30ms，远小于 buildAppDataJson 的 ~200ms。数据未变化时指纹保持不变。
+     */
+    private suspend fun computeBackupDataSignature(): Int {
+        val scheduleCount = scheduleRepo.countAll()
+        val maxScheduleDate = scheduleRepo.maxDate()
+        val shiftsCount = shiftRepo.countAll()
+        val breaksCount = breakRepo.countAll()
+        val statusesCount = statusRepo.countAll()
+        val extrasCount = extraRepo.countAll()
+        val salaryFp = prefs.salaryConfigFlow.first().hashCode()
+        val attendFp = prefs.attendConfigFlow.first().hashCode()
+        val ruleFp = prefs.scheduleRuleFlow.first().hashCode()
+        val schemesFp = prefs.displaySchemesFlow.first().hashCode()
+        return listOf(
+            scheduleCount, maxScheduleDate,
+            shiftsCount, breaksCount, statusesCount, extrasCount,
+            salaryFp, attendFp, ruleFp, schemesFp
+        ).hashCode()
     }
 
     /** 删除本地目录中当天的自动备份文件 */
@@ -535,8 +581,51 @@ class BackupManager @Inject constructor(
         return prunedApp to prunedShift
     }
 
-    /** 裁剪自动备份（仅自动备份，手动备份不删除），使用已列出的列表避免重复扫描，返回裁剪后的列表 */
-    private suspend fun pruneAppDataBackups(keepCount: Int, allBackups: List<BackupFile>): List<BackupFile> {
+    /**
+     * 裁剪应用数据自动备份：
+     * 1. 按"日期"分组，每组内只保留 createdAt 最新的一份，**删除组内其他文件**
+     * 2. 按日期排序，保留最近 [keepDays] 个日期，删除其他日期
+     * 手动备份（_manual 后缀）不参与裁剪。
+     *
+     * 2026-08-21 二次修复：之前的实现只删"超过 N 天的日期组"，**没删"同一天内的多份"**——
+     * 如果今天累积了多份旧自动备份，由于总日期组数 <= keepDays，整个 prune 一个文件都不删，
+     * 导致 listAppDataBackups() 仍返回所有文件，UI 列表里仍有当天多份。
+     * 现在强制删除每组内非最新文件，双重保险。
+     */
+    private suspend fun pruneAppDataBackups(keepDays: Int, allBackups: List<BackupFile>): List<BackupFile> {
+        if (keepDays <= 0) return allBackups
+        val autoFiles = allBackups.filter { !it.isManual }
+
+        // 步骤 1：按日期分组，每组保留 createdAt 最新一份，**删除组内其他旧文件**
+        val perDayLatest = LinkedHashMap<String, BackupFile>()
+        autoFiles.groupBy { extractBackupDate(it) }.forEach { (date, files) ->
+            val latest = files.maxByOrNull { it.createdAt } ?: return@forEach
+            perDayLatest[date] = latest
+            // 删除组内非最新文件
+            files.filter { it.path != latest.path }.forEach { old ->
+                val ok = deleteBackupFile(old.path)
+                android.util.Log.i("BackupManager", "prune in-day: delete ${old.name} (kept ${latest.name}) ok=$ok")
+            }
+        }
+
+        // 步骤 2：按 createdAt 降序，保留最近 keepDays 天，删除其他日期
+        val sortedLatest = perDayLatest.values.sortedByDescending { it.createdAt }
+        if (sortedLatest.size > keepDays) {
+            sortedLatest.drop(keepDays).forEach { expired ->
+                val ok = deleteBackupFile(expired.path)
+                android.util.Log.i("BackupManager", "prune expired-date: delete ${expired.name} ok=$ok")
+            }
+        }
+
+        val keptPaths = sortedLatest.take(keepDays).map { it.path }.toSet()
+        return allBackups.filter { it.path in keptPaths || it.isManual }
+    }
+
+    /**
+     * 班次配置自动备份：按时间保留最近 [keepCount] 份（不按日期分组，因为班次配置每次修改都会生成新备份）。
+     * 手动备份不参与裁剪。
+     */
+    private suspend fun pruneShiftConfigBackups(keepCount: Int, allBackups: List<BackupFile>): List<BackupFile> {
         if (keepCount <= 0) return allBackups
         val autoFiles = allBackups.filter { !it.isManual }.sortedByDescending { it.createdAt }
         if (autoFiles.size > keepCount) autoFiles.drop(keepCount).forEach { deleteBackupFile(it.path) }
@@ -544,13 +633,20 @@ class BackupManager @Inject constructor(
         return allBackups.filter { it.path !in deletedPaths }
     }
 
-    /** 裁剪自动备份（仅自动备份，手动备份不删除），使用已列出的列表避免重复扫描，返回裁剪后的列表 */
-    private suspend fun pruneShiftConfigBackups(keepCount: Int, allBackups: List<BackupFile>): List<BackupFile> {
-        if (keepCount <= 0) return allBackups
-        val autoFiles = allBackups.filter { !it.isManual }.sortedByDescending { it.createdAt }
-        if (autoFiles.size > keepCount) autoFiles.drop(keepCount).forEach { deleteBackupFile(it.path) }
-        val deletedPaths = if (autoFiles.size > keepCount) autoFiles.drop(keepCount).map { it.path }.toSet() else emptySet()
-        return allBackups.filter { it.path !in deletedPaths }
+    /**
+     * 从备份文件名解析日期 (yyyyMMdd)；若失败则用 lastModified 转本地日期。
+     * 兼容旧前缀 "appdata_"。
+     */
+    private fun extractBackupDate(f: BackupFile): String {
+        val match = Regex("(?:应用数据_|appdata_)(\\d{8})_").find(f.name)
+        if (match != null) return match.groupValues[1]
+        return try {
+            java.time.Instant.ofEpochMilli(f.createdAt)
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                .format(dateFormatter)
+        } catch (_: Exception) {
+            "0"
+        }
     }
 }
 

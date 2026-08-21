@@ -21,6 +21,8 @@ class ShiftRepository @Inject constructor(
         BUILTIN_SHIFTS + list.filter { it.id !in builtinIds }.map { it.toDomain() }
     }
     suspend fun getAll(): List<Shift> = dao.getAll().map { it.toDomain() }
+    /** 班次总数（轻量指纹查询） */
+    suspend fun countAll(): Int = dao.countAll()
 
     /** 获取所有班次，含内置（休息/调休/请假），用于排班选择 */
     suspend fun getAllWithBuiltin(): List<Shift> = BUILTIN_SHIFTS + dao.getAll().map { it.toDomain() }

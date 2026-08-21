@@ -30,6 +30,8 @@ class ShiftStatusRepository @Inject constructor(
     }
 
     suspend fun getAll(): List<ShiftStatus> = dao.getAll().map { it.toDomain() }
+    /** 状态总数（轻量指纹查询） */
+    suspend fun countAll(): Int = dao.countAll()
 
     /** 获取所有状态（含内置），用于排班选择等场景 */
     suspend fun getAllWithBuiltin(): List<ShiftStatus> {

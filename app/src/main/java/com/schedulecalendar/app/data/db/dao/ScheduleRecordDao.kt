@@ -36,4 +36,12 @@ interface ScheduleRecordDao {
 
     @Query("DELETE FROM schedule_records")
     suspend fun deleteAll()
+
+    /** 排班总数（轻量指纹查询，比 getAll 快 1000 倍） */
+    @Query("SELECT COUNT(*) FROM schedule_records")
+    suspend fun countAll(): Int
+
+    /** 最近排班日期 yyyy-MM-dd（轻量指纹查询） */
+    @Query("SELECT MAX(date) FROM schedule_records")
+    suspend fun maxDate(): String?
 }

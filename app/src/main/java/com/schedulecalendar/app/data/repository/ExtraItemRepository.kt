@@ -21,6 +21,8 @@ class ExtraItemRepository @Inject constructor(
     /** 获取所有项目（含已归档），用于薪资计算查找历史金额 */
     suspend fun getAll(): List<ExtraItem> = dao.getAllIncludingArchived().map { it.toDomain() }
     suspend fun getAllIncludingArchived(): List<ExtraItem> = dao.getAllIncludingArchived().map { it.toDomain() }
+    /** 补贴扣款总数（轻量指纹查询） */
+    suspend fun countAll(): Int = dao.countAll()
     suspend fun save(item: ExtraItem) = dao.upsert(item.toEntity())
     suspend fun saveAll(items: List<ExtraItem>) = dao.upsertAll(items.map { it.toEntity() })
     /** 归档项目（逻辑删除） */

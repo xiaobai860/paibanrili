@@ -35,4 +35,8 @@ interface ShiftStatusDao {
 
     @Query("DELETE FROM shift_statuses")
     suspend fun deleteAll()
+
+    /** 状态总数（轻量指纹查询） */
+    @Query("SELECT COUNT(*) FROM shift_statuses")
+    suspend fun countAll(): Int
 }

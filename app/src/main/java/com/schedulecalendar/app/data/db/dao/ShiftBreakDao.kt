@@ -35,4 +35,8 @@ interface ShiftBreakDao {
 
     @Query("DELETE FROM shift_breaks")
     suspend fun deleteAll()
+
+    /** 休息时段总数（轻量指纹查询） */
+    @Query("SELECT COUNT(*) FROM shift_breaks")
+    suspend fun countAll(): Int
 }

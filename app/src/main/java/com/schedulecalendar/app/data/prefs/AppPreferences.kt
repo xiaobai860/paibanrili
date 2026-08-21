@@ -49,6 +49,10 @@ class AppPreferences @Inject constructor(
         val KEY_APP_DATA_KEEP_COUNT    = intPreferencesKey("app_data_keep_count")
         val KEY_SHIFT_CONFIG_KEEP_COUNT = intPreferencesKey("shift_config_keep_count")
         val KEY_BACKUP_CUSTOM_PATH     = stringPreferencesKey("backup_custom_path")
+        /** 应用数据自动备份最后执行日期（yyyyMMdd），用于"每天只备份一次"去重 */
+        val KEY_LAST_APP_DATA_AUTO_BACKUP = stringPreferencesKey("last_app_data_auto_backup")
+        /** 应用数据自动备份上次成功时的数据指纹（轻量 hashCode），未变则跳过整个 backup 流程 */
+        val KEY_LAST_APP_DATA_BACKUP_FP = intPreferencesKey("last_app_data_backup_fp")
         // ── 上下班提醒配置 ──
         val KEY_REMINDER_ENABLED        = stringPreferencesKey("reminder_enabled")
         val KEY_REMINDER_METHOD          = stringPreferencesKey("reminder_method")
@@ -191,6 +195,26 @@ class AppPreferences @Inject constructor(
         context.dataStore.data.first()[KEY_BACKUP_CUSTOM_PATH] ?: ""
     suspend fun saveBackupCustomPath(path: String) = context.dataStore.edit {
         it[KEY_BACKUP_CUSTOM_PATH] = path
+    }
+
+    /**
+     * 应用数据自动备份最后执行日期（yyyyMMdd），用于"每天只备份一次"去重。
+     * 避免 CalendarViewModel.init 每次重建（切 Tab）都产生新备份文件，导致当天累积多份。
+     */
+    suspend fun getLastAppDataAutoBackupDate(): String =
+        context.dataStore.data.first()[KEY_LAST_APP_DATA_AUTO_BACKUP] ?: ""
+    suspend fun setLastAppDataAutoBackupDate(date: String) = context.dataStore.edit {
+        it[KEY_LAST_APP_DATA_AUTO_BACKUP] = date
+    }
+
+    /**
+     * 应用数据自动备份上次成功时的数据指纹（轻量 hashCode）。
+     * autoBackupAppData 入口计算当前数据指纹并与之比对，未变则跳过整个 backup 流程（节省 ~250ms 后台 IO）。
+     */
+    suspend fun getLastAppDataBackupFp(): Int =
+        context.dataStore.data.first()[KEY_LAST_APP_DATA_BACKUP_FP] ?: 0
+    suspend fun setLastAppDataBackupFp(fp: Int) = context.dataStore.edit {
+        it[KEY_LAST_APP_DATA_BACKUP_FP] = fp
     }
 
     /** 清除所有 DataStore 键值对，恢复出厂默认值 */

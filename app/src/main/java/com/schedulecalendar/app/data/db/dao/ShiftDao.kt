@@ -38,4 +38,8 @@ interface ShiftDao {
 
     @Query("DELETE FROM shifts")
     suspend fun deleteAll()
+
+    /** 班次总数（轻量指纹查询） */
+    @Query("SELECT COUNT(*) FROM shifts")
+    suspend fun countAll(): Int
 }

@@ -36,4 +36,9 @@ class ScheduleRepository @Inject constructor(
     suspend fun deleteAll() { dao.deleteAll(); notifyChanged() }
 
     suspend fun getAll(): List<ScheduleRecord> = dao.getAll().map { it.toDomain() }
+
+    /** 排班总数（轻量指纹查询） */
+    suspend fun countAll(): Int = dao.countAll()
+    /** 最近排班日期 yyyy-MM-dd */
+    suspend fun maxDate(): String? = dao.maxDate()
 }

@@ -37,4 +37,8 @@ interface ExtraItemDao {
 
     @Query("DELETE FROM extra_items")
     suspend fun deleteAll()
+
+    /** 补贴扣款总数（轻量指纹查询） */
+    @Query("SELECT COUNT(*) FROM extra_items")
+    suspend fun countAll(): Int
 }
