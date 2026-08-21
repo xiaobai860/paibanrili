@@ -57,14 +57,15 @@ class CalendarGlanceWidget : GlanceAppWidget() {
         val maxH = sizes?.maxOfOrNull { it.height }?.value ?: 180f
         val isLarge = maxH >= 220f
         val baseHeight = maxH.dp
-        // 3x3 widget：仅显示 日期+班次，显示完整所有行
+        // 3x3 widget：显示 日期+班次+附加状态（3 项），launcher cell 大时不裁切
         provideContent {
             CalendarWidgetContent(
                 isLarge = isLarge,
                 baseHeight = baseHeight,
                 showLunar = false,
-                showStatus = isLarge,
-                maxVisibleRows = Int.MAX_VALUE
+                showStatus = true,
+                maxVisibleRows = Int.MAX_VALUE,
+                compact = true
             )
         }
     }
@@ -113,7 +114,8 @@ private fun CalendarWidgetContent(
     baseHeight: androidx.compose.ui.unit.Dp,
     showLunar: Boolean,
     showStatus: Boolean,
-    maxVisibleRows: Int = Int.MAX_VALUE
+    maxVisibleRows: Int = Int.MAX_VALUE,
+    compact: Boolean = false
 ) {
     val prefs = androidx.glance.LocalContext.current.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
     val jsonStr = prefs.getString(KEY_CALENDAR_WIDGET_JSON, "")
@@ -137,21 +139,23 @@ private fun CalendarWidgetContent(
     val isCurMon = data.year == today.year && data.month == today.monthValue
     val headerText = if (data.month > 0) "${data.year}\u5e74${data.month}\u6708" else "${today.year}\u5e74${today.monthValue}\u6708"
     val weekLabels = listOf("\u4e00", "\u4e8c", "\u4e09", "\u56db", "\u4e94", "\u516d", "\u65e5")
-    val tfs = if (isLarge) 18.sp else 15.sp
-    val wfs = if (isLarge) 10.sp else 10.sp
-    val dfs = if (isLarge) 12.sp else 15.sp
-    val sfs = if (isLarge) 9.sp else 11.sp
-    val stfs = if (isLarge) 8.sp else 9.sp
+    val tfs = if (isLarge) 18.sp else 16.sp
+    val useBig = isLarge && !compact
+    val wfs = if (useBig) 10.sp else 10.sp
+    val dfs = if (useBig) 14.sp else 12.sp
+    val sfs = if (useBig) 10.sp else 10.sp
+    val stfs = if (useBig) 9.sp else 9.sp
     val lfs = if (isLarge) 8.sp else 9.sp
     val visibleRows = minOf(data.totalRows, maxVisibleRows)
-    val headerFs = if (isLarge) 17.sp else 17.sp
-    val refreshSize = if (isLarge) 28.dp else 28.dp
-    val refreshIconFs = if (isLarge) 16.sp else 16.sp
+    val headerUseBig = isLarge && !compact
+    val headerFs = if (headerUseBig) 17.sp else 14.sp
+    val refreshSize = if (headerUseBig) 28.dp else 24.dp
+    val refreshIconFs = if (headerUseBig) 16.sp else 14.sp
     Box(
         modifier = GlanceModifier.fillMaxSize()
             .background(ColorProvider(ubg))
             .cornerRadius(12.dp)
-            .padding(if (isLarge) 4.dp else 5.dp),
+            .padding(if (isLarge) 4.dp else 4.dp),
         contentAlignment = Alignment.TopCenter
     ) {
         Column(modifier = GlanceModifier.fillMaxSize()) {
@@ -206,7 +210,7 @@ private fun CalendarWidgetContent(
                     }
                 }
             }
-            Spacer(modifier = GlanceModifier.height(2.dp))
+            Spacer(modifier = GlanceModifier.height(1.dp))
             val totalDays = data.days.size
             for (row in 0 until visibleRows) {
                 Row(modifier = GlanceModifier.defaultWeight().fillMaxWidth()) {
@@ -274,8 +278,8 @@ private fun CalendarDayCellContent(
         .background(ColorProvider(cellBg))
         .cornerRadius(cellCorner)
         .clickable(clickAction),
-        contentAlignment = Alignment.TopCenter) {
-        Column(modifier = GlanceModifier.fillMaxWidth().padding(vertical = 0.dp),
+        contentAlignment = Alignment.Center) {
+        Column(modifier = GlanceModifier.fillMaxSize().padding(vertical = 0.dp),
             horizontalAlignment = Alignment.CenterHorizontally) {
             // 1. 日期数字 + 假期标记
             Row(verticalAlignment = Alignment.Top) {
