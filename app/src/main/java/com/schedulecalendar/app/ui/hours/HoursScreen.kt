@@ -338,9 +338,11 @@ private fun HoursStatCell(
                     Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                         color = valueColor ?: MaterialTheme.colorScheme.onSurface)
                     if (alertBadge) {
-                        Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFFEF3C7)) {
-                            Text("超限", fontSize = 10.sp, color = Color(0xFFF97316),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                        // 紧凑型"超限"警示徽章（缩小字号 + padding + 圆角），降低对卡片视觉高度的影响
+                        Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFFFEF3C7)) {
+                            Text("超限", fontSize = 9.sp, color = Color(0xFFF97316),
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp),
+                                maxLines = 1)
                         }
                     }
                     if (future != null) {
@@ -478,6 +480,16 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
                     y -= sh
                     drawRect(color, topLeft = Offset(barLeft, y),
                         size = androidx.compose.ui.geometry.Size(barW, sh))
+                    // 色块内画对应时长（仅当色块足够高时画，避免文字重叠/截断）
+                    if (sh >= 14.dp.toPx()) {
+                        val label = "${fmtH(h)}h"
+                        val tl = textMeasurer.measure(label,
+                            androidx.compose.ui.text.TextStyle(fontSize = 8.sp, color = Color.White))
+                        drawText(tl, topLeft = Offset(
+                            cx - tl.size.width / 2f,
+                            y + (sh - tl.size.height) / 2f
+                        ))
+                    }
                 }
             }
             // top label
@@ -525,11 +537,32 @@ private fun MonthlyHoursBar(trend: List<MonthlyHoursTrend>) {
             } else {
                 val normPct = (d.normal / d.total).toFloat()
                 val otPct = (d.overtime / d.total).toFloat()
-                drawRect(Color(0xFF059669), topLeft = Offset(barLeft, barTop + barH * otPct),
-                    size = androidx.compose.ui.geometry.Size(barW, barH * normPct))
-                if (d.overtime > 0)
-                    drawRect(Color(0xFFDC2626), topLeft = Offset(barLeft, barTop),
-                        size = androidx.compose.ui.geometry.Size(barW, barH * otPct))
+                val greenTop = barTop + barH * otPct           // 绿色（正常）顶 y
+                val greenH   = barH * normPct                  // 绿色块高度
+                val redTop   = barTop                          // 红色（加班）顶 y
+                val redH     = barH * otPct                    // 红色块高度
+                // 绿色（正常）绘制
+                drawRect(Color(0xFF059669), topLeft = Offset(barLeft, greenTop),
+                    size = androidx.compose.ui.geometry.Size(barW, greenH))
+                // 绿色块内画"正常时长"
+                if (greenH >= 14.dp.toPx()) {
+                    val tl = textMeasurer.measure("${fmtH(d.normal)}h",
+                        androidx.compose.ui.text.TextStyle(fontSize = 8.sp, color = Color.White))
+                    drawText(tl, topLeft = Offset(cx - tl.size.width / 2f,
+                        greenTop + (greenH - tl.size.height) / 2f))
+                }
+                // 红色（加班）绘制（仅当 overtime > 0）
+                if (d.overtime > 0) {
+                    drawRect(Color(0xFFDC2626), topLeft = Offset(barLeft, redTop),
+                        size = androidx.compose.ui.geometry.Size(barW, redH))
+                    // 红色块内画"加班时长"
+                    if (redH >= 14.dp.toPx()) {
+                        val tl = textMeasurer.measure("${fmtH(d.overtime)}h",
+                            androidx.compose.ui.text.TextStyle(fontSize = 8.sp, color = Color.White))
+                        drawText(tl, topLeft = Offset(cx - tl.size.width / 2f,
+                            redTop + (redH - tl.size.height) / 2f))
+                    }
+                }
             }
             // top value label — 跟随柱体高度：柱顶上方紧贴 1dp
             if (d.total > 0) {

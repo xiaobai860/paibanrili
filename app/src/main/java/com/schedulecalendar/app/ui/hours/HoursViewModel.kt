@@ -43,7 +43,7 @@ data class HoursUiState(
     val details: List<DayScheduleDetail>           = emptyList(),
     /** 最近14天每日明细（跨月，供图表使用） */
     val recentDetails: List<DayScheduleDetail>     = emptyList(),
-    /** 近8个月趋势 */
+    /** 近7个月趋势 */
     val trend: List<MonthlyHoursTrend>             = emptyList(),
     /** 考勤配置（用于迟到阈值提示） */
     val attendConfig: AttendConfig                 = AttendConfig(),
@@ -132,7 +132,7 @@ class HoursViewModel @Inject constructor(
                     shifts, breaks, extraItems, salaryConf, attendConf
                 )
 
-                // 近8个月趋势（不含未来月）
+                // 近7个月趋势（不含未来月）
                 val trend = buildTrend(year, month, shifts, breaks, statuses, attendConf)
 
                 _state.update { it.copy(
@@ -196,7 +196,7 @@ class HoursViewModel @Inject constructor(
         statuses: List<ShiftStatus>, attendConf: AttendConfig
     ): List<MonthlyHoursTrend> {
         val result = mutableListOf<MonthlyHoursTrend>()
-        for (i in 7 downTo 0) {
+        for (i in 6 downTo 0) {
             var m = month - i; var y = year
             if (m <= 0) { m += 12; y -= 1 }
             val recs      = scheduleRepo.getByMonth("%04d-%02d".format(y, m))
