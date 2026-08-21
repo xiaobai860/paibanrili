@@ -249,20 +249,20 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
     }
 
     // 处理小组件点击日期导航 → 进入日历主页并选中该日期
-    LaunchedEffect(Unit) {
-        val activity = context as? MainActivity
-        val date = activity?.consumeNavigateDate()
-        if (date != null) {
-            val parts = date.split("-")
-            if (parts.size == 3) {
-                val year = parts[0].toIntOrNull() ?: LocalDate.now().year
-                val month = parts[1].toIntOrNull() ?: LocalDate.now().monthValue
-                vm.goToMonth(year, month)
-                vm.onDayClick(date)
-            }
-            navController.navigate(RouteCalendar) {
-                launchSingleTop = true
-            }
+    // 用 key=pendingDate 使每次新的导航日期都触发（Activity 已存在时 Composable 不重建）
+    val activity = context as? MainActivity
+    val pendingDate = activity?.pendingNavigateDate
+    LaunchedEffect(pendingDate) {
+        val date = activity?.consumeNavigateDate() ?: return@LaunchedEffect
+        val parts = date.split("-")
+        if (parts.size == 3) {
+            val year = parts[0].toIntOrNull() ?: LocalDate.now().year
+            val month = parts[1].toIntOrNull() ?: LocalDate.now().monthValue
+            vm.goToMonth(year, month)
+            vm.onDayClick(date)
+        }
+        navController.navigate(RouteCalendar) {
+            launchSingleTop = true
         }
     }
 

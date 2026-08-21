@@ -46,6 +46,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 从小组件点击启动时首次进入走 onCreate，需在此读取导航日期
+        intent?.getStringExtra(EXTRA_NAVIGATE_DATE)?.let { date ->
+            pendingNavigateDate = date
+            intent.removeExtra(EXTRA_NAVIGATE_DATE)
+        }
         enableEdgeToEdge()
 
         setContent {

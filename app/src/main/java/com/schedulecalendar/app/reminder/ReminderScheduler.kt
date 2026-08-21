@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.data.calendar.CalendarEventRepository
@@ -369,7 +370,6 @@ class ReminderScheduler @Inject constructor(
                 putExtra(EXTRA_DATE, date.toString())
                 putExtra(EXTRA_TIME, timeStr)
                 putExtra(EXTRA_SHIFT_NAME, shiftName)
-                action = if (isClockIn) "CLOCK_IN_REMINDER" else "CLOCK_OUT_REMINDER"
             }
 
             val requestCode = (date.toEpochDay().toInt() * 10) + (if (isClockIn) 1 else 2)
@@ -421,6 +421,15 @@ class ReminderScheduler @Inject constructor(
      * - 需要 USE_EXACT_ALARM 权限（Android 13+ 已声明），无需用户手动授权。
      */
     private suspend fun scheduleNotifyBarReminders() {
+        // setExactAndAllowWhileIdle 需精确闹钟权限（Android 12+ SCHEDULE_EXACT_ALARM
+        // 或已声明的 USE_EXACT_ALARM）。无权限时跳过注册避免崩溃，并清理旧闹钟。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !alarmManager.canScheduleExactAlarms()
+        ) {
+            cancelNotifyBarReminders()
+            return
+        }
+
         val clockInEnabled = prefs.getReminderClockIn()
         val clockOutEnabled = prefs.getReminderClockOut()
         val clockInMinutes = prefs.getReminderClockInMinutes()
@@ -492,7 +501,6 @@ class ReminderScheduler @Inject constructor(
                 putExtra(EXTRA_DATE, date.toString())
                 putExtra(EXTRA_TIME, timeStr)
                 putExtra(EXTRA_SHIFT_NAME, shiftName)
-                action = if (isClockIn) "CLOCK_IN_REMINDER" else "CLOCK_OUT_REMINDER"
             }
             val requestCode = getNotifyBarRequestCode(date, isClockIn)
             val pendingIntent = PendingIntent.getBroadcast(
