@@ -322,7 +322,9 @@ private fun HoursStatCell(
     onClick: () -> Unit = {}
 ) {
     Surface(
-        modifier = modifier.then(if (clickable) Modifier.clickable(onClick = onClick) else Modifier),
+        modifier = modifier
+            .height(72.dp)           // 固定卡片高度，避免 alertBadge/future/clickable 切换导致高度抖动
+            .then(if (clickable) Modifier.clickable(onClick = onClick) else Modifier),
         shape = RoundedCornerShape(12.dp),
         color = if (alertBadge) Color(0xFFFFF7ED) else MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, if (alertBadge) Color(0xFFFED7AA) else MaterialTheme.colorScheme.outlineVariant)
@@ -416,17 +418,18 @@ private fun HoursChartCard(
                 maxOf(dailyChartH, monthlyChartH)
             }
 
-            if (chartView == "daily") {
-                // 图例
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf(Color(0xFF059669) to "正常", Color(0xFFDC2626) to "加班(含周末/法定)").forEach { (c, l) ->
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(Modifier.size(8.dp).background(c, RoundedCornerShape(2.dp)))
-                            Text(l, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+            // 共享图例：日工时 / 月工时图表使用同一组颜色 + 文字标注（确保图例统一）
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(Color(0xFF059669) to "正常", Color(0xFFDC2626) to "加班(含周末/法定)").forEach { (c, l) ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(Modifier.size(8.dp).background(c, RoundedCornerShape(2.dp)))
+                        Text(l, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Spacer(Modifier.height(6.dp))
+            }
+            Spacer(Modifier.height(6.dp))
+
+            if (chartView == "daily") {
                 DailyHoursBar(recentDetails)
             } else {
                 MonthlyHoursBar(trend)
@@ -488,7 +491,8 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
             if (topLabel.isNotEmpty()) {
                 val tl = textMeasurer.measure(topLabel,
                     androidx.compose.ui.text.TextStyle(fontSize = 8.sp, color = topColor))
-                drawText(tl, topLeft = Offset(cx - tl.size.width / 2f, 0f))
+                // 顶部时长文案位置 = 柱顶上方紧贴 1dp，跟随柱体高度上下变化（不再固定在 y=0）
+                drawText(tl, topLeft = Offset(cx - tl.size.width / 2f, barTop - tl.size.height - 1.dp.toPx()))
             }
             // bottom date label
             val dl = textMeasurer.measure(d.date.substring(8),
@@ -527,11 +531,11 @@ private fun MonthlyHoursBar(trend: List<MonthlyHoursTrend>) {
                     drawRect(Color(0xFFDC2626), topLeft = Offset(barLeft, barTop),
                         size = androidx.compose.ui.geometry.Size(barW, barH * otPct))
             }
-            // top value label
+            // top value label — 跟随柱体高度：柱顶上方紧贴 1dp
             if (d.total > 0) {
                 val tl = textMeasurer.measure("${fmtH(d.total)}h",
                     androidx.compose.ui.text.TextStyle(fontSize = 8.sp, color = Color(0xFF78909C)))
-                drawText(tl, topLeft = Offset(cx - tl.size.width / 2f, 0f))
+                drawText(tl, topLeft = Offset(cx - tl.size.width / 2f, barTop - tl.size.height - 1.dp.toPx()))
             }
             // bottom month label
             val dl = textMeasurer.measure(d.label,
