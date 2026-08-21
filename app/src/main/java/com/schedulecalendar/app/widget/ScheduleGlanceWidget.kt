@@ -331,8 +331,8 @@ private suspend fun refreshWidgets(context: Context, glanceId: GlanceId) {
 
 // ── 小组件 UI 内容 ─────────────────────────────────────────────────
 
-/** 将十六进制颜色字符串转为 Glance ColorProvider（含深色模式适配） */
-private fun parseShiftColor(hex: String, isDark: Boolean): ColorProvider {
+/** 将十六进制颜色字符串转为 androidx.compose.ui.graphics.Color（含深色模式适配） */
+private fun parseShiftColor(hex: String, isDark: Boolean): Color {
     val h = hex.removePrefix("#")
     val lightColor = if (h.length >= 6) {
         val r = h.substring(0, 2).toIntOrNull(16) ?: 0x05
@@ -340,7 +340,7 @@ private fun parseShiftColor(hex: String, isDark: Boolean): ColorProvider {
         val b = h.substring(4, 6).toIntOrNull(16) ?: 0x69
         Color(r / 255f, g / 255f, b / 255f, 1f)
     } else Color(0xFF059669)
-    return if (isDark) ColorProvider(lightColor.copy(alpha = 0.85f)) else ColorProvider(lightColor)
+    return if (isDark) lightColor.copy(alpha = 0.85f) else lightColor
 }
 
 /** 根据深色模式选择颜色 */
@@ -419,43 +419,57 @@ private fun ClockInWidgetContent() {
     val displayStart = actualStart.ifEmpty { data.startTime }
     val displayEnd = actualEnd.ifEmpty { data.endTime }
 
-    Row(
+    // === \u65b0\u5916\u89c2 2x1 V2 (\u4fdd\u7559\u6240\u6709\u6587\u6848\uff0c\u91cd\u65b0\u8bbe\u8ba1\u5e03\u5c40\u548c\u89c6\u89c9) ===
+
+    Box(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(ubg))
-            .cornerRadius(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .cornerRadius(12.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
-        // ── 左侧：班次信息（点击跳转主页面） ──
-        Column(
-            modifier = GlanceModifier
-                .defaultWeight()
-                .padding(start = 8.dp, end = 4.dp)
-                .clickable(actionRunCallback<OpenAppAction>()),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 第一行：班次名（占满剩余空间） + 右侧小齿轮样式入口（与班次名同行，不单独占行、不挤压正文）
-            val shiftDisplayName = buildString {
-                if (data.shiftName.isNotEmpty()) append(data.shiftName)
-                if (data.statusName.isNotEmpty()) {
-                    if (isNotEmpty()) append(" · ")
-                    append(data.statusName)
-                }
-            }
+        Column(modifier = GlanceModifier.fillMaxSize()) {
+            // \u7b2c\u4e00\u884c\uff1a\u73ed\u6b21\u5fbd\u7ae0 + \u9644\u52a0\u72b6\u6001\u540d + \u9f7f\u8f6e\uff08\u8bbe\u7f6e\u5165\u53e3\uff09
             Row(
-                modifier = GlanceModifier.fillMaxWidth().padding(bottom = 2.dp),
+                modifier = GlanceModifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = shiftDisplayName.ifEmpty { "\u4eca\u65e5\u65e0\u6392\u73ed" },
-                    style = if (shiftDisplayName.isNotEmpty())
-                        TextStyle(color = shiftColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    else
-                        TextStyle(color = pickColor(utc.copy(alpha = 0.55f), utcDark.copy(alpha = 0.55f), isDark), fontSize = 13.sp),
-                    modifier = GlanceModifier.defaultWeight(),
-                    maxLines = 1
-                )
-                // 小齿轮：样式设置入口（点击跳转小组件样式配置页），固定小尺寸不挤压文字
+                Box(
+                    modifier = GlanceModifier
+                        .background(ColorProvider(shiftColor.copy(alpha = 0.18f * bgAlpha)))
+                        .cornerRadius(4.dp)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .clickable(actionRunCallback<OpenAppAction>())
+                ) {
+                    Text(
+                        text = if (data.shiftName.isNotEmpty()) data.shiftName else "\u4eca\u65e5\u65e0\u6392\u73ed",
+                        style = if (data.shiftName.isNotEmpty())
+                            TextStyle(
+                                color = if (isDark) ColorProvider(shiftColor.copy(alpha = 0.95f)) else ColorProvider(shiftColor),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        else
+                            TextStyle(
+                                color = pickColor(utc.copy(alpha = 0.55f), utcDark.copy(alpha = 0.55f), isDark),
+                                fontSize = 12.sp
+                            ),
+                        maxLines = 1
+                    )
+                }
+                if (data.statusName.isNotEmpty()) {
+                    Text(
+                        text = "\u00b7 ${data.statusName}",
+                        style = TextStyle(
+                            color = pickColor(Color(0xFFF97316), Color(0xFFFB923C), isDark),
+                            fontSize = 12.sp
+                        ),
+                        maxLines = 1,
+                        modifier = GlanceModifier.padding(start = 6.dp).defaultWeight()
+                    )
+                } else {
+                    Spacer(modifier = GlanceModifier.defaultWeight())
+                }
                 Text(
                     text = "\u2699",
                     modifier = GlanceModifier
@@ -467,142 +481,126 @@ private fun ClockInWidgetContent() {
                         ),
                     style = TextStyle(
                         color = pickColor(utc.copy(alpha = 0.4f), utcDark.copy(alpha = 0.4f), isDark),
-                        fontSize = 13.sp
+                        fontSize = 12.sp
                     ),
                     maxLines = 1
                 )
             }
+            Spacer(modifier = GlanceModifier.height(4.dp))
 
-            // 第二行：上下班时间
-            if (data.startTime.isNotEmpty() || data.endTime.isNotEmpty()) {
-                val timeColor = when {
-                    hasClockIn && !hasClockOut -> pickColor(Color(0xFFF59E0B), Color(0xFFFBBF24), isDark)
-                    hasClockOut -> pickColor(Color(0xFF10B981), Color(0xFF4ADE80), isDark)
-                    else -> pickColor(utc.copy(alpha = 0.55f), utcDark.copy(alpha = 0.55f), isDark)
-                }
-                Text(
-                    text = "$displayStart \u2013 $displayEnd",
-                    style = TextStyle(color = timeColor, fontSize = 12.sp),
-                    maxLines = 1
-                )
-            }
-
-            // 第三行：根据显示模式展示不同内容
-            when (displayMode) {
-                DISPLAY_MODE_SHIFT_HOLIDAY -> {
-                    val countdownText = getHolidayCountdownText()
-                    if (countdownText.isNotEmpty()) {
-                        Text(
-                            text = countdownText,
-                            style = TextStyle(
-                                color = pickColor(Color(0xFFDC2626), Color(0xFFEF4444), isDark),
-                                fontSize = 10.sp
-                            ),
-                            maxLines = 1
-                        )
-                    }
-                }
-                else -> {
-                    if (data.tomorrowShiftName.isNotEmpty()) {
-                        Text(
-                            text = "\u660e\u5929\uff1a${data.tomorrowShiftName}",
-                            style = TextStyle(
-                                color = pickColor(utc.copy(alpha = 0.55f), utcDark.copy(alpha = 0.55f), isDark),
-                                fontSize = 10.sp
-                            ),
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
-        }
-
-        // ── 右侧：打卡按钮（使用 showClockIn/showClockOut 规则控制） ──
-        val showBtn = data.showClockIn || data.showClockOut
-        if (showBtn) {
-            val btnLabel: String
-            val btnTime: String
-            val btnBgColor: ColorProvider
-            val btnTextColor: ColorProvider
-            val btnAction: ActionCallback
-            when {
-                // 上班打卡按钮
-                data.showClockIn && !data.hasClockIn -> {
-                    btnLabel = "\u4e0a\u73ed\u5361"
-                    btnTime = ""
-                    btnBgColor = pickColor(Color(0xFF059669).copy(alpha = 0.12f * bgAlpha), Color(0xFF059669).copy(alpha = 0.22f), isDark)
-                    btnTextColor = pickColor(Color(0xFF059669), Color(0xFF4ADE80), isDark)
-                    btnAction = WidgetClockInAction()
-                }
-                // 下班打卡按钮（已上班未下班）
-                data.showClockOut && data.hasClockIn && !data.hasClockOut -> {
-                    btnLabel = "\u4e0b\u73ed\u5361"
-                    btnTime = actualStart.take(5)
-                    btnBgColor = pickColor(Color(0xFFF59E0B).copy(alpha = 0.12f * bgAlpha), Color(0xFFF59E0B).copy(alpha = 0.22f), isDark)
-                    btnTextColor = pickColor(Color(0xFFD97706), Color(0xFFFBBF24), isDark)
-                    btnAction = WidgetClockOutAction()
-                }
-                // 已全部打卡 → 灰色不可点击状态
-                else -> {
-                    btnLabel = "\u4e0b\u73ed\u5361"
-                    btnTime = actualEnd.take(5)
-                    btnBgColor = pickColor(Color(0xFF9CA3AF).copy(alpha = 0.10f * bgAlpha), Color(0xFF9CA3AF).copy(alpha = 0.18f), isDark)
-                    btnTextColor = pickColor(Color(0xFF6B7280), Color(0xFF9CA3AF), isDark)
-                    btnAction = WidgetClockOutAction()
-                }
-            }
-
-            Box(
-                modifier = GlanceModifier
-                    .width(40.dp)
-                    .height(36.dp)
-                    .padding(end = 4.dp)
-                    .background(btnBgColor)
-                    .cornerRadius(10.dp)
-                    .clickable(actionRunCallback(btnAction::class.java)),
-                contentAlignment = Alignment.Center
+            // \u7b2c\u4e8c\u884c\uff1a\u5927\u53f7\u65f6\u95f4 + \u6253\u5361\u6309\u94ae
+            Row(
+                modifier = GlanceModifier.fillMaxWidth().padding(top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (btnTime.isEmpty()) {
-                    // 未打卡：单行居中显示"上班卡"
+                if (data.startTime.isNotEmpty() || data.endTime.isNotEmpty()) {
+                    val timeColor = when {
+                        hasClockIn && !hasClockOut -> pickColor(Color(0xFFF59E0B), Color(0xFFFBBF24), isDark)
+                        hasClockOut -> pickColor(Color(0xFF10B981), Color(0xFF4ADE80), isDark)
+                        else -> pickColor(utc, utcDark, isDark)
+                    }
                     Text(
-                        text = btnLabel,
-                        style = TextStyle(
-                            color = btnTextColor,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        ),
-                        maxLines = 1
+                        text = "$displayStart \u2013 $displayEnd",
+                        style = TextStyle(color = timeColor, fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        modifier = GlanceModifier.defaultWeight()
                     )
                 } else {
-                    // 已打卡：两行居中显示"下班卡" + 时间
-                    Column(
-                        modifier = GlanceModifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalAlignment = Alignment.CenterVertically
+                    Spacer(modifier = GlanceModifier.defaultWeight())
+                }
+                val showBtn = data.showClockIn || data.showClockOut
+                if (showBtn) {
+                    val btnLabel: String
+                    val btnTime: String
+                    val btnBgColor: ColorProvider
+                    val btnTextColor: ColorProvider
+                    val btnAction: ActionCallback
+                    when {
+                        data.showClockIn && !data.hasClockIn -> {
+                            btnLabel = "\u4e0a\u73ed\u5361"; btnTime = ""
+                            btnBgColor = pickColor(Color(0xFF059669).copy(alpha = 0.18f * bgAlpha), Color(0xFF059669).copy(alpha = 0.30f), isDark)
+                            btnTextColor = pickColor(Color(0xFF059669), Color(0xFF4ADE80), isDark)
+                            btnAction = WidgetClockInAction()
+                        }
+                        data.showClockOut && data.hasClockIn && !data.hasClockOut -> {
+                            btnLabel = "\u4e0b\u73ed\u5361"; btnTime = actualStart.take(5)
+                            btnBgColor = pickColor(Color(0xFFF59E0B).copy(alpha = 0.18f * bgAlpha), Color(0xFFF59E0B).copy(alpha = 0.30f), isDark)
+                            btnTextColor = pickColor(Color(0xFFD97706), Color(0xFFFBBF24), isDark)
+                            btnAction = WidgetClockOutAction()
+                        }
+                        else -> {
+                            btnLabel = "\u4e0b\u73ed\u5361"; btnTime = actualEnd.take(5)
+                            btnBgColor = pickColor(Color(0xFF9CA3AF).copy(alpha = 0.14f * bgAlpha), Color(0xFF9CA3AF).copy(alpha = 0.22f), isDark)
+                            btnTextColor = pickColor(Color(0xFF6B7280), Color(0xFF9CA3AF), isDark)
+                            btnAction = WidgetClockOutAction()
+                        }
+                    }
+                    Box(
+                        modifier = GlanceModifier
+                            .width(64.dp)
+                            .height(36.dp)
+                            .padding(start = 6.dp)
+                            .background(btnBgColor)
+                            .cornerRadius(8.dp)
+                            .clickable(actionRunCallback(btnAction::class.java)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = btnLabel,
-                            style = TextStyle(
-                                color = btnTextColor,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center
-                            ),
-                            maxLines = 1
-                        )
-                        Text(
-                            text = btnTime,
-                            style = TextStyle(
-                                color = btnTextColor,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center
-                            ),
-                            maxLines = 1
-                        )
+                        if (btnTime.isEmpty()) {
+                            Text(
+                                text = btnLabel,
+                                style = TextStyle(
+                                    color = btnTextColor, fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
+                                ),
+                                maxLines = 1
+                            )
+                        } else {
+                            Column(
+                                modifier = GlanceModifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = btnLabel,
+                                    style = TextStyle(
+                                        color = btnTextColor, fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
+                                    ),
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = btnTime,
+                                    style = TextStyle(
+                                        color = btnTextColor, fontSize = 9.sp,
+                                        fontWeight = FontWeight.Medium, textAlign = TextAlign.Center
+                                    ),
+                                    maxLines = 1
+                                )
+                            }
+                        }
                     }
                 }
+            }
+            Spacer(modifier = GlanceModifier.height(4.dp))
+
+            // \u7b2c\u4e09\u884c\uff1a\u660e\u5929\u73ed\u6b21 / \u8282\u5047\u65e5\u5012\u8ba1\u65f6
+            val footerText = when (displayMode) {
+                DISPLAY_MODE_SHIFT_HOLIDAY -> getHolidayCountdownText()
+                else -> if (data.tomorrowShiftName.isNotEmpty())
+                    "\u660e\u5929\uff1a${data.tomorrowShiftName}" else ""
+            }
+            if (footerText.isNotEmpty()) {
+                Text(
+                    text = footerText,
+                    style = TextStyle(
+                        color = if (displayMode == DISPLAY_MODE_SHIFT_HOLIDAY)
+                            pickColor(Color(0xFFDC2626), Color(0xFFEF4444), isDark)
+                        else
+                            pickColor(utc.copy(alpha = 0.55f), utcDark.copy(alpha = 0.55f), isDark),
+                        fontSize = 11.sp
+                    ),
+                    maxLines = 1
+                )
             }
         }
     }

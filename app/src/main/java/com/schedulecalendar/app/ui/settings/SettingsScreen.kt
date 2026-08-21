@@ -1,4 +1,4 @@
-package com.schedulecalendar.app.ui.settings
+﻿package com.schedulecalendar.app.ui.settings
 
 import android.Manifest
 import android.content.Context
@@ -371,7 +371,6 @@ private fun PermissionManagementSection() {
                                         "\u2022 \u81ea\u542f\u52a8\u7ba1\u7406\uff08\u5f00\u673a\u540e\u81ea\u52a8\u6062\u590d\u95f9\u949f\u63d0\u9192\uff09\n" +
                                         "\u2022 \u7701\u7535\u7b56\u7565 \u2192 \u65e0\u9650\u5236\uff08\u9632\u6b62\u540e\u53f0\u88ab\u7cfb\u7edf\u6740\u6b7b\uff09\n" +
                                         "\u2022 \u540e\u53f0\u5f39\u51fa\u754c\u9762\uff08\u70b9\u51fb\u901a\u77e5\u540e\u6253\u5f00\u5e94\u7528\uff09\n" +
-                                        "\u2022 \u684c\u9762\u5feb\u6377\u65b9\u5f0f\uff08\u957f\u6309\u56fe\u6807\u663e\u793a\u6253\u5361\u5feb\u6377\u65b9\u5f0f\uff09\n" +
                                         "\u2022 \u9501\u5c4f\u901a\u77e5 / \u901a\u77e5\u680f\u663e\u793a\uff08\u26a0\ufe0f \u52a1\u5fc5\u5f00\u542f\uff0c\u5426\u5219\u5230\u70b9\u63d0\u9192\u4e0d\u5f39\u7a97\u3001\u4e0d\u54cd\u94c3\uff0c\u529f\u80fd\u5c06\u5931\u6548\uff09",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant

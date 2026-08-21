@@ -128,10 +128,13 @@ private fun CalendarWidgetContent(isLarge: Boolean, baseHeight: androidx.compose
     val sfs = if (isLarge) 8.sp else 7.sp
     val stfs = if (isLarge) 7.sp else 6.sp
     val lfs = 7.sp
-    // 农历显示条件：物理高度足够 AND (月份行数≤4 OR 每行高度≥50dp)
-    // 确保3行小组件不显示(防裁切)，4行小组件始终显示(空间充裕)
+    // 显示策略（基于行数，确保不裁切）：
+    // - 3 行（3x3）：空间不足，仅显示 日期 + 班次，隐藏附加状态（避免露出部分头部）
+    // - 4 行（4xN）：空间足够显示农历，显示 日期 + 班次 + 农历，隐藏附加状态（容纳农历）
+    // - 5 行以上：都显示
     val heightPerRow = (baseHeight - 34.dp) / data.totalRows.coerceAtLeast(1)
-    val showLunar = isLarge && (data.totalRows <= 4 || heightPerRow >= 50.dp)
+    val showLunar  = data.totalRows >= 4 && heightPerRow >= 40.dp
+    val showStatus = data.totalRows >= 5 || (data.totalRows <= 3 && heightPerRow >= 50.dp)
     val headerFs = if (isLarge) 17.sp else 14.sp
     val refreshSize = if (isLarge) 28.dp else 24.dp
     val refreshIconFs = if (isLarge) 18.sp else 15.sp
@@ -213,7 +216,7 @@ private fun CalendarWidgetContent(isLarge: Boolean, baseHeight: androidx.compose
                                 .cornerRadius(cellCorner)
                             ) {
                                 if (day != null && day.day > 0) CalendarDayCellContent(
-                                    day, isToday, isLarge, showLunar, data.year, data.month, dfs, sfs, stfs, lfs, utc, utcDark, bgAlpha, isDark, cellCorner)
+                                    day, isToday, isLarge, showLunar, showStatus, data.year, data.month, dfs, sfs, stfs, lfs, utc, utcDark, bgAlpha, isDark, cellCorner)
                             }
                         }
                     }
@@ -225,7 +228,8 @@ private fun CalendarWidgetContent(isLarge: Boolean, baseHeight: androidx.compose
 
 @Composable
 private fun CalendarDayCellContent(
-    day: CalendarWidgetDay, isToday: Boolean, isLarge: Boolean, showLunar: Boolean,
+    day: CalendarWidgetDay, isToday: Boolean, isLarge: Boolean,
+    showLunar: Boolean, showStatus: Boolean,
     year: Int, month: Int, dayNumberSize: TextUnit,
     shiftFontSize: TextUnit, statusFontSize: TextUnit, lunarFontSize: TextUnit,
     textColor: Color, textColorDark: Color, bgAlpha: Float, isDark: Boolean,
@@ -305,8 +309,8 @@ private fun CalendarDayCellContent(
                 } else Color(0xFF3B82F6)
                 Text(text = day.shiftName, style = TextStyle(color = if (isDark) ColorProvider(shiftColor.copy(alpha = 0.85f)) else ColorProvider(shiftColor), fontSize = shiftFontSize), maxLines = 1)
             }
-            // 4. 附加状态名称
-            if (hasStatus) Text(text = day.statusName, style = TextStyle(color = if (isDark) ColorProvider(Color(0xFFFB923C)) else ColorProvider(Color(0xFFF97316)), fontSize = statusFontSize), maxLines = 1)
+            // 4. 附加状态名称（根据行数/高度判断是否显示，避免3行小组件露出部分头部）
+            if (hasStatus && showStatus) Text(text = day.statusName, style = TextStyle(color = if (isDark) ColorProvider(Color(0xFFFB923C)) else ColorProvider(Color(0xFFF97316)), fontSize = statusFontSize), maxLines = 1)
         }
     }
 }
