@@ -240,6 +240,10 @@ data class HoursDetailItem(
     val date: String,
     val shiftName: String?,
     val shiftColor: String?,
+    /** 附加状态名称（如请假、调休外的用户自定义状态） */
+    val appliedStatusName: String? = null,
+    /** 附加状态颜色 */
+    val appliedStatusColor: String? = null,
     /** 主要文字（根据类型不同含义不同） */
     val primaryText: String,
     /** 次要文字 */
@@ -254,6 +258,12 @@ data class HoursDetailState(
     val month: Int                         = 0,
     val type: HoursDetailType              = HoursDetailType.ALL,
     val items: List<HoursDetailItem>       = emptyList(),
+    /** 当月总条数（含未来未发生的）—— 用于详情页头部文案 */
+    val totalCount: Int                    = 0,
+    /** 截至今天（含今天）的条数 —— 当月时显示，过去月份为 0 */
+    val elapsedCount: Int                  = 0,
+    /** 是否为当前年月（决定头部文案是否显示"截至到今天的是 Y 条"） */
+    val isCurrentMonth: Boolean            = false,
     val loading: Boolean                   = true
 )
 
@@ -287,7 +297,7 @@ class HoursDetailViewModel @Inject constructor(
 
     private fun load() = viewModelScope.launch {
         // 数据加载 + 工时计算移至 IO 线程，避免阻塞 Main 线程导致导航卡顿
-        val result = withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val loaded = withContext(kotlinx.coroutines.Dispatchers.IO) {
             val shifts      = shiftRepo.getAllWithBuiltin()
             val breaks      = breakRepo.getAll()
             val statuses    = shiftStatusRepo.getAllWithBuiltin()
@@ -297,10 +307,19 @@ class HoursDetailViewModel @Inject constructor(
             val records     = scheduleRepo.getByMonth("%04d-%02d".format(year, month))
             val schedules   = records.associateBy { it.date }
             val details     = CalcUtils.getMonthScheduleDetails(year, month, schedules, shifts, breaks, extras, salaryConf, attendConf)
+            // 附加状态 id → ShiftStatus 映射，用于查名称/颜色
+            val statusMap   = statuses.associateBy { it.id }
 
-            val todayStr = "%04d-%02d-%02d".format(
-                LocalDate.now().year, LocalDate.now().monthValue, LocalDate.now().dayOfMonth
-            )
+            val today = LocalDate.now()
+            val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+            val isCurrentMonth = (today.year == year && today.monthValue == month)
+
+            /** 查附加状态名称+颜色，未设或查不到返回 (null, null) */
+            fun appliedStatusOf(rec: ScheduleRecord?): Pair<String?, String?> {
+                val id = rec?.appliedStatus?.statusId ?: return null to null
+                val s  = statusMap[id] ?: return id to null
+                return s.name to s.color
+            }
 
             val items = when (detailType) {
                 HoursDetailType.LATE -> {
@@ -310,9 +329,11 @@ class HoursDetailViewModel @Inject constructor(
                         val actualStart = rec.actualStartTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
                         val lateMinutes = calcLateMinutes(shift.startTime, actualStart, attendConf.lateToleranceMin)
                         if (lateMinutes <= 0) return@mapNotNull null
+                        val (asName, asColor) = appliedStatusOf(rec)
                         HoursDetailItem(
                             date = d.date,
                             shiftName = shift.name, shiftColor = shift.color,
+                            appliedStatusName = asName, appliedStatusColor = asColor,
                             primaryText = "打卡 $actualStart（计划 ${shift.startTime}）",
                             highlightText = "迟到 ${lateMinutes}分钟",
                             isAlert = lateMinutes >= (attendConf.lateAlertCount * attendConf.lateToleranceMin)
@@ -326,9 +347,11 @@ class HoursDetailViewModel @Inject constructor(
                         val actualEnd = rec.actualEndTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
                         val earlyMinutes = calcEarlyMinutes(shift.endTime, actualEnd, attendConf.earlyLeaveToleranceMin)
                         if (earlyMinutes <= 0) return@mapNotNull null
+                        val (asName, asColor) = appliedStatusOf(rec)
                         HoursDetailItem(
                             date = d.date,
                             shiftName = shift.name, shiftColor = shift.color,
+                            appliedStatusName = asName, appliedStatusColor = asColor,
                             primaryText = "打卡 $actualEnd（计划 ${shift.endTime}）",
                             highlightText = "早退 ${earlyMinutes}分钟",
                             isAlert = earlyMinutes >= (attendConf.earlyLeaveAlertCount * attendConf.earlyLeaveToleranceMin)
@@ -336,10 +359,13 @@ class HoursDetailViewModel @Inject constructor(
                     }
                 }
                 HoursDetailType.REMARK -> {
-                    details.filter { it.date <= todayStr && !it.record?.remark.isNullOrBlank() }.map { d ->
+                    // 显示当月所有备注（含未来未发生的），和"补贴扣款"行为一致
+                    details.filter { !it.record?.remark.isNullOrBlank() }.map { d ->
+                        val (asName, asColor) = appliedStatusOf(d.record)
                         HoursDetailItem(
                             date = d.date,
                             shiftName = d.shift?.name, shiftColor = d.shift?.color,
+                            appliedStatusName = asName, appliedStatusColor = asColor,
                             primaryText = d.record?.remark ?: ""
                         )
                     }
@@ -356,9 +382,11 @@ class HoursDetailViewModel @Inject constructor(
                             if (missingStart) add("上班未打卡")
                             if (missingEnd)   add("下班未打卡")
                         }
+                        val (asName, asColor) = appliedStatusOf(rec)
                         HoursDetailItem(
                             date = d.date,
                             shiftName = shift.name, shiftColor = shift.color,
+                            appliedStatusName = asName, appliedStatusColor = asColor,
                             primaryText = parts.joinToString("，"),
                             secondaryText = "班次 ${shift.startTime}～${shift.endTime}",
                             isAlert = true
@@ -373,9 +401,11 @@ class HoursDetailViewModel @Inject constructor(
                             if (subsidyTotal > 0)   add("补贴 +¥%.2f".format(subsidyTotal))
                             if (deductionTotal > 0) add("扣款 -¥%.2f".format(deductionTotal))
                         }
+                        val (asName, asColor) = appliedStatusOf(d.record)
                         HoursDetailItem(
                             date = d.date,
                             shiftName = d.shift?.name, shiftColor = d.shift?.color,
+                            appliedStatusName = asName, appliedStatusColor = asColor,
                             primaryText = parts.joinToString("，"),
                             secondaryText = d.extras.joinToString("、") { it.name },
                             highlightText = "共${d.extras.size}项"
@@ -385,9 +415,11 @@ class HoursDetailViewModel @Inject constructor(
                 HoursDetailType.ALL -> {
                     details.filter { it.record != null }.map { d ->
                         val total = d.normalHours + d.overtimeHours + d.weekendHours + d.holidayHours
+                        val (asName, asColor) = appliedStatusOf(d.record)
                         HoursDetailItem(
                             date = d.date,
                             shiftName = d.shift?.name, shiftColor = d.shift?.color,
+                            appliedStatusName = asName, appliedStatusColor = asColor,
                             primaryText = if (total > 0) "工时 %.1fh".format(total) else d.record?.type?.name ?: "",
                             secondaryText = buildString {
                                 if (d.overtimeHours > 0) append("加班%.1fh ".format(d.overtimeHours))
@@ -398,11 +430,28 @@ class HoursDetailViewModel @Inject constructor(
                     }
                 }
             }
-            items
+            // 计算头部文案所需的计数
+            val totalCount   = items.size
+            val elapsedCount = items.count { it.date <= todayStr }
+            HoursLoaded(items, totalCount, elapsedCount, isCurrentMonth)
         }
 
-        _state.update { it.copy(items = result, loading = false) }
+        _state.update { it.copy(
+            items          = loaded.items,
+            totalCount     = loaded.totalCount,
+            elapsedCount   = loaded.elapsedCount,
+            isCurrentMonth = loaded.isCurrentMonth,
+            loading        = false
+        ) }
     }
+
+    /** load() 内 withContext 返回的数据聚合，避免 Triple 嵌套拆包的语法坑 */
+    private data class HoursLoaded(
+        val items: List<HoursDetailItem>,
+        val totalCount: Int,
+        val elapsedCount: Int,
+        val isCurrentMonth: Boolean
+    )
 
     /** 计算迟到分钟数（超过容忍阈值才算），返回实际迟到分钟 */
     private fun calcLateMinutes(planStart: String, actualStart: String, toleranceMin: Int): Int {
