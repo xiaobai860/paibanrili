@@ -37,9 +37,9 @@ fun HuangLiScreen(navController: NavController) {
     }
 
     val parts = date.split("-")
-    val year = parts[0].toInt()
-    val month = parts[1].toInt()
-    val day = parts[2].toInt()
+    val year = parts.getOrNull(0)?.toIntOrNull() ?: LocalDate.now().year
+    val month = parts.getOrNull(1)?.toIntOrNull() ?: LocalDate.now().monthValue
+    val day = parts.getOrNull(2)?.toIntOrNull() ?: LocalDate.now().dayOfMonth
 
     val huangLi = remember(date) { LunarCalendar.getFullHuangLi(year, month, day) }
 

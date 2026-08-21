@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,7 +25,6 @@ import com.schedulecalendar.app.ui.settings.WidgetSettingsViewModel
 import com.schedulecalendar.app.ui.theme.ScheduleCalendarTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -71,7 +71,7 @@ class MainActivity : ComponentActivity() {
                     val permissionLauncher = rememberLauncherForActivityResult(
                         ActivityResultContracts.RequestMultiplePermissions()
                     ) { _ ->
-                        CoroutineScope(Dispatchers.IO).launch {
+                        lifecycleScope.launch(Dispatchers.IO) {
                             appPreferences.setInitialPermissionsDone()
                         }
                         permissionsRequested = true
@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
                             onSkip = {
                                 showPermissionDialog = false
                                 permissionsRequested = true
-                                CoroutineScope(Dispatchers.IO).launch {
+                                lifecycleScope.launch(Dispatchers.IO) {
                                     appPreferences.setInitialPermissionsDone()
                                 }
                             }

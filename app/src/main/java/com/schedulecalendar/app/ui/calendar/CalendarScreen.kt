@@ -759,11 +759,15 @@ private fun DayCell(
     // dateParts/lunarText 仅依赖 dateStr，用 remember 缓存，避免每次重组重复解析+农历换算
     val dateParts = dateStr.split("-")
     val lunarText = remember(dateStr) {
-        LunarCalendar.getLunarDayText(dateParts[0].toInt(), dateParts[1].toInt(), dateParts[2].toInt())
+        val y = dateParts.getOrNull(0)?.toIntOrNull() ?: LocalDate.now().year
+        val m = dateParts.getOrNull(1)?.toIntOrNull() ?: LocalDate.now().monthValue
+        val d = dateParts.getOrNull(2)?.toIntOrNull() ?: LocalDate.now().dayOfMonth
+        LunarCalendar.getLunarDayText(y, m, d)
     }
     val shiftText = shift?.name ?: "无班次"
     val accessibilityDescription = buildString {
-        append("${dateParts[1]}月${day}日，$shiftText，$lunarText")
+        val m = dateParts.getOrNull(1)?.toIntOrNull() ?: LocalDate.now().monthValue
+        append("${m}月${day}日，$shiftText，$lunarText")
         if (isToday) append("，今天")
         if (isHoliday) append("，节假日")
         if (isWeekend) append("，周末")
@@ -1893,9 +1897,9 @@ private fun DateDetailSection(
     onHuangLiClick: () -> Unit = {}
 ) {
     val parts = date.split("-")
-    val year = parts[0].toInt()
-    val month = parts[1].toInt()
-    val day = parts[2].toInt()
+    val year = parts.getOrNull(0)?.toIntOrNull() ?: LocalDate.now().year
+    val month = parts.getOrNull(1)?.toIntOrNull() ?: LocalDate.now().monthValue
+    val day = parts.getOrNull(2)?.toIntOrNull() ?: LocalDate.now().dayOfMonth
 
     // 农历信息拆分为两行
     val lunarDate = LunarCalendar.solarToLunar(year, month, day)
