@@ -144,14 +144,24 @@ class CalendarViewModel @Inject constructor(
     /** Widget 同步去抖 Job：数据变化后延迟合并写盘，避免每次 collect 都立即同步小组件 */
     private var widgetSyncJob: Job? = null
 
+    /**
+     * 上次同步 widget 时数据指纹（shifts+schedules+statuses+year+month 组合）。
+     * 只有指纹变化（数据真变）才 dirty 触发 widget.update，避免切 Tab / ViewModel 重建时
+     * 数据未变也调用 widget.update 触发主线程 AppWidgetManager.updateAppWidgetIds Binder 阻塞。
+     */
+    private var lastWidgetSyncFp: Int = 0
+
     init {
         loadCurrentMonth()
-        // 延迟执行非关键初始化，避免阻塞首帧渲染
-        viewModelScope.launch {
+        // 延迟执行非关键初始化，必须放到 Dispatchers.IO，
+        // 否则 backupManager.autoBackupAppData() 内的 12 月 Room 查询 + Gson + file.writeText
+        // 以及 calendarEventRepo.getOrCreateLocalCalendarId() 内的 AccountManager/ContentResolver 同步 Binder
+        // 都会阻塞主线程造成卡顿（已在 OPPO UISlowBinder 与 GC freed 59MB 中证实）。
+        viewModelScope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(500)
             backupManager.autoBackupAppData()
         }
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(1000)
             calendarEventRepo.getOrCreateLocalCalendarId()
         }
@@ -244,17 +254,23 @@ class CalendarViewModel @Inject constructor(
                         allShiftStatuses = allShiftStatuses,
                         loading        = false
                     )}
-                    // Widget 同步（去抖合并 + 后台线程，避免每次数据变化立即写盘、避免占主线程）
-                    widgetSyncJob?.cancel()
-                    widgetSyncJob = viewModelScope.launch(Dispatchers.Default) {
-                        kotlinx.coroutines.delay(150)
-                        syncWidget(allShifts, schedules)
-                        syncCalendarWidget(
-                            year = s.year, month = s.month,
-                            allShifts = allShifts, schedules = schedules,
-                            allShiftStatuses = allShiftStatuses,
-                            selectedDate = _state.value.selectedDate
-                        )
+                    // Widget 同步（去抖合并 + 后台线程 + 脏数据判断）
+                    // 仅当 shifts/schedules/statuses/year/month 组合指纹变化时才真正同步小组件，
+                    // 避免切 Tab / ViewModel 重建时重复调用 widget.update 触发主线程 AppWidgetManager Binder。
+                    val widgetFp = listOf(allShifts, schedules, allShiftStatuses, s.year, s.month).hashCode()
+                    if (widgetFp != lastWidgetSyncFp) {
+                        widgetSyncJob?.cancel()
+                        widgetSyncJob = viewModelScope.launch(Dispatchers.Default) {
+                            kotlinx.coroutines.delay(150)
+                            syncWidget(allShifts, schedules)
+                            syncCalendarWidget(
+                                year = s.year, month = s.month,
+                                allShifts = allShifts, schedules = schedules,
+                                allShiftStatuses = allShiftStatuses,
+                                selectedDate = _state.value.selectedDate
+                            )
+                            lastWidgetSyncFp = widgetFp
+                        }
                     }
                 }
                 // 加载选中日期的纪念日与日程（首次加载或切月后）
