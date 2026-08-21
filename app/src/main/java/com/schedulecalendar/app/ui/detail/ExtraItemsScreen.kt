@@ -203,16 +203,16 @@ private fun ExtraItemEditorDialog(item: ExtraItem?, existingNames: List<String>,
                 onClick = {
                     nameError = null
                     val trimmed = name.trim()
-                    if (trimmed.isBlank()) { nameError = "\u540d\u79f0\u4e0d\u80fd\u4e3a\u7a7a"; return@TextButton }
+                    if (trimmed.isBlank()) { nameError = "名称不能为空"; return@TextButton }
                     val dup = existingNames.any { it.equals(trimmed, ignoreCase = true) && (item == null || !it.equals(item.name, ignoreCase = true)) }
-                    if (dup) { nameError = "\u540d\u79f0\u5df2\u5b58\u5728\uff0c\u8bf7\u4fee\u6539\u540e\u4fdd\u5b58"; return@TextButton }
+                    if (dup) { nameError = "名称已存在，请修改后保存"; return@TextButton }
                     onSave(ExtraItem(
                         id = item?.id ?: UUID.randomUUID().toString(),
                         name = trimmed, type = type,
                         amount = amount.toDoubleOrNull() ?: 0.0
                     ))
                 }
-            ) { Text("\u4fdd\u5b58") }
+            ) { Text("保存") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )

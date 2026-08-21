@@ -218,7 +218,7 @@ fun WheelDatePickerDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "\u9009\u62e9\u5e74\u6708",
+                    text = "选择年月",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(bottom = 16.dp)
@@ -233,7 +233,7 @@ fun WheelDatePickerDialog(
                     // Year picker
                     WheelTextPicker(
                         size = DpSize(130.dp, 128.dp),
-                        texts = yearList.map { "${it}\u5e74" },
+                        texts = yearList.map { "${it}年" },
                         rowCount = 3,
                         startIndex = yearList.indexOf(currentYear).coerceAtLeast(0),
                         style = MaterialTheme.typography.titleMedium,
@@ -252,7 +252,7 @@ fun WheelDatePickerDialog(
                     // Month picker
                     WheelTextPicker(
                         size = DpSize(100.dp, 128.dp),
-                        texts = monthList.map { "${it}\u6708" },
+                        texts = monthList.map { "${it}月" },
                         rowCount = 3,
                         startIndex = monthList.indexOf(currentMonth).coerceAtLeast(0),
                         style = MaterialTheme.typography.titleMedium,
@@ -281,7 +281,7 @@ fun WheelDatePickerDialog(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("\u53d6\u6d88")
+                        Text("取消")
                     }
                     Button(
                         onClick = {
@@ -293,7 +293,7 @@ fun WheelDatePickerDialog(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("\u786e\u8ba4", fontSize = 13.sp)
+                        Text("确认", fontSize = 13.sp)
                     }
                 }
             }

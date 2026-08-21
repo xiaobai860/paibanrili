@@ -407,11 +407,11 @@ class ShiftEditorViewModel @Inject constructor(
     fun save() {
         val s = _state.value
         if (s.name.isBlank()) {
-            viewModelScope.launch { _uiEvent.send(ShiftEditorUiEvent.ShowError("\u73ed\u6b21\u540d\u79f0\u4e0d\u80fd\u4e3a\u7a7a")) }
+            viewModelScope.launch { _uiEvent.send(ShiftEditorUiEvent.ShowError("班次名称不能为空")) }
             return
         }
         if (s.startTime.isBlank() || s.endTime.isBlank()) {
-            viewModelScope.launch { _uiEvent.send(ShiftEditorUiEvent.ShowError("\u8bf7\u8f93\u5165\u5b8c\u6574\u7684\u4e0a\u4e0b\u73ed\u65f6\u95f4")) }
+            viewModelScope.launch { _uiEvent.send(ShiftEditorUiEvent.ShowError("请输入完整的上下班时间")) }
             return
         }
         viewModelScope.launch {

@@ -227,7 +227,7 @@ class WidgetClockInAction : ActionCallback {
         // 刷新小组件
         refreshWidgets(context, glanceId)
         Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, "\u5df2\u6253\u4e0a\u73ed\u5361 $currentTime", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "已打上班卡 $currentTime", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -247,7 +247,7 @@ class WidgetClockInAction : ActionCallback {
             }
         }
         refreshWidgets(context, glanceId)
-        Toast.makeText(context, "\u5df2\u6253\u5361 $currentTime", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -332,7 +332,7 @@ class WidgetClockOutAction : ActionCallback {
         // 刷新小组件
         refreshWidgets(context, glanceId)
         Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, "\u5df2\u6253\u4e0b\u73ed\u5361 $currentTime", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "已打下班卡 $currentTime", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -349,7 +349,7 @@ class WidgetClockOutAction : ActionCallback {
             prefs.edit { putString(KEY_CLOCK_OUT_TIME, currentTime) }
         }
         refreshWidgets(context, glanceId)
-        Toast.makeText(context, "\u5df2\u6253\u5361 $currentTime", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -390,15 +390,15 @@ private fun getHolidayCountdownText(): String {
     if (HolidayData.isLegalHoliday(todayStr)) {
         val name = HolidayData.getHolidayName(todayStr)
         return if (name != null && name !in listOf("春节补班", "劳动节补班", "端午节补班", "中秋节补班", "国庆节补班"))
-            "\u4eca\u5929${name}\u5c31\u662f\uff01" else "\u4eca\u65e5\u505c\u5de5"
+            "今天${name}就是！" else "今日停工"
     }
 
     // 查找下一个最近法定节假日首日
     val (holidayName, daysUntil) = HolidayData.getNextHolidayCountdown(todayStr)
     return if (daysUntil > 0) {
-        "\u8ddd${holidayName}\u8fd8\u6709${daysUntil}\u5929"
+        "距${holidayName}还有${daysUntil}天"
     } else if (daysUntil == 0) {
-        "\u4eca\u5929${holidayName}\u5c31\u662f\uff01"
+        "今天${holidayName}就是！"
     } else {
         ""
     }
@@ -457,7 +457,7 @@ private fun ClockInWidgetContent() {
     val displayStart = actualStart.ifEmpty { data.startTime }
     val displayEnd = actualEnd.ifEmpty { data.endTime }
 
-    // === \u65b0\u5916\u89c2 2x1 V4 (\u8fd4\u56de 3 \u884c defaultWeight \u7b49\u5206\u9ad8\u5ea6\u5e03\u5c40) ===
+    // === 新外观 2x1 V4 (返回 3 行 defaultWeight 等分高度布局) ===
 
     Box(
         modifier = GlanceModifier
@@ -471,7 +471,7 @@ private fun ClockInWidgetContent() {
                 .fillMaxSize()
                 .padding(horizontal = 10.dp, vertical = 4.dp)
         ) {
-            // \u7b2c\u4e00\u884c\uff1a\u73ed\u6b21\u5fbd\u7ae0 + \u9644\u52a0\u72b6\u6001\u540d + \u9f7f\u8f6e\uff08\u8bbe\u7f6e\u5165\u53e3\uff09
+            // 第一行：班次徽章 + 附加状态名 + 齿轮（设置入口）
             Row(
                 modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
                 verticalAlignment = Alignment.CenterVertically
@@ -484,7 +484,7 @@ private fun ClockInWidgetContent() {
                         .clickable(actionRunCallback<OpenAppAction>())
                 ) {
                     Text(
-                        text = if (data.shiftName.isNotEmpty()) data.shiftName else "\u4eca\u65e5\u65e0\u6392\u73ed",
+                        text = if (data.shiftName.isNotEmpty()) data.shiftName else "今日无排班",
                         style = if (data.shiftName.isNotEmpty())
                             TextStyle(
                                 color = if (isDark) ColorProvider(shiftColor.copy(alpha = 0.95f)) else ColorProvider(shiftColor),
@@ -513,7 +513,7 @@ private fun ClockInWidgetContent() {
                     Spacer(modifier = GlanceModifier.defaultWeight())
                 }
                 Text(
-                    text = "\u2699",
+                    text = "⚙",
                     modifier = GlanceModifier
                         .padding(start = 4.dp)
                         .clickable(
@@ -529,7 +529,7 @@ private fun ClockInWidgetContent() {
                 )
             }
 
-            // \u7b2c\u4e8c\u884c\uff1a\u5927\u53f7\u65f6\u95f4 + \u6253\u5361\u6309\u94ae
+            // 第二行：大号时间 + 打卡按钮
             Row(
                 modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
                 verticalAlignment = Alignment.CenterVertically
@@ -541,7 +541,7 @@ private fun ClockInWidgetContent() {
                         else -> pickColor(utc, utcDark, isDark)
                     }
                     Text(
-                        text = "$displayStart \u2013 $displayEnd",
+                        text = "$displayStart – $displayEnd",
                         style = TextStyle(color = timeColor, fontSize = 15.sp, fontWeight = FontWeight.Bold),
                         maxLines = 1,
                         modifier = GlanceModifier.defaultWeight()
@@ -557,19 +557,19 @@ private fun ClockInWidgetContent() {
                     val btnAction: ActionCallback
                     when {
                         data.showClockIn && !data.hasClockIn -> {
-                            btnLabel = "\u4e0a\u73ed\u5361"
+                            btnLabel = "上班卡"
                             btnBgColor = pickColor(Color(0xFF059669).copy(alpha = 0.18f * bgAlpha), Color(0xFF059669).copy(alpha = 0.30f), isDark)
                             btnTextColor = pickColor(Color(0xFF059669), Color(0xFF4ADE80), isDark)
                             btnAction = WidgetClockInAction()
                         }
                         data.showClockOut && data.hasClockIn && !data.hasClockOut -> {
-                            btnLabel = "\u4e0b\u73ed\u5361"
+                            btnLabel = "下班卡"
                             btnBgColor = pickColor(Color(0xFFF59E0B).copy(alpha = 0.18f * bgAlpha), Color(0xFFF59E0B).copy(alpha = 0.30f), isDark)
                             btnTextColor = pickColor(Color(0xFFD97706), Color(0xFFFBBF24), isDark)
                             btnAction = WidgetClockOutAction()
                         }
                         else -> {
-                            btnLabel = "\u4e0b\u73ed\u5361"
+                            btnLabel = "下班卡"
                             btnBgColor = pickColor(Color(0xFF9CA3AF).copy(alpha = 0.14f * bgAlpha), Color(0xFF9CA3AF).copy(alpha = 0.22f), isDark)
                             btnTextColor = pickColor(Color(0xFF6B7280), Color(0xFF9CA3AF), isDark)
                             btnAction = WidgetClockOutAction()
@@ -596,11 +596,11 @@ private fun ClockInWidgetContent() {
                 }
             }
 
-            // \u7b2c\u4e09\u884c\uff1a\u660e\u5929\u73ed\u6b21 / \u8282\u5047\u65e5\u5012\u8ba1\u65f6\uff08\u5b57\u53f7 12sp\uff09
+            // 第三行：明天班次 / 节假日倒计时（字号 12sp）
             val footerText = when (displayMode) {
                 DISPLAY_MODE_SHIFT_HOLIDAY -> getHolidayCountdownText()
                 else -> if (data.tomorrowShiftName.isNotEmpty())
-                    "\u660e\u5929\uff1a${data.tomorrowShiftName}" else ""
+                    "明天：${data.tomorrowShiftName}" else ""
             }
             if (footerText.isNotEmpty()) {
                 Box(

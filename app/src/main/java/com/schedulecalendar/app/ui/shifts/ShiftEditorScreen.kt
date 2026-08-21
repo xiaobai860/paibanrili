@@ -51,7 +51,7 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
 
     Scaffold(topBar = {
         ScheduleTopBar(
-            title  = if (shiftId != null) "\u7f16\u8f91\u73ed\u6b21" else "\u65b0\u589e\u73ed\u6b21",
+            title  = if (shiftId != null) "编辑班次" else "新增班次",
             onBack = { navController.popBackStack() }
         )
     }) { pad ->
@@ -63,17 +63,17 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // \u540d\u79f0
+            // 名称
             item {
                 OutlinedTextField(
                     value         = s.name,
                     onValueChange = { vm.update { copy(name = it) } },
-                    label         = { Text("\u73ed\u6b21\u540d\u79f0 *") },
+                    label         = { Text("班次名称 *") },
                     modifier      = Modifier.fillMaxWidth(),
                     singleLine    = true,
                     colors        = stableLabelColors()
                 )
-                if (errorMsg == "\u73ed\u6b21\u540d\u79f0\u5df2\u5b58\u5728\uff0c\u8bf7\u4fee\u6539\u540e\u4fdd\u5b58" || errorMsg == "\u73ed\u6b21\u540d\u79f0\u4e0d\u80fd\u4e3a\u7a7a") {
+                if (errorMsg == "班次名称已存在，请修改后保存" || errorMsg == "班次名称不能为空") {
                     Text(
                         text  = errorMsg ?: "",
                         color = MaterialTheme.colorScheme.error,
@@ -83,24 +83,24 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
                 }
             }
 
-            // \u4e0a\u4e0b\u73ed\u65f6\u95f4
+            // 上下班时间
             item {
-                SectionLabel("\u5de5\u4f5c\u65f6\u95f4")
+                SectionLabel("工作时间")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TimePickerField(
                         time           = s.startTime,
                         onTimeChange   = { vm.update { copy(startTime = it) }; errorMsg = null },
-                        label          = "\u4e0a\u73ed\u65f6\u95f4 *",
+                        label          = "上班时间 *",
                         modifier       = Modifier.weight(1f)
                     )
                     TimePickerField(
                         time           = s.endTime,
                         onTimeChange   = { vm.update { copy(endTime = it) }; errorMsg = null },
-                        label          = "\u4e0b\u73ed\u65f6\u95f4 *",
+                        label          = "下班时间 *",
                         modifier       = Modifier.weight(1f)
                     )
                 }
-                if (errorMsg == "\u8bf7\u8f93\u5165\u5b8c\u6574\u7684\u4e0a\u4e0b\u73ed\u65f6\u95f4") {
+                if (errorMsg == "请输入完整的上下班时间") {
                     Text(
                         text  = errorMsg ?: "",
                         color = MaterialTheme.colorScheme.error,
@@ -110,7 +110,7 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
                 }
             }
 
-            // \u65f6\u957f\u4fe1\u606f\u9884\u89c8\u677f\u5757
+            // 时长信息预览板块
             item {
                 val totalHours = CalcUtils.calcHourDiff(s.startTime, s.endTime)
                 // 使用 CalcUtils.calcGlobalBreakHours 正确计算班次与不计入时段的交集
@@ -119,37 +119,37 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
                 } else 0.0
                 val actualHours = maxOf(0.0, totalHours - breakHours)
 
-                SectionLabel("\u65f6\u957f\u9884\u89c8")
+                SectionLabel("时长预览")
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DurationInfoRow("\u603b\u65f6\u957f", "${String.format(java.util.Locale.getDefault(), "%.1f", totalHours)} \u5c0f\u65f6")
-                        DurationInfoRow("\u4f11\u606f/\u7528\u9910\u65f6\u95f4", "${String.format(java.util.Locale.getDefault(), "%.1f", breakHours)} \u5c0f\u65f6")
+                        DurationInfoRow("总时长", "${String.format(java.util.Locale.getDefault(), "%.1f", totalHours)} 小时")
+                        DurationInfoRow("休息/用餐时间", "${String.format(java.util.Locale.getDefault(), "%.1f", breakHours)} 小时")
                         HorizontalDivider()
-                        DurationInfoRow("\u5b9e\u9645\u5de5\u65f6", "${String.format(java.util.Locale.getDefault(), "%.1f", actualHours)} \u5c0f\u65f6",
+                        DurationInfoRow("实际工时", "${String.format(java.util.Locale.getDefault(), "%.1f", actualHours)} 小时",
                             valueColor = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
 
-            // \u989c\u8272\u9009\u62e9 + \u73ed\u6b21\u6807\u7b7e\u9884\u89c8
+            // 颜色选择 + 班次标签预览
             item {
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // \u73ed\u6b21\u989c\u8272\u6807\u7b7e + \u9884\u89c8
+                    // 班次颜色标签 + 预览
                     Row(
                         Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "\u73ed\u6b21\u989c\u8272",
+                            text = "班次颜色",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -163,7 +163,7 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = s.name.ifBlank { "\u73ed\u6b21" },
+                                text = s.name.ifBlank { "班次" },
                                 color = Color.White,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
@@ -176,10 +176,10 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
                 ColorPicker(selected = s.color, onSelect = { vm.update { copy(color = it) } })
             }
 
-            // \u9ed8\u8ba4\u5173\u8054\u8865\u8d34/\u6263\u6b3e\u9879
+            // 默认关联补贴/扣款项
             if (s.allExtraItems.isNotEmpty()) {
                 item {
-                    SectionLabel("\u9ed8\u8ba4\u5173\u8054\u8865\u8d34/\u6263\u6b3e\u9879")
+                    SectionLabel("默认关联补贴/扣款项")
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -210,21 +210,21 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
                 }
             }
 
-            // \u901a\u7528\u9519\u8bef\u63d0\u793a\uff08\u975e\u540d\u79f0\u7c7b\u9519\u8bef\uff09
-            if (errorMsg != null && errorMsg != "\u73ed\u6b21\u540d\u79f0\u5df2\u5b58\u5728\uff0c\u8bf7\u4fee\u6539\u540e\u4fdd\u5b58" && errorMsg != "\u73ed\u6b21\u540d\u79f0\u4e0d\u80fd\u4e3a\u7a7a" && errorMsg != "\u8bf7\u8f93\u5165\u5b8c\u6574\u7684\u4e0a\u4e0b\u73ed\u65f6\u95f4") {
+            // 通用错误提示（非名称类错误）
+            if (errorMsg != null && errorMsg != "班次名称已存在，请修改后保存" && errorMsg != "班次名称不能为空" && errorMsg != "请输入完整的上下班时间") {
                 item {
                     Text(errorMsg ?: "", color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
 
-            // \u4fdd\u5b58\u6309\u94ae
+            // 保存按钮
             item {
                 Button(
                     onClick  = vm::save,
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     shape    = MaterialTheme.shapes.medium
-                ) { Text("\u4fdd\u5b58\u73ed\u6b21", style = MaterialTheme.typography.titleSmall) }
+                ) { Text("保存班次", style = MaterialTheme.typography.titleSmall) }
             }
         }
     }

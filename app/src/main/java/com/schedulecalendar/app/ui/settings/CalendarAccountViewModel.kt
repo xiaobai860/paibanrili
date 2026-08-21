@@ -73,7 +73,7 @@ class CalendarAccountViewModel @Inject constructor(
                     val currentCategories = prefs.getAccountCategories().toMutableMap()
                     accounts.filter { it.accountType == CalendarEventRepository.ACCOUNT_TYPE }.forEach { acct ->
                         val key = calendarRepo.getAccountKey(acct)
-                        val category = if (acct.displayName.contains("\u7eaa\u5ff5\u65e5")) "anniversary" else "schedule"
+                        val category = if (acct.displayName.contains("纪念日")) "anniversary" else "schedule"
                         currentCategories[key] = category
                     }
                     prefs.saveAccountCategories(currentCategories)

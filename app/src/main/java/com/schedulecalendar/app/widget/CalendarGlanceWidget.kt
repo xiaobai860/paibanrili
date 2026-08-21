@@ -102,7 +102,7 @@ class RefreshWidgetAction : ActionCallback {
         // 数据同步由 CalendarViewModel.syncCalendarWidget 负责，确保数据源一致
         CalendarGlanceWidget().update(context, glanceId)
         Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, "\u5237\u65b0\u6210\u529f", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "刷新成功", Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -137,8 +137,8 @@ private fun CalendarWidgetContent(
     val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     val today = LocalDate.now()
     val isCurMon = data.year == today.year && data.month == today.monthValue
-    val headerText = if (data.month > 0) "${data.year}\u5e74${data.month}\u6708" else "${today.year}\u5e74${today.monthValue}\u6708"
-    val weekLabels = listOf("\u4e00", "\u4e8c", "\u4e09", "\u56db", "\u4e94", "\u516d", "\u65e5")
+    val headerText = if (data.month > 0) "${data.year}年${data.month}月" else "${today.year}年${today.monthValue}月"
+    val weekLabels = listOf("一", "二", "三", "四", "五", "六", "日")
     val tfs = if (isLarge) 18.sp else 16.sp
     val useBig = isLarge && !compact
     val wfs = if (useBig) 10.sp else 10.sp
@@ -182,7 +182,7 @@ private fun CalendarWidgetContent(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "\u2699",
+                        text = "⚙",
                         style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = refreshIconFs, fontWeight = FontWeight.Bold)
                     )
                 }
@@ -196,7 +196,7 @@ private fun CalendarWidgetContent(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "\u21bb",
+                        text = "↻",
                         style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = refreshIconFs, fontWeight = FontWeight.Bold)
                     )
                 }
@@ -289,7 +289,7 @@ private fun CalendarDayCellContent(
                     style = TextStyle(color = if (isDark) ColorProvider(dayColorD) else ColorProvider(dayColor), fontSize = dayNumberSize,
                         fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium))
                 if (isLegalHoliday && isHolidayFirstDay) {
-                    Text(text = "\u5047",
+                    Text(text = "假",
                         style = TextStyle(color = ColorProvider(Color(0xFFDC2626)), fontSize = 7.sp,
                             fontWeight = FontWeight.Bold))
                 }
@@ -339,8 +339,8 @@ private fun hexToWidgetColor(hex: String, fallback: Color): Color {
     }.getOrElse { fallback }
 }
 
-// === 3x4 \u6392\u73ed\u65e5\u5386\u5c0f\u7ec4\u4ef6 (3 \u683c\u5bbd \u00d7 4 \u683c\u9ad8\uff0c\u53ef\u62c9\u4f38\u5230 4 \u683c\u5bbd) ===
-// \u4e0e 3x3 \u5171\u7528 widgetData\uff08\u8bfb\u540c\u4e00\u4efd CalendarWidgetInfo JSON\uff09\u4e0e\u6837\u5f0f\u914d\u7f6e\uff0c\u53ea\u662f baseHeight \u4e0d\u540c
+// === 3x4 排班日历小组件 (3 格宽 \u00d7 4 格高，可拉伸到 4 格宽) ===
+// 与 3x3 共用 widgetData（读同一份 CalendarWidgetInfo JSON）与样式配置，只是 baseHeight 不同
 // 9:35 AM 2026-8-22
 class Calendar3x4GlanceWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {

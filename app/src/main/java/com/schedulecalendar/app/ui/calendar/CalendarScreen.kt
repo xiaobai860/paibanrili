@@ -761,13 +761,13 @@ private fun DayCell(
     val lunarText = remember(dateStr) {
         LunarCalendar.getLunarDayText(dateParts[0].toInt(), dateParts[1].toInt(), dateParts[2].toInt())
     }
-    val shiftText = shift?.name ?: "\u65e0\u73ed\u6b21"
+    val shiftText = shift?.name ?: "无班次"
     val accessibilityDescription = buildString {
-        append("${dateParts[1]}\u6708${day}\u65e5\uff0c$shiftText\uff0c$lunarText")
-        if (isToday) append("\uff0c\u4eca\u5929")
-        if (isHoliday) append("\uff0c\u8282\u5047\u65e5")
-        if (isWeekend) append("\uff0c\u5468\u672b")
-        record?.let { if (it.actualStartTime != null) append("\uff0c\u5df2\u6253\u5361") }
+        append("${dateParts[1]}月${day}日，$shiftText，$lunarText")
+        if (isToday) append("，今天")
+        if (isHoliday) append("，节假日")
+        if (isWeekend) append("，周末")
+        record?.let { if (it.actualStartTime != null) append("，已打卡") }
     }
 
     // ── 农历/节假日名称 ──────────────────────────────────────────
@@ -776,7 +776,7 @@ private fun DayCell(
     }
     val isMakeupDay = remember(dateStr) { HolidayData.isMakeupDay(dateStr) }
     val badgeText = when {
-        isHoliday -> "\u4f11"; isMakeupDay -> "\u8865"; else -> null
+        isHoliday -> "休"; isMakeupDay -> "补"; else -> null
     }
     // 判断是否为法定节假日的第一天（用于农历行显示节日名）
     val isHolidayFirstDay = remember(dateStr, isHoliday) {
@@ -2286,17 +2286,17 @@ private fun AnniversaryEventSection(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "\u7eaa\u5ff5\u65e5\u4e0e\u65e5\u7a0b",
+                text = "纪念日与日程",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             events.forEach { event ->
-                val isAnniversary = event.title.startsWith("\u7eaa\u5ff5\u65e5: ") ||
+                val isAnniversary = event.title.startsWith("纪念日: ") ||
                     event.rrule?.contains("FREQ=YEARLY") == true
-                val displayName = event.title.removePrefix("\u7eaa\u5ff5\u65e5: ")
+                val displayName = event.title.removePrefix("纪念日: ")
                 val timeText = if (event.allDay) {
-                    "\u5168\u5929"
+                    "全天"
                 } else {
                     val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
                     "${sdf.format(java.util.Date(event.dtStart))} - ${sdf.format(java.util.Date(event.dtEnd))}"
@@ -2340,7 +2340,7 @@ private fun AnniversaryEventSection(
                             color = HolidayRed.copy(alpha = 0.15f)
                         ) {
                             Text(
-                                text = "\u7eaa\u5ff5\u65e5",
+                                text = "纪念日",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = HolidayRed,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)

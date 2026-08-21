@@ -66,16 +66,16 @@ data class Shift(
 
 /** 内置班次列表 */
 val BUILTIN_SHIFTS = listOf(
-    Shift(id = BUILTIN_SHIFT_REST,  name = "\u4f11\u606f", color = "#6B7280", builtIn = true, builtInType = "rest",
+    Shift(id = BUILTIN_SHIFT_REST,  name = "休息", color = "#6B7280", builtIn = true, builtInType = "rest",
         startTime = "", endTime = ""),
-    Shift(id = BUILTIN_SHIFT_SWAP,  name = "\u8c03\u4f11", color = "#78716C", builtIn = true, builtInType = "swap",
+    Shift(id = BUILTIN_SHIFT_SWAP,  name = "调休", color = "#78716C", builtIn = true, builtInType = "swap",
         startTime = "", endTime = ""),
 )
 
 /** 内置状态类型列表 */
 val BUILTIN_STATUSES = listOf(
-    ShiftStatus(id = BUILTIN_STATUS_LEAVE, name = "\u8bf7\u5047", color = "#F43F5E", builtIn = true, reportType = "leave"),
-    ShiftStatus(id = BUILTIN_STATUS_SWAP,  name = "\u8c03\u4f11", color = "#78716C", builtIn = true, reportType = "swap"),
+    ShiftStatus(id = BUILTIN_STATUS_LEAVE, name = "请假", color = "#F43F5E", builtIn = true, reportType = "leave"),
+    ShiftStatus(id = BUILTIN_STATUS_SWAP,  name = "调休", color = "#78716C", builtIn = true, reportType = "swap"),
 )
 
 /** 每日排班记录 */

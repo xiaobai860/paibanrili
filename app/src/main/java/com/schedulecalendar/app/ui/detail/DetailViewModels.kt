@@ -551,7 +551,7 @@ class ExtraItemsViewModel @Inject constructor(
                 _extraOrder.value = newOrder
                 prefs.saveExtraOrder(newOrder)
             }
-        }.onFailure { _uiEvent.send(ExtraItemsUiEvent.ShowError("\u4fdd\u5b58\u5931\u8d25\uff1a${it.message}")) }
+        }.onFailure { _uiEvent.send(ExtraItemsUiEvent.ShowError("保存失败：${it.message}")) }
     }
 
     /** 编辑项目：归档旧记录 + 创建新记录（新ID，保留历史金额） */
@@ -559,13 +559,13 @@ class ExtraItemsViewModel @Inject constructor(
         runCatching {
             repo.save(newItem)                          // 先创建新记录
             repo.archive(originalItem.id)               // 再归档旧记录
-        }.onFailure { _uiEvent.send(ExtraItemsUiEvent.ShowError("\u4fdd\u5b58\u5931\u8d25\uff1a${it.message}")) }
+        }.onFailure { _uiEvent.send(ExtraItemsUiEvent.ShowError("保存失败：${it.message}")) }
     }
 
     /** 删除项目：归档（逻辑删除），保留历史引用 */
     fun delete(id: String) = viewModelScope.launch {
         runCatching { repo.archive(id) }
-            .onFailure { _uiEvent.send(ExtraItemsUiEvent.ShowError("\u5220\u9664\u5931\u8d25\uff1a${it.message}")) }
+            .onFailure { _uiEvent.send(ExtraItemsUiEvent.ShowError("删除失败：${it.message}")) }
     }
 }
 

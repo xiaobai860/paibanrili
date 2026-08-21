@@ -125,7 +125,7 @@ fun SettingsScreen(navController: NavController, vm: SettingsViewModel = hiltVie
                 }
                 SettingsCard(
                     icon = Icons.Default.Info,
-                    title = "\u5173\u4e8e",
+                    title = "关于",
                     description = null
                 ) {
                     Row(
@@ -133,7 +133,7 @@ fun SettingsScreen(navController: NavController, vm: SettingsViewModel = hiltVie
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("\u7248\u672c", style = MaterialTheme.typography.bodyMedium)
+                        Text("版本", style = MaterialTheme.typography.bodyMedium)
                         Text(versionName, style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -362,22 +362,22 @@ private fun PermissionManagementSection() {
                                         tint = MaterialTheme.colorScheme.tertiary,
                                         modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text("\u540e\u53f0\u8fd0\u884c\u4fdd\u969c", style = MaterialTheme.typography.titleSmall,
+                                    Text("后台运行保障", style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.SemiBold)
                                 }
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = "\u4e3a\u786e\u4fdd\u63d0\u9192\u529f\u80fd\u5728\u540e\u53f0\u53ef\u9760\u8fd0\u884c\uff0c\u8bf7\u5728\u7cfb\u7edf\u8bbe\u7f6e\u4e2d\u4e3a\u672c\u5e94\u7528\u5f00\u542f\u4ee5\u4e0b\u6743\u9650\uff1a\n" +
-                                        "\u2022 \u81ea\u542f\u52a8\u7ba1\u7406\uff08\u5f00\u673a\u540e\u81ea\u52a8\u6062\u590d\u95f9\u949f\u63d0\u9192\uff09\n" +
-                                        "\u2022 \u7701\u7535\u7b56\u7565 \u2192 \u65e0\u9650\u5236\uff08\u9632\u6b62\u540e\u53f0\u88ab\u7cfb\u7edf\u6740\u6b7b\uff09\n" +
-                                        "\u2022 \u540e\u53f0\u5f39\u51fa\u754c\u9762\uff08\u70b9\u51fb\u901a\u77e5\u540e\u6253\u5f00\u5e94\u7528\uff09\n" +
-                                        "\u2022 \u9501\u5c4f\u901a\u77e5 / \u901a\u77e5\u680f\u663e\u793a\uff08\u26a0\ufe0f \u52a1\u5fc5\u5f00\u542f\uff0c\u5426\u5219\u5230\u70b9\u63d0\u9192\u4e0d\u5f39\u7a97\u3001\u4e0d\u54cd\u94c3\uff0c\u529f\u80fd\u5c06\u5931\u6548\uff09",
+                                    text = "为确保提醒功能在后台可靠运行，请在系统设置中为本应用开启以下权限：\n" +
+                                        "• 自启动管理（开机后自动恢复闹钟提醒）\n" +
+                                        "• 省电策略 → 无限制（防止后台被系统杀死）\n" +
+                                        "• 后台弹出界面（点击通知后打开应用）\n" +
+                                        "• 锁屏通知 / 通知栏显示（⚠️ 务必开启，否则到点提醒不弹窗、不响铃，功能将失效）",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = "\u63d0\u793a\uff1a\u82e5\u5df2\u5f00\u542f\u4e0a\u8ff0\u6743\u9650\u4f46\u4ecd\u6536\u4e0d\u5230\u63d0\u9192\uff0c\u591a\u662f\u7cfb\u7edf\u300c\u901a\u77e5\u7ba1\u7406\u300d\u4e2d\u5173\u95ed\u4e86\u672c\u5e94\u7528\u901a\u77e5\u6216\u300c\u9501\u5c4f\u901a\u77e5\u300d\u88ab\u9690\u85cf\uff0c\u8bf7\u5230\u7cfb\u7edf\u8bbe\u7f6e \u2192 \u901a\u77e5\u7ba1\u7406\u4e2d\u786e\u8ba4\u5df2\u5141\u8bb8\u3002",
+                                    text = "提示：若已开启上述权限但仍收不到提醒，多是系统「通知管理」中关闭了本应用通知或「锁屏通知」被隐藏，请到系统设置 → 通知管理中确认已允许。",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error
                                 )
@@ -392,7 +392,7 @@ private fun PermissionManagementSection() {
                                         } catch (_: Exception) { }
                                     }
                                 ) {
-                                    Text("\u524d\u5f80\u5e94\u7528\u8bbe\u7f6e", style = MaterialTheme.typography.labelSmall)
+                                    Text("前往应用设置", style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -429,10 +429,10 @@ private fun PermissionItem(
         }
         if (!granted) {
             TextButton(onClick = onAction, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                Text("\u524d\u5f80\u8bbe\u7f6e", style = MaterialTheme.typography.labelSmall)
+                Text("前往设置", style = MaterialTheme.typography.labelSmall)
             }
         } else {
-            Text("\u5df2\u6388\u6743", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            Text("已授权", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         }
     }
 }

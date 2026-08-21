@@ -128,7 +128,7 @@ private fun InitialPermissionDialog(
         shape = RoundedCornerShape(20.dp),
         title = {
             Text(
-                "\u6743\u9650\u7533\u8bf7",
+                "权限申请",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -136,15 +136,15 @@ private fun InitialPermissionDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "\u4e3a\u4e86\u6b63\u5e38\u8fd0\u884c\uff0c\u5e94\u7528\u9700\u8981\u4ee5\u4e0b\u6743\u9650\uff1a",
+                    "为了正常运行，应用需要以下权限：",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(4.dp))
-                PermissionReasonItem("\ud83d\udcc5", "\u65e5\u5386\u6743\u9650", "\u8bfb\u5199\u7cfb\u7edf\u65e5\u5386\uff0c\u540c\u6b65\u6392\u73ed\u8bb0\u5f55\u548c\u521b\u5efa\u63d0\u9192\u4e8b\u4ef6")
-                PermissionReasonItem("\ud83d\udd14", "\u901a\u77e5\u6743\u9650", "\u53d1\u9001\u4e0a\u4e0b\u73ed\u6253\u5361\u63d0\u9192\u548c\u73ed\u6b21\u53d8\u66f4\u901a\u77e5")
+                PermissionReasonItem("\ud83d\udcc5", "日历权限", "读写系统日历，同步排班记录和创建提醒事件")
+                PermissionReasonItem("\ud83d\udd14", "通知权限", "发送上下班打卡提醒和班次变更通知")
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "\u60a8\u53ef\u4ee5\u7a0d\u540e\u5728\u201c\u8bbe\u7f6e \u2192 \u6743\u9650\u7ba1\u7406\u201d\u4e2d\u8c03\u6574",
+                    "您可以稍后在“设置 → 权限管理”中调整",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -152,12 +152,12 @@ private fun InitialPermissionDialog(
         },
         confirmButton = {
             Button(onClick = onConfirm) {
-                Text("\u53bb\u5f00\u542f")
+                Text("去开启")
             }
         },
         dismissButton = {
             TextButton(onClick = onSkip) {
-                Text("\u7a0d\u540e\u518d\u8bf4")
+                Text("稍后再说")
             }
         }
     )

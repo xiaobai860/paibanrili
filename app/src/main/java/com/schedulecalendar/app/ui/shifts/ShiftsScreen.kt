@@ -186,14 +186,14 @@ fun ShiftsScreen(navController: NavController, vm: ShiftsViewModel = hiltViewMod
     deleteShiftTarget?.let { targetId ->
         AlertDialog(
             onDismissRequest = { deleteShiftTarget = null },
-            title = { Text("\u5220\u9664\u73ed\u6b21") },
-            text  = { Text("\u786e\u8ba4\u5220\u9664\u8be5\u73ed\u6b21\uff1f\n\u5df2\u5f15\u7528\u8be5\u73ed\u6b21\u7684\u5386\u53f2\u6392\u73ed\u6570\u636e\u4ecd\u5c06\u4fdd\u6301\u4e0d\u53d8\u3002") },
+            title = { Text("删除班次") },
+            text  = { Text("确认删除该班次？\n已引用该班次的历史排班数据仍将保持不变。") },
             confirmButton = {
                 TextButton(onClick = { vm.deleteShift(targetId); deleteShiftTarget = null }) {
-                    Text("\u5220\u9664", color = MaterialTheme.colorScheme.error)
+                    Text("删除", color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { deleteShiftTarget = null }) { Text("\u53d6\u6d88") } }
+            dismissButton = { TextButton(onClick = { deleteShiftTarget = null }) { Text("取消") } }
         )
     }
 }
@@ -210,7 +210,7 @@ private fun ShiftsTab(
     onMoveDown: (String) -> Unit
 ) {
     if (shifts.isEmpty()) {
-        EmptyHint("\u6682\u65e0\u73ed\u6b21")
+        EmptyHint("暂无班次")
         return
     }
     LazyColumn(
@@ -243,7 +243,7 @@ private fun ShiftsTab(
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (isBuiltin) {
                                 Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)) {
-                                    Text("\u5185\u7f6e", style = MaterialTheme.typography.labelSmall,
+                                    Text("内置", style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
                                 }
@@ -252,17 +252,17 @@ private fun ShiftsTab(
                         // 信息文本段落（时间+工时与关联补贴合并为整体文本）
                         val infoText = if (isBuiltin) {
                             when (shift.builtInType) {
-                                "rest" -> "\u4f11\u606f\u65e5\uff0c\u4e0d\u8ba1\u5de5\u65f6"
-                                "swap" -> "\u8c03\u4f11\u65e5\uff0c\u4e0d\u8ba1\u5de5\u65f6"
+                                "rest" -> "休息日，不计工时"
+                                "swap" -> "调休日，不计工时"
                                 else -> ""
                             }
                         } else buildString {
                             if (shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) {
-                                append("${shift.startTime} \u2013 ${shift.endTime}")
+                                append("${shift.startTime} – ${shift.endTime}")
                             }
                             if (shift.linkedExtraIds.isNotEmpty()) {
                                 if (isNotEmpty()) append("\n")
-                                append("\u5df2\u5173\u8054${shift.linkedExtraIds.size}\u4e2a\u8865\u8d34/\u6263\u6b3e")
+                                append("已关联${shift.linkedExtraIds.size}个补贴/扣款")
                             }
                         }
                         if (infoText.isNotBlank()) {
@@ -280,10 +280,10 @@ private fun ShiftsTab(
                         // 仅用户班次显示编辑/删除
                         if (!isBuiltin) {
                             IconButton(onClick = { onDelete(shift.id) }, modifier = Modifier.size(48.dp)) {
-                                Icon(Icons.Default.Delete, "\u5220\u9664", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Delete, "删除", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                             }
                             IconButton(onClick = { onEdit(shift.id) }, modifier = Modifier.size(48.dp)) {
-                                Icon(Icons.Default.Edit, "\u7f16\u8f91", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Edit, "编辑", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                             }
                         }
                         // 排序按钮（垂直排列）
@@ -293,7 +293,7 @@ private fun ShiftsTab(
                                 enabled = !isFirst,
                                 modifier = Modifier.size(48.dp)
                             ) {
-                                Icon(Icons.Default.KeyboardDoubleArrowUp, "\u4e0a\u79fb", modifier = Modifier.size(20.dp),
+                                Icon(Icons.Default.KeyboardDoubleArrowUp, "上移", modifier = Modifier.size(20.dp),
                                     tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             IconButton(
@@ -301,7 +301,7 @@ private fun ShiftsTab(
                                 enabled = !isLast,
                                 modifier = Modifier.size(48.dp)
                             ) {
-                                Icon(Icons.Default.KeyboardDoubleArrowDown, "\u4e0b\u79fb", modifier = Modifier.size(20.dp),
+                                Icon(Icons.Default.KeyboardDoubleArrowDown, "下移", modifier = Modifier.size(20.dp),
                                     tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
@@ -326,7 +326,7 @@ private fun GlobalBreaksTab(
 ) {
     var editTarget by remember { mutableStateOf<ShiftBreak?>(null) }
 
-    if (breaks.isEmpty()) EmptyHint("\u6682\u65e0\u5168\u5c40\u4e0d\u8ba1\u65f6\u6bb5\n\u70b9\u51fb + \u6dfb\u52a0\u5348\u4f11\u7b49\u65f6\u6bb5")
+    if (breaks.isEmpty()) EmptyHint("暂无全局不计时段\n点击 + 添加午休等时段")
     else LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -346,16 +346,16 @@ private fun GlobalBreaksTab(
                         tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(brk.label.ifEmpty { "\u672a\u547d\u540d" }, fontWeight = FontWeight.SemiBold,
+                        Text(brk.label.ifEmpty { "未命名" }, fontWeight = FontWeight.SemiBold,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${brk.startTime} \u2013 ${brk.endTime} ${formatBreakDuration(brk.startTime, brk.endTime)}",
+                        Text("${brk.startTime} – ${brk.endTime} ${formatBreakDuration(brk.startTime, brk.endTime)}",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     IconButton(onClick = { onDelete(brk.id) }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Delete, "\u5220\u9664", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Delete, "删除", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                     }
                     IconButton(onClick = { editTarget = brk }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Edit, "\u7f16\u8f91", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Edit, "编辑", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     }
                     // 排序按钮（垂直排列，与班次Tab一致）
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -364,7 +364,7 @@ private fun GlobalBreaksTab(
                             enabled = !isFirst,
                             modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.Default.KeyboardDoubleArrowUp, "\u4e0a\u79fb", modifier = Modifier.size(20.dp),
+                            Icon(Icons.Default.KeyboardDoubleArrowUp, "上移", modifier = Modifier.size(20.dp),
                                 tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(
@@ -372,7 +372,7 @@ private fun GlobalBreaksTab(
                             enabled = !isLast,
                             modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.Default.KeyboardDoubleArrowDown, "\u4e0b\u79fb", modifier = Modifier.size(20.dp),
+                            Icon(Icons.Default.KeyboardDoubleArrowDown, "下移", modifier = Modifier.size(20.dp),
                                 tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -408,17 +408,17 @@ private fun BreakEditorDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.widthIn(min = 450.dp),
-        title = { Text(if (isEdit) "\u7f16\u8f91\u4e0d\u8ba1\u65f6\u6bb5" else "\u65b0\u589e\u4e0d\u8ba1\u65f6\u6bb5") },
+        title = { Text(if (isEdit) "编辑不计时段" else "新增不计时段") },
         text  = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = label, onValueChange = { label = it; nameError = null },
-                    label = { Text("\u6807\u7b7e\u3008\u5982\u5348\u4f11\u3009 *") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    label = { Text("标签〈如午休〉 *") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
                     isError = nameError != null,
                     colors = stableLabelColors(),
                     supportingText = nameError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TimePickerField(time = start, onTimeChange = { start = it; timeError = null }, label = "\u5f00\u59cb *", modifier = Modifier.weight(1f))
-                    TimePickerField(time = end, onTimeChange = { end = it; timeError = null }, label = "\u7ed3\u675f *", modifier = Modifier.weight(1f))
+                    TimePickerField(time = start, onTimeChange = { start = it; timeError = null }, label = "开始 *", modifier = Modifier.weight(1f))
+                    TimePickerField(time = end, onTimeChange = { end = it; timeError = null }, label = "结束 *", modifier = Modifier.weight(1f))
                 }
                 if (timeError != null) {
                     Text(timeError ?: "", color = MaterialTheme.colorScheme.error,
@@ -431,20 +431,20 @@ private fun BreakEditorDialog(
                 timeError = null
                 nameError = null
                 val trimmed = label.trim()
-                if (trimmed.isBlank()) { nameError = "\u540d\u79f0\u4e0d\u80fd\u4e3a\u7a7a"; return@TextButton }
+                if (trimmed.isBlank()) { nameError = "名称不能为空"; return@TextButton }
                 val dup = breaks.any { it.label.equals(trimmed, ignoreCase = true) && (initial == null || it.id != initial.id) }
-                if (dup) { nameError = "\u540d\u79f0\u5df2\u5b58\u5728\uff0c\u8bf7\u4fee\u6539\u540e\u4fdd\u5b58"; return@TextButton }
-                if (start.isEmpty() || end.isEmpty()) { timeError = "\u8bf7\u8bbe\u7f6e\u65f6\u6bb5"; return@TextButton }
+                if (dup) { nameError = "名称已存在，请修改后保存"; return@TextButton }
+                if (start.isEmpty() || end.isEmpty()) { timeError = "请设置时段"; return@TextButton }
                 val sMin = timeToMinutes(start)
                 val eMin = timeToMinutes(end)
                 val overlap = breaks.firstOrNull { b ->
                     b.id != initial?.id && breakIntervalsOverlap(sMin, eMin, timeToMinutes(b.startTime), timeToMinutes(b.endTime))
                 }
-                if (overlap != null) { timeError = "\u65f6\u95f4\u6bb5\u4e0e\u300c${overlap.label}\u300d\u91cd\u53e0"; return@TextButton }
+                if (overlap != null) { timeError = "时间段与「${overlap.label}」重叠"; return@TextButton }
                 onConfirm((initial ?: ShiftBreak(id = UUID.randomUUID().toString(), label = "", startTime = "", endTime = "")).copy(label = trimmed, startTime = start, endTime = end))
-            }) { Text("\u4fdd\u5b58") }
+            }) { Text("保存") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("\u53d6\u6d88") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
 }
 
@@ -463,7 +463,7 @@ private fun StatusTypesTab(
 ) {
     var editTarget by remember { mutableStateOf<ShiftStatus?>(null) }
 
-    if (statuses.isEmpty()) EmptyHint("\u6682\u65e0\u72b6\u6001\u7c7b\u578b\n\u70b9\u51fb + \u6dfb\u52a0\u8bf7\u5047\u7b49\u72b6\u6001")
+    if (statuses.isEmpty()) EmptyHint("暂无状态类型\n点击 + 添加请假等状态")
     else LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -482,23 +482,23 @@ private fun StatusTypesTab(
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (status.builtIn) {
                                 Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-                                    Text("\u5185\u7f6e", style = MaterialTheme.typography.labelSmall,
+                                    Text("内置", style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
                                 }
                             }
                         }
                         if (status.reportType != null) {
-                            val label = when (status.reportType) { "leave" -> "\u8ba1\u5165\u8bf7\u5047"; "swap" -> "\u8ba1\u5165\u8c03\u4f11"; else -> status.reportType }
+                            val label = when (status.reportType) { "leave" -> "计入请假"; "swap" -> "计入调休"; else -> status.reportType }
                             Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     if (!status.builtIn) {
                         IconButton(onClick = { onDelete(status.id) }, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Default.Delete, "\u5220\u9664", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Delete, "删除", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                         }
                         IconButton(onClick = { editTarget = status }, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Default.Edit, "\u7f16\u8f91", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Edit, "编辑", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         }
                     }
                     // 排序按钮（垂直排列，与班次Tab一致）
@@ -510,7 +510,7 @@ private fun StatusTypesTab(
                             enabled = !isFirst,
                             modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.Default.KeyboardDoubleArrowUp, "\u4e0a\u79fb", modifier = Modifier.size(20.dp),
+                            Icon(Icons.Default.KeyboardDoubleArrowUp, "上移", modifier = Modifier.size(20.dp),
                                 tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(
@@ -518,7 +518,7 @@ private fun StatusTypesTab(
                             enabled = !isLast,
                             modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.Default.KeyboardDoubleArrowDown, "\u4e0b\u79fb", modifier = Modifier.size(20.dp),
+                            Icon(Icons.Default.KeyboardDoubleArrowDown, "下移", modifier = Modifier.size(20.dp),
                                 tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -560,11 +560,11 @@ private fun StatusEditorDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.widthIn(min = 450.dp),
-        title = { Text(if (isEdit) "\u7f16\u8f91\u72b6\u6001" else "\u65b0\u589e\u72b6\u6001") },
+        title = { Text(if (isEdit) "编辑状态" else "新增状态") },
         text  = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it; nameError = null },
-                    label = { Text("\u72b6\u6001\u540d\u79f0 *") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    label = { Text("状态名称 *") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
                     isError = nameError != null,
                     colors = stableLabelColors(),
                     supportingText = nameError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } })
@@ -579,7 +579,7 @@ private fun StatusEditorDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("\u989c\u8272", style = MaterialTheme.typography.labelLarge,
+                        Text("颜色", style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                         val previewColor = safeColor(color)
                         Box(
@@ -591,7 +591,7 @@ private fun StatusEditorDialog(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = name.ifBlank { "\u72b6\u6001" },
+                                text = name.ifBlank { "状态" },
                                 color = Color.White,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Medium,
@@ -606,13 +606,13 @@ private fun StatusEditorDialog(
         confirmButton = {
             TextButton(onClick = {
                 val trimmed = name.trim()
-                if (trimmed.isBlank()) { nameError = "\u540d\u79f0\u4e0d\u80fd\u4e3a\u7a7a"; return@TextButton }
+                if (trimmed.isBlank()) { nameError = "名称不能为空"; return@TextButton }
                 val dup = existingNames.any { it.equals(trimmed, ignoreCase = true) && (!isEdit || !it.equals(initial?.name, ignoreCase = true)) }
-                if (dup) { nameError = "\u540d\u79f0\u5df2\u5b58\u5728\uff0c\u8bf7\u4fee\u6539\u540e\u4fdd\u5b58"; return@TextButton }
+                if (dup) { nameError = "名称已存在，请修改后保存"; return@TextButton }
                 onConfirm((initial ?: ShiftStatus(id = UUID.randomUUID().toString(), name = "", color = color)).copy(name = trimmed, color = color))
-            }) { Text("\u4fdd\u5b58") }
+            }) { Text("保存") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("\u53d6\u6d88") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
 }
 
@@ -628,7 +628,7 @@ private fun EmptyHint(text: String) {
     }
 }
 
-// ── Tab 4: \u8865\u8d34/\u6263\u6b3e ────────────────────────────────────────────────────────────
+// ── Tab 4: 补贴/扣款 ────────────────────────────────────────────────────────────
 
 @Composable
 private fun ExtraItemsTab(
@@ -646,7 +646,7 @@ private fun ExtraItemsTab(
     if (items.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("\u6682\u65e0\u9644\u52a0\u9879\u76ee", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("暂无附加项目", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 TextButton(onClick = { internalShowEditor = true }) { Text("添加第一个") }
             }
@@ -687,10 +687,10 @@ private fun ExtraItemsTab(
     deleteTarget?.let { item ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("\u5220\u9664\u9879\u76ee") },
-            text  = { Text("\u786e\u8ba4\u5220\u9664\u300c${item.name}\u300d\uff1f\n\u5df2\u5f15\u7528\u8be5\u9879\u76ee\u7684\u5386\u53f2\u6392\u73ed\u6570\u636e\u4ecd\u5c06\u4fdd\u6301\u4e0d\u53d8\u3002") },
-            confirmButton = { TextButton(onClick = { vm.delete(item.id); deleteTarget = null }) { Text("\u5220\u9664", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("\u53d6\u6d88") } }
+            title = { Text("删除项目") },
+            text  = { Text("确认删除「${item.name}」？\n已引用该项目的历史排班数据仍将保持不变。") },
+            confirmButton = { TextButton(onClick = { vm.delete(item.id); deleteTarget = null }) { Text("删除", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } }
         )
     }
 }
@@ -721,8 +721,8 @@ private fun ExtraItemCard(
                     color = if (item.type == "allowance") AllowanceGreen else MaterialTheme.colorScheme.error
                 )
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.Delete, "\u5220\u9664", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp)) }
-            IconButton(onClick = onEdit, modifier = Modifier.size(48.dp))   { Icon(Icons.Filled.Edit,   "\u7f16\u8f91", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) }
+            IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.Delete, "删除", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp)) }
+            IconButton(onClick = onEdit, modifier = Modifier.size(48.dp))   { Icon(Icons.Filled.Edit,   "编辑", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) }
             // 排序按钮（垂直排列，与班次Tab一致）
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 IconButton(
@@ -730,7 +730,7 @@ private fun ExtraItemCard(
                     enabled = !isFirst,
                     modifier = Modifier.size(48.dp)
                 ) {
-                    Icon(Icons.Default.KeyboardDoubleArrowUp, "\u4e0a\u79fb", modifier = Modifier.size(20.dp),
+                    Icon(Icons.Default.KeyboardDoubleArrowUp, "上移", modifier = Modifier.size(20.dp),
                         tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(
@@ -738,7 +738,7 @@ private fun ExtraItemCard(
                     enabled = !isLast,
                     modifier = Modifier.size(48.dp)
                 ) {
-                    Icon(Icons.Default.KeyboardDoubleArrowDown, "\u4e0b\u79fb", modifier = Modifier.size(20.dp),
+                    Icon(Icons.Default.KeyboardDoubleArrowDown, "下移", modifier = Modifier.size(20.dp),
                         tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -758,10 +758,10 @@ private fun ExtraItemEditorDialog(item: ExtraItem?, existingNames: List<String>,
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (item == null) "\u65b0\u589e\u9879\u76ee" else "\u7f16\u8f91\u9879\u76ee") },
+        title = { Text(if (item == null) "新增项目" else "编辑项目") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(value = name, onValueChange = { name = it; nameError = null }, label = { Text("\u540d\u79f0 *") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                OutlinedTextField(value = name, onValueChange = { name = it; nameError = null }, label = { Text("名称 *") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     isError = nameError != null,
                     colors = stableLabelColors(),
                     supportingText = nameError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } })
@@ -782,7 +782,7 @@ private fun ExtraItemEditorDialog(item: ExtraItem?, existingNames: List<String>,
                             } else cleaned
                         }
                     },
-                    label = { Text("\u91d1\u989d (\u5143)") },
+                    label = { Text("金额 (元)") },
                     placeholder = { Text("\u00a5 0.00", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) },
                     singleLine = true,
                     colors = stableLabelColors(),
@@ -798,9 +798,9 @@ private fun ExtraItemEditorDialog(item: ExtraItem?, existingNames: List<String>,
                         }
                     }
                 )
-                Text("\u7c7b\u578b", style = MaterialTheme.typography.labelMedium)
+                Text("类型", style = MaterialTheme.typography.labelMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("allowance" to "\u8865\u8d34", "deduction" to "\u6263\u6b3e").forEach { (v, label) ->
+                    listOf("allowance" to "补贴", "deduction" to "扣款").forEach { (v, label) ->
                         FilterChip(selected = type == v, onClick = { type = v }, label = { Text(label) })
                     }
                 }
@@ -811,18 +811,18 @@ private fun ExtraItemEditorDialog(item: ExtraItem?, existingNames: List<String>,
                 onClick = {
                     nameError = null
                     val trimmed = name.trim()
-                    if (trimmed.isBlank()) { nameError = "\u540d\u79f0\u4e0d\u80fd\u4e3a\u7a7a"; return@TextButton }
+                    if (trimmed.isBlank()) { nameError = "名称不能为空"; return@TextButton }
                     val dup = existingNames.any { it.equals(trimmed, ignoreCase = true) && (item == null || !it.equals(item.name, ignoreCase = true)) }
-                    if (dup) { nameError = "\u540d\u79f0\u5df2\u5b58\u5728\uff0c\u8bf7\u4fee\u6539\u540e\u4fdd\u5b58"; return@TextButton }
+                    if (dup) { nameError = "名称已存在，请修改后保存"; return@TextButton }
                     onSave(ExtraItem(
                         id = item?.id ?: UUID.randomUUID().toString(),
                         name = trimmed, type = type,
                         amount = amount.toDoubleOrNull() ?: 0.0
                     ))
                 }
-            ) { Text("\u4fdd\u5b58") }
+            ) { Text("保存") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("\u53d6\u6d88") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
 }
 

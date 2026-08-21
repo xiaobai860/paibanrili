@@ -89,7 +89,7 @@ fun TodoScreen(
     var showMissedFillDialog by remember { mutableStateOf<MissedFillTarget?>(null) }
     var showOvertimeActionDialog by remember { mutableStateOf<OvertimeActionTarget?>(null) }
 
-    val tabTitles = listOf("\u5f85\u529e", "\u65e5\u7a0b", "\u7eaa\u5ff5\u65e5", "\u8282\u5047\u65e5")
+    val tabTitles = listOf("待办", "日程", "纪念日", "节假日")
     val pagerState = rememberPagerState(pageCount = { tabTitles.size })
     val currentPage = pagerState.currentPage
 
@@ -214,7 +214,7 @@ fun TodoScreen(
 @Composable
 private fun PlaceholderTab(title: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("\u529f\u80fd\u5f00\u53d1\u4e2d", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("功能开发中", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -281,7 +281,7 @@ private fun TodoTab(
             }
             Spacer(Modifier.weight(1f))
             Text(
-                year.toString() + "\u5e74" + month.toString() + "\u6708",
+                year.toString() + "年" + month.toString() + "月",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -291,7 +291,7 @@ private fun TodoTab(
                     onClick = { vm.goToToday() },
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Default.CalendarToday, contentDescription = "\u8fd4\u56de\u5f53\u6708",
+                    Icon(Icons.Default.CalendarToday, contentDescription = "返回当月",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp))
                 }
@@ -323,7 +323,7 @@ private fun TodoTab(
             val missedByDate = sortedMissed.groupBy { it.date }
                 .toSortedMap(compareByDescending { it })
             TodoCardSection(
-                icon = Icons.Default.Warning, title = "\u6f0f\u6253\u5361\u5f85\u8865\u5f55",
+                icon = Icons.Default.Warning, title = "漏打卡待补录",
                 count = missedTodos.size, expanded = missedExpanded,
                 onToggle = onMissedToggle,
                 iconTint = MaterialTheme.colorScheme.error
@@ -334,7 +334,7 @@ private fun TodoTab(
                         onAction = { todo, isClockIn ->
                             onFillMissedClock(todo.date, isClockIn, todo.shiftTime, todo.statusLabel)
                         },
-                        actionLabel = "\u8865\u5f55"
+                        actionLabel = "补录"
                     )
                 }
             }
@@ -344,7 +344,7 @@ private fun TodoTab(
             val filledByDate = sortedFilled.groupBy { it.date }
                 .toSortedMap(compareByDescending { it })
             TodoCardSection(
-                icon = Icons.Default.CheckCircle, title = "\u5df2\u8865\u5f55",
+                icon = Icons.Default.CheckCircle, title = "已补录",
                 count = filledTodos.size, expanded = filledExpanded,
                 onToggle = onFilledToggle,
                 iconTint = MaterialTheme.colorScheme.primary
@@ -363,7 +363,7 @@ private fun TodoTab(
 
             // ── 疑似加班待确认（合并早到+晚退） ────────────────────────
             TodoCardSection(
-                icon = Icons.Default.Schedule, title = "\u7591\u4f3c\u52a0\u73ed\u5f85\u786e\u8ba4",
+                icon = Icons.Default.Schedule, title = "疑似加班待确认",
                 count = pendingOTTodos.size, expanded = otPendingExpanded,
                 onToggle = onOtPendingToggle,
                 iconTint = MaterialTheme.colorScheme.tertiary
@@ -373,7 +373,7 @@ private fun TodoTab(
                     UnifiedTodoRow(
                         todo = todo, isClockIn = isEarly,
                         onAction = { onOvertimeAction(todo.date, isEarly) },
-                        actionLabel = "\u786e\u8ba4"
+                        actionLabel = "确认"
                     )
                 }
             }
@@ -381,7 +381,7 @@ private fun TodoTab(
             // ── 是加班（内联展开列表） ──────────────────────────────
             val sortedConfirmed = sortTodosByDateDesc(confirmedOTTodos)
             TodoCardSection(
-                icon = Icons.Default.CheckCircle, title = "\u662f\u52a0\u73ed",
+                icon = Icons.Default.CheckCircle, title = "是加班",
                 count = confirmedOTTodos.size, expanded = otConfirmedExpanded,
                 onToggle = onOtConfirmedToggle,
                 iconTint = AllowanceGreen
@@ -402,7 +402,7 @@ private fun TodoTab(
             // ── 不是加班（内联展开列表） ──────────────────────────────
             val sortedIgnored = sortTodosByDateDesc(ignoredOTTodos)
             TodoCardSection(
-                icon = Icons.Default.Cancel, title = "\u4e0d\u662f\u52a0\u73ed",
+                icon = Icons.Default.Cancel, title = "不是加班",
                 count = ignoredOTTodos.size, expanded = otIgnoredExpanded,
                 onToggle = onOtIgnoredToggle,
                 iconTint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
@@ -459,7 +459,7 @@ private fun TodoCardSection(
                 modifier = Modifier.weight(1f)
             )
             if (count == 0) {
-                Text("\u65e0", style = MaterialTheme.typography.labelMedium,
+                Text("无", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Icon(
@@ -746,7 +746,7 @@ private fun MissedClockFillDialog(
     val dialogTitle = if (statusLabel.isNotEmpty()) {
         "补录$statusLabel${if (isClockIn) "开始" else "结束"}时间"
     } else {
-        if (isClockIn) "\u8865\u5f55\u4e0a\u73ed\u6253\u5361\u65f6\u95f4" else "\u8865\u5f55\u4e0b\u73ed\u6253\u5361\u65f6\u95f4"
+        if (isClockIn) "补录上班打卡时间" else "补录下班打卡时间"
     }
 
     AlertDialog(
@@ -754,7 +754,7 @@ private fun MissedClockFillDialog(
         title = { Text(dialogTitle) },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("\u65e5\u671f\uff1a$date", style = MaterialTheme.typography.bodyMedium)
+                Text("日期：$date", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(12.dp))
                 TimePicker(state = timePickerState)
             }
@@ -767,11 +767,11 @@ private fun MissedClockFillDialog(
                 if (isClockIn) onConfirm(timeStr, null)
                 else onConfirm(null, timeStr)
             }) {
-                Text("\u786e\u8ba4")
+                Text("确认")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("\u53d6\u6d88") }
+            TextButton(onClick = onDismiss) { Text("取消") }
         }
     )
 }
@@ -788,13 +788,13 @@ private fun OvertimeActionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isEarly) "\u65e9\u5230\u52a0\u73ed\u786e\u8ba4" else "\u665a\u9000\u52a0\u73ed\u786e\u8ba4") },
+        title = { Text(if (isEarly) "早到加班确认" else "晚退加班确认") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("\u65e5\u671f\uff1a$date", style = MaterialTheme.typography.bodyMedium)
+                Text("日期：$date", style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    if (isEarly) "\u8be5\u65e5\u4e0a\u73ed\u65f6\u95f4\u65e9\u4e8e\u73ed\u6b21\u5f00\u59cb\u65f6\u95f4\uff0c\u662f\u5426\u8ba1\u4e3a\u52a0\u73ed\uff1f"
-                    else "\u8be5\u65e5\u4e0b\u73ed\u65f6\u95f4\u665a\u4e8e\u73ed\u6b21\u7ed3\u675f\u65f6\u95f4\uff0c\u662f\u5426\u8ba1\u4e3a\u52a0\u73ed\uff1f",
+                    if (isEarly) "该日上班时间早于班次开始时间，是否计为加班？"
+                    else "该日下班时间晚于班次结束时间，是否计为加班？",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -809,14 +809,14 @@ private fun OvertimeActionDialog(
             ) {
                 Icon(Icons.Default.Check, null, Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("\u786e\u8ba4\u52a0\u73ed")
+                Text("确认加班")
             }
         },
         dismissButton = {
             OutlinedButton(onClick = onIgnore) {
                 Icon(Icons.Default.Close, null, Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("\u4e0d\u662f\u52a0\u73ed")
+                Text("不是加班")
             }
         }
     )
@@ -998,14 +998,14 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
     categoryTarget?.let { event ->
         AlertDialog(
             onDismissRequest = { categoryTarget = null },
-            title = { Text("\u5206\u7c7b\u8bbe\u7f6e") },
-            text = { Text("\u8bf7\u9009\u62e9\u300c${event.title}\u300d\u663e\u793a\u5728\u54ea\u4e2a\u5206\u7c7b\u4e2d") },
+            title = { Text("分类设置") },
+            text = { Text("请选择「${event.title}」显示在哪个分类中") },
             confirmButton = {
                 TextButton(onClick = {
                     vm.changeEventCategory(event, toAnniversary = false)
                     categoryTarget = null
                 }) {
-                    Text("\u65e5\u7a0b")
+                    Text("日程")
                 }
             },
             dismissButton = {
@@ -1013,7 +1013,7 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
                     vm.changeEventCategory(event, toAnniversary = true)
                     categoryTarget = null
                 }) {
-                    Text("\u7eaa\u5ff5\u65e5")
+                    Text("纪念日")
                 }
             }
         )
@@ -1174,10 +1174,10 @@ private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavControl
                     modifier = Modifier.size(48.dp)
                 )
                 Spacer(Modifier.height(12.dp))
-                Text("\u6682\u65e0\u7eaa\u5ff5\u65e5", style = MaterialTheme.typography.bodyLarge)
+                Text("暂无纪念日", style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "\u70b9\u51fb\u53f3\u4e0b\u89d2\u6309\u94ae\u6dfb\u52a0\u7eaa\u5ff5\u65e5",
+                    "点击右下角按钮添加纪念日",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1205,23 +1205,23 @@ private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavControl
                 .padding(16.dp),
             containerColor = MaterialTheme.colorScheme.primaryContainer
         ) {
-            Icon(Icons.Default.Add, contentDescription = "\u65b0\u5efa\u7eaa\u5ff5\u65e5")
+            Icon(Icons.Default.Add, contentDescription = "新建纪念日")
         }
     }
 
     // 分类选择弹窗
     categoryTarget?.let { event ->
-        val displayName = event.title.removePrefix("\u7eaa\u5ff5\u65e5: ")
+        val displayName = event.title.removePrefix("纪念日: ")
         AlertDialog(
             onDismissRequest = { categoryTarget = null },
-            title = { Text("\u5206\u7c7b\u8bbe\u7f6e") },
-            text = { Text("\u8bf7\u9009\u62e9\u300c${displayName}\u300d\u663e\u793a\u5728\u54ea\u4e2a\u5206\u7c7b\u4e2d") },
+            title = { Text("分类设置") },
+            text = { Text("请选择「${displayName}」显示在哪个分类中") },
             confirmButton = {
                 TextButton(onClick = {
                     vm.changeEventCategory(event, toAnniversary = false)
                     categoryTarget = null
                 }) {
-                    Text("\u65e5\u7a0b")
+                    Text("日程")
                 }
             },
             dismissButton = {
@@ -1229,7 +1229,7 @@ private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavControl
                     vm.changeEventCategory(event, toAnniversary = true)
                     categoryTarget = null
                 }) {
-                    Text("\u7eaa\u5ff5\u65e5")
+                    Text("纪念日")
                 }
             }
         )
@@ -1244,10 +1244,10 @@ private fun AnniversaryRow(
     onLongClick: () -> Unit
 ) {
     val dateText = try {
-        val sdf = SimpleDateFormat("MM\u6708dd\u65e5", Locale.getDefault())
+        val sdf = SimpleDateFormat("MM月dd日", Locale.getDefault())
         sdf.format(Date(event.dtStart))
-    } catch (_: Exception) { "\u672a\u77e5\u65e5\u671f" }
-    val displayName = event.title.removePrefix("\u7eaa\u5ff5\u65e5: ")
+    } catch (_: Exception) { "未知日期" }
+    val displayName = event.title.removePrefix("纪念日: ")
 
     Surface(
         modifier = Modifier
@@ -1271,7 +1271,7 @@ private fun AnniversaryRow(
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    "\u6bcf\u5e74",
+                    "每年",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

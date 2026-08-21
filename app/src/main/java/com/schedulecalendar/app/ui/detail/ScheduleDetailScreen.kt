@@ -523,10 +523,10 @@ private fun StatusRow(
         Text(status.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         if (applied) {
             val timeLabel = when {
-                startTime != null && endTime != null -> "$startTime\u2013$endTime"
-                startTime != null -> "$startTime\u2013"
-                endTime != null -> "\u2013$endTime"
-                else -> "\u5168\u5929"
+                startTime != null && endTime != null -> "$startTime–$endTime"
+                startTime != null -> "$startTime–"
+                endTime != null -> "–$endTime"
+                else -> "全天"
             }
             TextButton(
                 onClick      = onEditTime,
