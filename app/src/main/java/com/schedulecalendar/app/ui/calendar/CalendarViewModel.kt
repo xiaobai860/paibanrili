@@ -14,6 +14,7 @@ import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
 import com.schedulecalendar.app.widget.CalendarGlanceWidget
+import com.schedulecalendar.app.widget.Calendar3x4GlanceWidget
 import com.schedulecalendar.app.widget.CalendarWidgetDay
 import com.schedulecalendar.app.widget.CalendarWidgetInfo
 import com.schedulecalendar.app.widget.ClockInWidgetData
@@ -1020,7 +1021,7 @@ class CalendarViewModel @Inject constructor(
             weekStartOffset = firstDow,
             totalRows = totalRows
         )
-        CalendarGlanceWidget.updateWidgetData(context, data)
+        Calendar3x4GlanceWidget.updateAllCalendarWidgets(context, data)
     }
 
    /**

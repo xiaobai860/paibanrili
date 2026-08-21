@@ -89,6 +89,7 @@ private const val CLOCK_IN_PREFS = "clock_in_widget_prefs"
 private const val KEY_CLOCK_IN_DATE = "clock_in_date"
 private const val KEY_CLOCK_IN_TIME = "clock_in_time"
 private const val KEY_CLOCK_OUT_TIME = "clock_out_time"
+private const val KEY_CLOCK_IN_SHIFT_ID = "clock_in_shift_id"  // 打卡时的班次 ID，用于检测班次变更后清空打卡记录
 private const val WIDGET_DATA_PREFS = "widget_action_data_prefs"
 private const val KEY_WIDGET_JSON = "widget_json"
 
@@ -103,6 +104,37 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
     companion object {
         suspend fun updateWidgetData(context: Context, data: ClockInWidgetData) {
             val gson = Gson()
+            // 班次变更 / 打卡记录失效检测：清空 prefs 中的打卡记录
+            // 触发条件（任一）：
+            //   1) shiftId 变化（用户改班次）
+            //   2) data.actualStartTime/EndTime 为空但 prefs 有（用户在 app 内清空了实际时间）
+            //   3) data.actualStartTime/EndTime 与 prefs 不一致（用户在 app 内改了实际时间）
+            val clockPrefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
+            val savedShiftId = clockPrefs.getString(KEY_CLOCK_IN_SHIFT_ID, "") ?: ""
+            val savedDate = clockPrefs.getString(KEY_CLOCK_IN_DATE, "") ?: ""
+            val savedStart = clockPrefs.getString(KEY_CLOCK_IN_TIME, "") ?: ""
+            val savedEnd = clockPrefs.getString(KEY_CLOCK_OUT_TIME, "") ?: ""
+            val today = LocalDate.now()
+            val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+            val refDate = data.clockInDate.ifBlank { todayStr }
+            val sameDay = savedDate == refDate
+            val shiftChanged = sameDay && savedShiftId.isNotEmpty() && savedShiftId != data.shiftId
+            val dataCleared = sameDay && (
+                (savedStart.isNotEmpty() && data.actualStartTime.isEmpty()) ||
+                (savedEnd.isNotEmpty() && data.actualEndTime.isEmpty())
+            )
+            val dataMismatch = sameDay && (
+                (data.actualStartTime.isNotEmpty() && data.actualStartTime != savedStart) ||
+                (data.actualEndTime.isNotEmpty() && data.actualEndTime != savedEnd)
+            )
+            if (shiftChanged || dataCleared || dataMismatch) {
+                clockPrefs.edit {
+                    remove(KEY_CLOCK_IN_DATE)
+                    remove(KEY_CLOCK_IN_TIME)
+                    remove(KEY_CLOCK_OUT_TIME)
+                    remove(KEY_CLOCK_IN_SHIFT_ID)
+                }
+            }
             // 保存到 SharedPreferences，供 content 与 ActionCallback 读取
             context.getSharedPreferences(WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
                 .edit { putString(KEY_WIDGET_JSON, gson.toJson(data)) }
@@ -147,6 +179,7 @@ class WidgetClockInAction : ActionCallback {
         clockPrefs.edit {
             putString(KEY_CLOCK_IN_DATE, targetDate)
             putString(KEY_CLOCK_IN_TIME, currentTime)
+            putString(KEY_CLOCK_IN_SHIFT_ID, data.shiftId)
             remove(KEY_CLOCK_OUT_TIME)
         }
 
@@ -388,8 +421,13 @@ private fun ClockInWidgetContent() {
     // 使用 data.clockInDate 作为参考日期（支持跨午夜场景）
     val refDate = data.clockInDate.ifBlank { todayStr }
     val savedDate = clockPrefs.getString(KEY_CLOCK_IN_DATE, "") ?: ""
-    val actualStart = if (savedDate == refDate) clockPrefs.getString(KEY_CLOCK_IN_TIME, "") ?: "" else ""
-    val actualEnd = if (savedDate == refDate) clockPrefs.getString(KEY_CLOCK_OUT_TIME, "") ?: "" else ""
+    // 优先用 data.actualStartTime/EndTime（syncWidget 一定保证新鲜），fallback 到 prefs（widget 内打卡未触发 syncWidget 场景）
+    val actualStart = data.actualStartTime.ifEmpty {
+        if (savedDate == refDate) clockPrefs.getString(KEY_CLOCK_IN_TIME, "") ?: "" else ""
+    }
+    val actualEnd = data.actualEndTime.ifEmpty {
+        if (savedDate == refDate) clockPrefs.getString(KEY_CLOCK_OUT_TIME, "") ?: "" else ""
+    }
 
     // 判断打卡状态
     val hasClockIn = actualStart.isNotEmpty()
@@ -419,26 +457,30 @@ private fun ClockInWidgetContent() {
     val displayStart = actualStart.ifEmpty { data.startTime }
     val displayEnd = actualEnd.ifEmpty { data.endTime }
 
-    // === \u65b0\u5916\u89c2 2x1 V2 (\u4fdd\u7559\u6240\u6709\u6587\u6848\uff0c\u91cd\u65b0\u8bbe\u8ba1\u5e03\u5c40\u548c\u89c6\u89c9) ===
+    // === \u65b0\u5916\u89c2 2x1 V4 (\u8fd4\u56de 3 \u884c defaultWeight \u7b49\u5206\u9ad8\u5ea6\u5e03\u5c40) ===
 
     Box(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(ubg))
-            .cornerRadius(12.dp)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .cornerRadius(12.dp),
+        contentAlignment = Alignment.TopStart
     ) {
-        Column(modifier = GlanceModifier.fillMaxSize()) {
+        Column(
+            modifier = GlanceModifier
+                .fillMaxSize()
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+        ) {
             // \u7b2c\u4e00\u884c\uff1a\u73ed\u6b21\u5fbd\u7ae0 + \u9644\u52a0\u72b6\u6001\u540d + \u9f7f\u8f6e\uff08\u8bbe\u7f6e\u5165\u53e3\uff09
             Row(
-                modifier = GlanceModifier.fillMaxWidth(),
+                modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = GlanceModifier
                         .background(ColorProvider(shiftColor.copy(alpha = 0.18f * bgAlpha)))
                         .cornerRadius(4.dp)
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .padding(horizontal = 6.dp, vertical = 1.dp)
                         .clickable(actionRunCallback<OpenAppAction>())
                 ) {
                     Text(
@@ -465,7 +507,7 @@ private fun ClockInWidgetContent() {
                             fontSize = 12.sp
                         ),
                         maxLines = 1,
-                        modifier = GlanceModifier.padding(start = 6.dp).defaultWeight()
+                        modifier = GlanceModifier.padding(start = 4.dp).defaultWeight()
                     )
                 } else {
                     Spacer(modifier = GlanceModifier.defaultWeight())
@@ -473,7 +515,7 @@ private fun ClockInWidgetContent() {
                 Text(
                     text = "\u2699",
                     modifier = GlanceModifier
-                        .padding(start = 6.dp)
+                        .padding(start = 4.dp)
                         .clickable(
                             actionRunCallback<OpenWidgetConfigAction>(
                                 parameters = actionParametersOf(OpenWidgetConfigAction.KEY_TYPE to WIDGET_TYPE_SCHEDULE)
@@ -486,11 +528,10 @@ private fun ClockInWidgetContent() {
                     maxLines = 1
                 )
             }
-            Spacer(modifier = GlanceModifier.height(4.dp))
 
             // \u7b2c\u4e8c\u884c\uff1a\u5927\u53f7\u65f6\u95f4 + \u6253\u5361\u6309\u94ae
             Row(
-                modifier = GlanceModifier.fillMaxWidth().padding(top = 2.dp),
+                modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (data.startTime.isNotEmpty() || data.endTime.isNotEmpty()) {
@@ -501,7 +542,7 @@ private fun ClockInWidgetContent() {
                     }
                     Text(
                         text = "$displayStart \u2013 $displayEnd",
-                        style = TextStyle(color = timeColor, fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                        style = TextStyle(color = timeColor, fontSize = 15.sp, fontWeight = FontWeight.Bold),
                         maxLines = 1,
                         modifier = GlanceModifier.defaultWeight()
                     )
@@ -511,25 +552,24 @@ private fun ClockInWidgetContent() {
                 val showBtn = data.showClockIn || data.showClockOut
                 if (showBtn) {
                     val btnLabel: String
-                    val btnTime: String
                     val btnBgColor: ColorProvider
                     val btnTextColor: ColorProvider
                     val btnAction: ActionCallback
                     when {
                         data.showClockIn && !data.hasClockIn -> {
-                            btnLabel = "\u4e0a\u73ed\u5361"; btnTime = ""
+                            btnLabel = "\u4e0a\u73ed\u5361"
                             btnBgColor = pickColor(Color(0xFF059669).copy(alpha = 0.18f * bgAlpha), Color(0xFF059669).copy(alpha = 0.30f), isDark)
                             btnTextColor = pickColor(Color(0xFF059669), Color(0xFF4ADE80), isDark)
                             btnAction = WidgetClockInAction()
                         }
                         data.showClockOut && data.hasClockIn && !data.hasClockOut -> {
-                            btnLabel = "\u4e0b\u73ed\u5361"; btnTime = actualStart.take(5)
+                            btnLabel = "\u4e0b\u73ed\u5361"
                             btnBgColor = pickColor(Color(0xFFF59E0B).copy(alpha = 0.18f * bgAlpha), Color(0xFFF59E0B).copy(alpha = 0.30f), isDark)
                             btnTextColor = pickColor(Color(0xFFD97706), Color(0xFFFBBF24), isDark)
                             btnAction = WidgetClockOutAction()
                         }
                         else -> {
-                            btnLabel = "\u4e0b\u73ed\u5361"; btnTime = actualEnd.take(5)
+                            btnLabel = "\u4e0b\u73ed\u5361"
                             btnBgColor = pickColor(Color(0xFF9CA3AF).copy(alpha = 0.14f * bgAlpha), Color(0xFF9CA3AF).copy(alpha = 0.22f), isDark)
                             btnTextColor = pickColor(Color(0xFF6B7280), Color(0xFF9CA3AF), isDark)
                             btnAction = WidgetClockOutAction()
@@ -537,70 +577,48 @@ private fun ClockInWidgetContent() {
                     }
                     Box(
                         modifier = GlanceModifier
-                            .width(64.dp)
-                            .height(36.dp)
                             .padding(start = 6.dp)
                             .background(btnBgColor)
-                            .cornerRadius(8.dp)
+                            .cornerRadius(6.dp)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
                             .clickable(actionRunCallback(btnAction::class.java)),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (btnTime.isEmpty()) {
-                            Text(
-                                text = btnLabel,
-                                style = TextStyle(
-                                    color = btnTextColor, fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
-                                ),
-                                maxLines = 1
-                            )
-                        } else {
-                            Column(
-                                modifier = GlanceModifier.fillMaxSize(),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = btnLabel,
-                                    style = TextStyle(
-                                        color = btnTextColor, fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
-                                    ),
-                                    maxLines = 1
-                                )
-                                Text(
-                                    text = btnTime,
-                                    style = TextStyle(
-                                        color = btnTextColor, fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium, textAlign = TextAlign.Center
-                                    ),
-                                    maxLines = 1
-                                )
-                            }
-                        }
+                        Text(
+                            text = btnLabel,
+                            style = TextStyle(
+                                color = btnTextColor, fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
+                            ),
+                            maxLines = 1
+                        )
                     }
                 }
             }
-            Spacer(modifier = GlanceModifier.height(4.dp))
 
-            // \u7b2c\u4e09\u884c\uff1a\u660e\u5929\u73ed\u6b21 / \u8282\u5047\u65e5\u5012\u8ba1\u65f6
+            // \u7b2c\u4e09\u884c\uff1a\u660e\u5929\u73ed\u6b21 / \u8282\u5047\u65e5\u5012\u8ba1\u65f6\uff08\u5b57\u53f7 12sp\uff09
             val footerText = when (displayMode) {
                 DISPLAY_MODE_SHIFT_HOLIDAY -> getHolidayCountdownText()
                 else -> if (data.tomorrowShiftName.isNotEmpty())
                     "\u660e\u5929\uff1a${data.tomorrowShiftName}" else ""
             }
             if (footerText.isNotEmpty()) {
-                Text(
-                    text = footerText,
-                    style = TextStyle(
-                        color = if (displayMode == DISPLAY_MODE_SHIFT_HOLIDAY)
-                            pickColor(Color(0xFFDC2626), Color(0xFFEF4444), isDark)
-                        else
-                            pickColor(utc.copy(alpha = 0.55f), utcDark.copy(alpha = 0.55f), isDark),
-                        fontSize = 11.sp
-                    ),
-                    maxLines = 1
-                )
+                Box(
+                    modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text(
+                        text = footerText,
+                        style = TextStyle(
+                            color = if (displayMode == DISPLAY_MODE_SHIFT_HOLIDAY)
+                                pickColor(Color(0xFFDC2626), Color(0xFFEF4444), isDark)
+                            else
+                                pickColor(utc.copy(alpha = 0.6f), utcDark.copy(alpha = 0.6f), isDark),
+                            fontSize = 12.sp
+                        ),
+                        maxLines = 1
+                    )
+                }
             }
         }
     }

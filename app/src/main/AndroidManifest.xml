@@ -55,7 +55,7 @@
                 android:resource="@xml/schedule_widget_info"/>
         </receiver>
 
-        <!-- 日历网格小组件（3x3 日期 + 班次 + 状态） -->
+        <!-- 日历网格小组件（3x3 日期 + 班次） -->
         <receiver
             android:name=".widget.CalendarGlanceReceiver"
             android:label="@string/calendar_widget_label"
@@ -66,6 +66,19 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/calendar_widget_info"/>
+        </receiver>
+
+        <!-- 日历网格小组件（3x4 日期 + 班次 + 附加状态） -->
+        <receiver
+            android:name=".widget.CalendarGlance3x4Receiver"
+            android:label="@string/calendar_3x4_widget_label"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/calendar_3x4_widget_info"/>
         </receiver>
 
         <!-- 小组件配置 Activity（桌面长按 → 编辑） -->

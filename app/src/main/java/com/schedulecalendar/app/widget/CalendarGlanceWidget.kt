@@ -1,4 +1,4 @@
-// app/src/main/java/com/schedulecalendar/app/widget/CalendarGlanceWidget.kt
+﻿// app/src/main/java/com/schedulecalendar/app/widget/CalendarGlanceWidget.kt
 package com.schedulecalendar.app.widget
 
 import android.content.Context
@@ -57,7 +57,16 @@ class CalendarGlanceWidget : GlanceAppWidget() {
         val maxH = sizes?.maxOfOrNull { it.height }?.value ?: 180f
         val isLarge = maxH >= 220f
         val baseHeight = maxH.dp
-        provideContent { CalendarWidgetContent(isLarge, baseHeight) }
+        // 3x3 widget：仅显示 日期+班次，显示完整所有行
+        provideContent {
+            CalendarWidgetContent(
+                isLarge = isLarge,
+                baseHeight = baseHeight,
+                showLunar = false,
+                showStatus = isLarge,
+                maxVisibleRows = Int.MAX_VALUE
+            )
+        }
     }
     companion object {
         suspend fun updateWidgetData(context: Context, data: CalendarWidgetInfo) {
@@ -99,7 +108,13 @@ class RefreshWidgetAction : ActionCallback {
 
 @Suppress("LocalContextConfigurationRead")
 @Composable
-private fun CalendarWidgetContent(isLarge: Boolean, baseHeight: androidx.compose.ui.unit.Dp) {
+private fun CalendarWidgetContent(
+    isLarge: Boolean,
+    baseHeight: androidx.compose.ui.unit.Dp,
+    showLunar: Boolean,
+    showStatus: Boolean,
+    maxVisibleRows: Int = Int.MAX_VALUE
+) {
     val prefs = androidx.glance.LocalContext.current.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
     val jsonStr = prefs.getString(KEY_CALENDAR_WIDGET_JSON, "")
     val data = if (!jsonStr.isNullOrBlank())
@@ -122,33 +137,27 @@ private fun CalendarWidgetContent(isLarge: Boolean, baseHeight: androidx.compose
     val isCurMon = data.year == today.year && data.month == today.monthValue
     val headerText = if (data.month > 0) "${data.year}\u5e74${data.month}\u6708" else "${today.year}\u5e74${today.monthValue}\u6708"
     val weekLabels = listOf("\u4e00", "\u4e8c", "\u4e09", "\u56db", "\u4e94", "\u516d", "\u65e5")
-    val tfs = if (isLarge) 15.sp else 13.sp
-    val wfs = if (isLarge) 9.sp else 8.sp
-    val dfs = if (isLarge) 12.sp else 10.sp
-    val sfs = if (isLarge) 8.sp else 7.sp
-    val stfs = if (isLarge) 7.sp else 6.sp
-    val lfs = 7.sp
-    // 显示策略（基于行数，确保不裁切）：
-    // - 3 行（3x3）：空间不足，仅显示 日期 + 班次，隐藏附加状态（避免露出部分头部）
-    // - 4 行（4xN）：空间足够显示农历，显示 日期 + 班次 + 农历，隐藏附加状态（容纳农历）
-    // - 5 行以上：都显示
-    val heightPerRow = (baseHeight - 34.dp) / data.totalRows.coerceAtLeast(1)
-    val showLunar  = data.totalRows >= 4 && heightPerRow >= 40.dp
-    val showStatus = data.totalRows >= 5 || (data.totalRows <= 3 && heightPerRow >= 50.dp)
-    val headerFs = if (isLarge) 17.sp else 14.sp
-    val refreshSize = if (isLarge) 28.dp else 24.dp
-    val refreshIconFs = if (isLarge) 18.sp else 15.sp
+    val tfs = if (isLarge) 18.sp else 15.sp
+    val wfs = if (isLarge) 10.sp else 10.sp
+    val dfs = if (isLarge) 12.sp else 15.sp
+    val sfs = if (isLarge) 9.sp else 11.sp
+    val stfs = if (isLarge) 8.sp else 9.sp
+    val lfs = if (isLarge) 8.sp else 9.sp
+    val visibleRows = minOf(data.totalRows, maxVisibleRows)
+    val headerFs = if (isLarge) 17.sp else 17.sp
+    val refreshSize = if (isLarge) 28.dp else 28.dp
+    val refreshIconFs = if (isLarge) 16.sp else 16.sp
     Box(
         modifier = GlanceModifier.fillMaxSize()
             .background(ColorProvider(ubg))
-            .cornerRadius(16.dp)
-            .padding(if (isLarge) 8.dp else 5.dp),
+            .cornerRadius(12.dp)
+            .padding(if (isLarge) 4.dp else 5.dp),
         contentAlignment = Alignment.TopCenter
     ) {
         Column(modifier = GlanceModifier.fillMaxSize()) {
-            // Header: 左对齐年月 + 右侧刷新按钮
+            // Header: 左对齐年月 + 右侧设置/刷新按钮
             Row(
-                modifier = GlanceModifier.fillMaxWidth().padding(bottom = 2.dp),
+                modifier = GlanceModifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -160,7 +169,7 @@ private fun CalendarWidgetContent(isLarge: Boolean, baseHeight: androidx.compose
                     modifier = GlanceModifier
                         .width(refreshSize).height(refreshSize)
                         .background(ColorProvider(utc.copy(alpha = 0.08f * bgAlpha)))
-                        .cornerRadius(8.dp)
+                        .cornerRadius(if (isLarge) 6.dp else 6.dp)
                         .clickable(
                             actionRunCallback<OpenWidgetConfigAction>(
                                 parameters = actionParametersOf(KEY_TYPE to WIDGET_TYPE_CALENDAR)
@@ -178,7 +187,7 @@ private fun CalendarWidgetContent(isLarge: Boolean, baseHeight: androidx.compose
                     modifier = GlanceModifier
                         .width(refreshSize).height(refreshSize)
                         .background(ColorProvider(utc.copy(alpha = 0.08f * bgAlpha)))
-                        .cornerRadius(8.dp)
+                        .cornerRadius(6.dp)
                         .clickable(actionRunCallback<RefreshWidgetAction>()),
                     contentAlignment = Alignment.Center
                 ) {
@@ -190,16 +199,16 @@ private fun CalendarWidgetContent(isLarge: Boolean, baseHeight: androidx.compose
             }
             Row(modifier = GlanceModifier.fillMaxWidth()) {
                 weekLabels.forEachIndexed { i, label ->
-                    Box(modifier = GlanceModifier.defaultWeight().padding(1.dp), contentAlignment = Alignment.Center) {
-                        val lc = if (i >= 5) Color(0xFFDC2626) else utc.copy(alpha = 0.55f)
-                        val lcd = if (i >= 5) Color(0xFFEF4444) else utcDark.copy(alpha = 0.55f)
+                    Box(modifier = GlanceModifier.defaultWeight(), contentAlignment = Alignment.Center) {
+                        val lc = if (i >= 5) Color(0xFFDC2626) else utc.copy(alpha = 0.6f)
+                        val lcd = if (i >= 5) Color(0xFFEF4444) else utcDark.copy(alpha = 0.6f)
                         Text(text = label, style = TextStyle(color = if (isDark) ColorProvider(lcd) else ColorProvider(lc), fontSize = wfs, fontWeight = FontWeight.Medium))
                     }
                 }
             }
-            Spacer(modifier = GlanceModifier.height(if (isLarge) 2.dp else 1.dp))
+            Spacer(modifier = GlanceModifier.height(2.dp))
             val totalDays = data.days.size
-            for (row in 0 until data.totalRows) {
+            for (row in 0 until visibleRows) {
                 Row(modifier = GlanceModifier.defaultWeight().fillMaxWidth()) {
                     for (col in 0 until 7) {
                         val ci = row * 7 + col
@@ -210,8 +219,8 @@ private fun CalendarWidgetContent(isLarge: Boolean, baseHeight: androidx.compose
                         if (ie) { Box(modifier = GlanceModifier.defaultWeight()) {} } else {
                             val day = data.days.getOrNull(mdi)
                             val isToday = day != null && isCurMon && day.day == today.dayOfMonth
-                            val cellCorner = if (isLarge) 6.dp else 4.dp
-                            Box(modifier = GlanceModifier.defaultWeight().padding(if (isLarge) 1.5.dp else 1.dp)
+                            val cellCorner = if (isLarge) 4.dp else 4.dp
+                            Box(modifier = GlanceModifier.defaultWeight().padding(if (isLarge) 0.5.dp else 0.5.dp)
                                 .background(ColorProvider(if (isToday) Color(0xFF2E7D32).copy(alpha = 0.35f * bgAlpha) else Color.Transparent))
                                 .cornerRadius(cellCorner)
                             ) {
@@ -266,7 +275,7 @@ private fun CalendarDayCellContent(
         .cornerRadius(cellCorner)
         .clickable(clickAction),
         contentAlignment = Alignment.TopCenter) {
-        Column(modifier = GlanceModifier.fillMaxWidth().padding(vertical = if (isLarge) 2.dp else 1.dp),
+        Column(modifier = GlanceModifier.fillMaxWidth().padding(vertical = 0.dp),
             horizontalAlignment = Alignment.CenterHorizontally) {
             // 1. 日期数字 + 假期标记
             Row(verticalAlignment = Alignment.Top) {
@@ -274,14 +283,14 @@ private fun CalendarDayCellContent(
                 val dayColorD = if (isToday) Color(0xFF4ADE80) else textColorDark
                 Text(text = day.day.toString(),
                     style = TextStyle(color = if (isDark) ColorProvider(dayColorD) else ColorProvider(dayColor), fontSize = dayNumberSize,
-                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal))
+                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium))
                 if (isLegalHoliday && isHolidayFirstDay) {
                     Text(text = "\u5047",
-                        style = TextStyle(color = ColorProvider(Color(0xFFDC2626)), fontSize = 6.sp,
+                        style = TextStyle(color = ColorProvider(Color(0xFFDC2626)), fontSize = 7.sp,
                             fontWeight = FontWeight.Bold))
                 }
             }
-            // 2. 农历/节假日（仅 isLarge 时显示，确保不挤占班次空间）
+            // 2. 农历/节假日（仅 3x4 widget 显示）
             if (showLunar && year > 0 && month > 0) {
                 val holidayName = if (isLegalHoliday) HolidayData.getHolidayName(dateStr) else null
                 val festivalInfo = runCatching { HolidayData.getFullFestivalInfo(dateStr) }.getOrDefault(emptyList())
@@ -298,7 +307,7 @@ private fun CalendarDayCellContent(
                     Text(text = displayText, style = TextStyle(color = if (isDark) ColorProvider(txtColorD) else ColorProvider(txtColor), fontSize = lunarFontSize), maxLines = 1)
                 }
             }
-            // 3. 班次名称
+            // 3. 班次名称（始终显示）
             if (hasShift) {
                 val shiftHex = day.shiftColor.removePrefix("#")
                 val shiftColor = if (shiftHex.length >= 6) {
@@ -309,7 +318,7 @@ private fun CalendarDayCellContent(
                 } else Color(0xFF3B82F6)
                 Text(text = day.shiftName, style = TextStyle(color = if (isDark) ColorProvider(shiftColor.copy(alpha = 0.85f)) else ColorProvider(shiftColor), fontSize = shiftFontSize), maxLines = 1)
             }
-            // 4. 附加状态名称（根据行数/高度判断是否显示，避免3行小组件露出部分头部）
+            // 4. 附加状态名称（仅 3x4 widget 显示）
             if (hasStatus && showStatus) Text(text = day.statusName, style = TextStyle(color = if (isDark) ColorProvider(Color(0xFFFB923C)) else ColorProvider(Color(0xFFF97316)), fontSize = statusFontSize), maxLines = 1)
         }
     }
@@ -324,4 +333,42 @@ private fun hexToWidgetColor(hex: String, fallback: Color): Color {
         val b = h.substring(h.length - 2).toInt(16) / 255f
         Color(r, g, b, a)
     }.getOrElse { fallback }
+}
+
+// === 3x4 \u6392\u73ed\u65e5\u5386\u5c0f\u7ec4\u4ef6 (3 \u683c\u5bbd \u00d7 4 \u683c\u9ad8\uff0c\u53ef\u62c9\u4f38\u5230 4 \u683c\u5bbd) ===
+// \u4e0e 3x3 \u5171\u7528 widgetData\uff08\u8bfb\u540c\u4e00\u4efd CalendarWidgetInfo JSON\uff09\u4e0e\u6837\u5f0f\u914d\u7f6e\uff0c\u53ea\u662f baseHeight \u4e0d\u540c
+// 9:35 AM 2026-8-22
+class Calendar3x4GlanceWidget : GlanceAppWidget() {
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val manager = androidx.glance.appwidget.GlanceAppWidgetManager(context)
+        val sizes = manager.getAppWidgetSizes(id)
+        val maxH = sizes.maxOfOrNull { it.height.value } ?: 240f
+        // 3x4 widget：显示 4 项内容（日期+班次+附加状态+农历），渲染完整所有行（保证 31 号可见）
+        provideContent {
+            CalendarWidgetContent(
+                isLarge = true,
+                baseHeight = maxH.dp,
+                showLunar = true,
+                showStatus = true,
+                maxVisibleRows = Int.MAX_VALUE
+            )
+        }
+    }
+
+    companion object {
+        suspend fun updateAllCalendarWidgets(context: Context, data: CalendarWidgetInfo) {
+            val gson = Gson()
+            context.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
+                .edit { putString(KEY_CALENDAR_WIDGET_JSON, gson.toJson(data)) }
+            val manager = GlanceAppWidgetManager(context)
+            // 3x3 widget
+            manager.getGlanceIds(CalendarGlanceWidget::class.java).forEach { gid ->
+                CalendarGlanceWidget().update(context, gid)
+            }
+            // 3x4 widget
+            manager.getGlanceIds(Calendar3x4GlanceWidget::class.java).forEach { gid ->
+                Calendar3x4GlanceWidget().update(context, gid)
+            }
+        }
+    }
 }

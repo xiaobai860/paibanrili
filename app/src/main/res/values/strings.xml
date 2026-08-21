@@ -5,4 +5,6 @@
     <string name="widget_description">显示今日班次信息并快捷打卡</string>
     <string name="calendar_widget_label">排班日历</string>
     <string name="calendar_widget_description">显示当月日期与班次信息</string>
+    <string name="calendar_3x4_widget_label">排班日历（高）</string>
+    <string name="calendar_3x4_widget_description">显示当月日期、班次与附加状态信息</string>
 </resources>
