@@ -85,11 +85,6 @@ data class ClockInWidgetData(
 
 // ── 存储键 ──────────────────────────────────────────────────
 
-private const val CLOCK_IN_PREFS = "clock_in_widget_prefs"
-private const val KEY_CLOCK_IN_DATE = "clock_in_date"
-private const val KEY_CLOCK_IN_TIME = "clock_in_time"
-private const val KEY_CLOCK_OUT_TIME = "clock_out_time"
-private const val KEY_CLOCK_IN_SHIFT_ID = "clock_in_shift_id"  // 打卡时的班次 ID，用于检测班次变更后清空打卡记录
 private const val WIDGET_DATA_PREFS = "widget_action_data_prefs"
 private const val KEY_WIDGET_JSON = "widget_json"
 
@@ -104,37 +99,8 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
     companion object {
         suspend fun updateWidgetData(context: Context, data: ClockInWidgetData) {
             val gson = Gson()
-            // 班次变更 / 打卡记录失效检测：清空 prefs 中的打卡记录
-            // 触发条件（任一）：
-            //   1) shiftId 变化（用户改班次）
-            //   2) data.actualStartTime/EndTime 为空但 prefs 有（用户在 app 内清空了实际时间）
-            //   3) data.actualStartTime/EndTime 与 prefs 不一致（用户在 app 内改了实际时间）
-            val clockPrefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
-            val savedShiftId = clockPrefs.getString(KEY_CLOCK_IN_SHIFT_ID, "") ?: ""
-            val savedDate = clockPrefs.getString(KEY_CLOCK_IN_DATE, "") ?: ""
-            val savedStart = clockPrefs.getString(KEY_CLOCK_IN_TIME, "") ?: ""
-            val savedEnd = clockPrefs.getString(KEY_CLOCK_OUT_TIME, "") ?: ""
-            val today = LocalDate.now()
-            val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
-            val refDate = data.clockInDate.ifBlank { todayStr }
-            val sameDay = savedDate == refDate
-            val shiftChanged = sameDay && savedShiftId.isNotEmpty() && savedShiftId != data.shiftId
-            val dataCleared = sameDay && (
-                (savedStart.isNotEmpty() && data.actualStartTime.isEmpty()) ||
-                (savedEnd.isNotEmpty() && data.actualEndTime.isEmpty())
-            )
-            val dataMismatch = sameDay && (
-                (data.actualStartTime.isNotEmpty() && data.actualStartTime != savedStart) ||
-                (data.actualEndTime.isNotEmpty() && data.actualEndTime != savedEnd)
-            )
-            if (shiftChanged || dataCleared || dataMismatch) {
-                clockPrefs.edit {
-                    remove(KEY_CLOCK_IN_DATE)
-                    remove(KEY_CLOCK_IN_TIME)
-                    remove(KEY_CLOCK_OUT_TIME)
-                    remove(KEY_CLOCK_IN_SHIFT_ID)
-                }
-            }
+            // 打卡时间真值统一来自数据库（由 CalendarViewModel.syncWidget 计算并写入 data），
+            // 不再使用独立的 clock_in_widget_prefs 存储，避免两套机制数据不一致。
             // 保存到 SharedPreferences，供 content 与 ActionCallback 读取
             context.getSharedPreferences(WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
                 .edit { putString(KEY_WIDGET_JSON, gson.toJson(data)) }
@@ -174,16 +140,7 @@ class WidgetClockInAction : ActionCallback {
         val hasCustomStatus = data.appliedStatusId.isNotBlank() && !data.isBuiltInStatus
         val hasBuiltInStatus = data.appliedStatusId.isNotBlank() && data.isBuiltInStatus
 
-        // 先更新 SharedPreferences（widget 即时刷新）
-        val clockPrefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
-        clockPrefs.edit {
-            putString(KEY_CLOCK_IN_DATE, targetDate)
-            putString(KEY_CLOCK_IN_TIME, currentTime)
-            putString(KEY_CLOCK_IN_SHIFT_ID, data.shiftId)
-            remove(KEY_CLOCK_OUT_TIME)
-        }
-
-        // 再持久化到数据库
+        // 持久化到数据库（widget 数据真值统一来自 ScheduleRecord）
         runCatching {
             val entryPoint = EntryPointAccessors.fromApplication(
                 context.applicationContext, WidgetClockEntryPoint::class.java
@@ -232,19 +189,21 @@ class WidgetClockInAction : ActionCallback {
     }
 
     private suspend fun fallbackClock(context: Context, glanceId: GlanceId, isClockIn: Boolean) {
-        val prefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
         val today = LocalDate.now()
         val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
-        val savedDate = prefs.getString(KEY_CLOCK_IN_DATE, "") ?: ""
         val now = LocalTime.now()
         val currentTime = "%02d:%02d".format(now.hour, now.minute)
 
-        prefs.edit {
-            if (savedDate != todayStr) {
-                putString(KEY_CLOCK_IN_DATE, todayStr)
-                putString(KEY_CLOCK_IN_TIME, currentTime)
-                remove(KEY_CLOCK_OUT_TIME)
-            }
+        // 无 widget 数据兜底：直接写入当天数据库记录
+        runCatching {
+            val entryPoint = EntryPointAccessors.fromApplication(
+                context.applicationContext, WidgetClockEntryPoint::class.java
+            )
+            val scheduleRepo = entryPoint.scheduleRepository()
+            val record = scheduleRepo.getByDate(todayStr) ?: ScheduleRecord(todayStr)
+            val updated = if (isClockIn) record.copy(actualStartTime = currentTime)
+                else record.copy(actualEndTime = currentTime)
+            scheduleRepo.save(updated)
         }
         refreshWidgets(context, glanceId)
         Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
@@ -278,11 +237,7 @@ class WidgetClockOutAction : ActionCallback {
         val hasCustomStatus = data.appliedStatusId.isNotBlank() && !data.isBuiltInStatus
         val hasBuiltInStatus = data.appliedStatusId.isNotBlank() && data.isBuiltInStatus
 
-        // 先更新 SharedPreferences
-        val clockPrefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
-        clockPrefs.edit { putString(KEY_CLOCK_OUT_TIME, currentTime) }
-
-        // 再持久化到数据库
+        // 持久化到数据库（widget 数据真值统一来自 ScheduleRecord）
         runCatching {
             val entryPoint = EntryPointAccessors.fromApplication(
                 context.applicationContext, WidgetClockEntryPoint::class.java
@@ -337,16 +292,21 @@ class WidgetClockOutAction : ActionCallback {
     }
 
     private suspend fun fallbackClock(context: Context, glanceId: GlanceId, isClockIn: Boolean) {
-        val prefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
         val today = LocalDate.now()
         val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
-        val savedDate = prefs.getString(KEY_CLOCK_IN_DATE, "") ?: ""
         val now = LocalTime.now()
         val currentTime = "%02d:%02d".format(now.hour, now.minute)
 
-        val clockInTime = prefs.getString(KEY_CLOCK_IN_TIME, "") ?: ""
-        if (savedDate == todayStr && clockInTime.isNotEmpty()) {
-            prefs.edit { putString(KEY_CLOCK_OUT_TIME, currentTime) }
+        // 无 widget 数据兜底：直接写入当天数据库记录
+        runCatching {
+            val entryPoint = EntryPointAccessors.fromApplication(
+                context.applicationContext, WidgetClockEntryPoint::class.java
+            )
+            val scheduleRepo = entryPoint.scheduleRepository()
+            val record = scheduleRepo.getByDate(todayStr) ?: ScheduleRecord(todayStr)
+            val updated = if (isClockIn) record.copy(actualStartTime = currentTime)
+                else record.copy(actualEndTime = currentTime)
+            scheduleRepo.save(updated)
         }
         refreshWidgets(context, glanceId)
         Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
@@ -415,19 +375,10 @@ private fun ClockInWidgetContent() {
     else ClockInWidgetData()
 
     val context = LocalContext.current
-    val clockPrefs = context.getSharedPreferences(CLOCK_IN_PREFS, Context.MODE_PRIVATE)
-    val today = LocalDate.now()
-    val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
-    // 使用 data.clockInDate 作为参考日期（支持跨午夜场景）
-    val refDate = data.clockInDate.ifBlank { todayStr }
-    val savedDate = clockPrefs.getString(KEY_CLOCK_IN_DATE, "") ?: ""
-    // 优先用 data.actualStartTime/EndTime（syncWidget 一定保证新鲜），fallback 到 prefs（widget 内打卡未触发 syncWidget 场景）
-    val actualStart = data.actualStartTime.ifEmpty {
-        if (savedDate == refDate) clockPrefs.getString(KEY_CLOCK_IN_TIME, "") ?: "" else ""
-    }
-    val actualEnd = data.actualEndTime.ifEmpty {
-        if (savedDate == refDate) clockPrefs.getString(KEY_CLOCK_OUT_TIME, "") ?: "" else ""
-    }
+
+    // 打卡时间统一来自数据库（syncWidget 写入 data.actualStartTime/actualEndTime）
+    val actualStart = data.actualStartTime
+    val actualEnd = data.actualEndTime
 
     // 判断打卡状态
     val hasClockIn = actualStart.isNotEmpty()

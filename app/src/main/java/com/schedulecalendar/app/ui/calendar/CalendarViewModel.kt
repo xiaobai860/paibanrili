@@ -1124,11 +1124,9 @@ class CalendarViewModel @Inject constructor(
             (BUILTIN_STATUSES + state.value.allShiftStatuses).find { it.id == applied.statusId }?.name
         } ?: ""
 
-        // 5. 读取本地打卡状态（SharedPreferences）
-        val clockPrefs = context.getSharedPreferences("clock_in_widget_prefs", Context.MODE_PRIVATE)
-        val savedDate = clockPrefs.getString("clock_in_date", "") ?: ""
-        val actualStart = if (savedDate == targetDateStr) clockPrefs.getString("clock_in_time", "") ?: "" else ""
-        val actualEnd = if (savedDate == targetDateStr) clockPrefs.getString("clock_out_time", "") ?: "" else ""
+        // 5. 打卡时间统一来自数据库 ScheduleRecord（单一数据源），不再依赖独立 prefs 存储
+        val actualStart = targetRecord?.actualStartTime ?: ""
+        val actualEnd = targetRecord?.actualEndTime ?: ""
 
         val hasClockedIn = actualStart.isNotEmpty()
         val hasClockedOut = actualEnd.isNotEmpty()

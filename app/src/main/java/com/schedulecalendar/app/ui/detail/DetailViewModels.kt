@@ -153,11 +153,12 @@ class ScheduleDetailViewModel @Inject constructor(
         val linkedIds = shift?.linkedExtraIds ?: emptyList()
         updateRecord {
             if (linkedIds.isEmpty()) {
-                copy(shiftId = shiftId)
+                // 换班即清打卡：改班次时清空当天打卡时间，widget 不再显示旧班次遗留
+                copy(shiftId = shiftId, actualStartTime = null, actualEndTime = null)
             } else {
                 // 合并班次默认关联项目到当前已选项目（去重）
                 val merged = (extraItemIds + linkedIds).distinct()
-                copy(shiftId = shiftId, extraItemIds = merged)
+                copy(shiftId = shiftId, extraItemIds = merged, actualStartTime = null, actualEndTime = null)
             }
         }
     }
