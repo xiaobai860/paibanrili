@@ -271,14 +271,14 @@ class AppPreferences @Inject constructor(
         it[KEY_REMINDER_CLOCK_OUT] = enabled.toString()
     }
 
-    /** 提前提醒时间（分钟） */
+    /** 提前提醒时间（分钟），上班/下班默认均为 15 分钟 */
     suspend fun getReminderClockInMinutes(): Int =
         context.dataStore.data.first()[KEY_REMINDER_CLOCK_IN_MINUTES] ?: 15
     suspend fun saveReminderClockInMinutes(minutes: Int) = context.dataStore.edit {
         it[KEY_REMINDER_CLOCK_IN_MINUTES] = minutes
     }
     suspend fun getReminderClockOutMinutes(): Int =
-        context.dataStore.data.first()[KEY_REMINDER_CLOCK_OUT_MINUTES] ?: 0
+        context.dataStore.data.first()[KEY_REMINDER_CLOCK_OUT_MINUTES] ?: 15
     suspend fun saveReminderClockOutMinutes(minutes: Int) = context.dataStore.edit {
         it[KEY_REMINDER_CLOCK_OUT_MINUTES] = minutes
     }

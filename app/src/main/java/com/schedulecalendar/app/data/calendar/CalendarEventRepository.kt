@@ -200,34 +200,40 @@ class CalendarEventRepository @Inject constructor(
         // 先批量加载所有日历信息
         val calendarInfoMap = loadAllCalendarInfo()
 
-        context.contentResolver.query(
-            CalendarContract.Events.CONTENT_URI,
-            projection,
-            null, null,
-            "${CalendarContract.Events.DTSTART} ASC"
-        )?.use { cursor ->
-            while (cursor.moveToNext()) {
-                val eventId = cursor.getLong(0)
-                val calendarId = cursor.getLong(1)
-                val title = cursor.getString(2) ?: "无标题"
-                val description = cursor.getString(3)
-                val dtStart = cursor.getLong(4)
-                val dtEnd = cursor.getLong(5)
-                val allDay = cursor.getInt(6) == 1
-                val location = cursor.getString(7)
-                val rrule = cursor.getString(8)
-                val calInfo = calendarInfoMap[calendarId]
-                events.add(
-                    CalendarEventInfo(
-                        id = eventId, calendarId = calendarId, title = title,
-                        description = description, dtStart = dtStart, dtEnd = dtEnd,
-                        allDay = allDay, eventLocation = location,
-                        accountName = calInfo?.accountName ?: "",
-                        calendarDisplayName = calInfo?.displayName ?: "",
-                        rrule = rrule
+        // 系统日历查询：缺权限/日历账户异常时不应崩溃（调用方也有兜底，函数内自保护）
+        try {
+            context.contentResolver.query(
+                CalendarContract.Events.CONTENT_URI,
+                projection,
+                null, null,
+                "${CalendarContract.Events.DTSTART} ASC"
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val eventId = cursor.getLong(0)
+                    val calendarId = cursor.getLong(1)
+                    val title = cursor.getString(2) ?: "无标题"
+                    val description = cursor.getString(3)
+                    val dtStart = cursor.getLong(4)
+                    val dtEnd = cursor.getLong(5)
+                    val allDay = cursor.getInt(6) == 1
+                    val location = cursor.getString(7)
+                    val rrule = cursor.getString(8)
+                    val calInfo = calendarInfoMap[calendarId]
+                    events.add(
+                        CalendarEventInfo(
+                            id = eventId, calendarId = calendarId, title = title,
+                            description = description, dtStart = dtStart, dtEnd = dtEnd,
+                            allDay = allDay, eventLocation = location,
+                            accountName = calInfo?.accountName ?: "",
+                            calendarDisplayName = calInfo?.displayName ?: "",
+                            rrule = rrule
+                        )
                     )
-                )
+                }
             }
+        } catch (e: Exception) {
+            android.util.Log.w("CalendarEventRepo", "查询系统日历事件失败", e)
+            return emptyList()
         }
         allEventsCache = events
         allEventsCacheTime = System.currentTimeMillis()

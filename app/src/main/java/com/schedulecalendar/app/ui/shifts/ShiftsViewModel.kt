@@ -34,14 +34,20 @@ data class ShiftsState(
     val statuses: List<ShiftStatus>    = emptyList()
 )
 
-/** 导出数据包 v5（v4 + 增加 extraItems） */
+/** 导出数据包 v6（v5 + 增加排序顺序与颜色索引，覆盖班次 Tab 内全部配置） */
 data class ShiftExportData(
-    val version: Int                     = 5,
+    val version: Int                     = 6,
     val exportTime: String               = "",
     val shifts: List<Shift>              = emptyList(),
     val globalBreaks: List<ShiftBreak>   = emptyList(),
     val shiftStatuses: List<ShiftStatus> = emptyList(),
-    val extraItems: List<ExtraItem>      = emptyList()
+    val extraItems: List<ExtraItem>      = emptyList(),
+    val shiftOrder: List<String>?        = null,
+    val statusOrder: List<String>?       = null,
+    val extraOrder: List<String>?        = null,
+    val breakOrder: List<String>?        = null,
+    val shiftColorIndex: Int?            = null,
+    val statusColorIndex: Int?           = null
 )
 
 @HiltViewModel

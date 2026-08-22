@@ -14,6 +14,7 @@ import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
 @HiltAndroidApp
+@OptIn(FlowPreview::class)
 class ScheduleApp : Application() {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

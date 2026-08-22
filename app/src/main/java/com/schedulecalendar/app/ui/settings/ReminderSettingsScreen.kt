@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -144,22 +145,22 @@ fun ReminderSettingsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            FilterChip(
+                            CompactChoiceChip(
                                 selected = state.method == "alarm",
                                 onClick = { vm.setMethod("alarm") },
-                                label = { Text("闹钟提醒") },
+                                label = "闹钟提醒",
                                 modifier = Modifier.weight(1f)
                             )
-                            FilterChip(
+                            CompactChoiceChip(
                                 selected = state.method == "calendar",
                                 onClick = { vm.setMethod("calendar") },
-                                label = { Text("日历提醒") },
+                                label = "日历提醒",
                                 modifier = Modifier.weight(1f)
                             )
-                            FilterChip(
+                            CompactChoiceChip(
                                 selected = state.method == "notify",
                                 onClick = { vm.setMethod("notify") },
-                                label = { Text("仅通知栏") },
+                                label = "仅通知栏",
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -293,7 +294,7 @@ private fun AdvanceTimeCard(
                     } else {
                         selectedMinutes == optionMinutes
                     }
-                    FilterChip(
+                    CompactChoiceChip(
                         selected = isSelected,
                         onClick = {
                             if (isCustom) {
@@ -302,22 +303,13 @@ private fun AdvanceTimeCard(
                                 onSelect(optionMinutes)
                             }
                         },
-                        label = {
-                            Text(
-                                when {
-                                    isCustom -> "自定义"
-                                    optionMinutes >= 60 -> "${optionMinutes / 60}小时"
-                                    else -> "${optionMinutes}分钟"
-                                },
-                                fontSize = 13.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                        label = when {
+                            // 英文简写单位，缩短文本避免在 4 等分窄框内换行
+                            isCustom -> "自定义"
+                            optionMinutes >= 60 -> "${optionMinutes / 60}h"
+                            else -> "${optionMinutes}min"
                         },
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 40.dp),
-                        colors = FilterChipDefaults.filterChipColors()
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -471,6 +463,55 @@ private fun CustomAdvanceTimeDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * 紧凑型选择框：替代 FilterChip。
+ *
+ * FilterChip 内部左右内边距固定（Material3 未提供调整参数），在 4 等分窄框内文本容易换行；
+ * 此组件内边距可调（horizontal 4dp），文本居中、贴框显示，放不下时才自然换行（不裁切、不省略）。
+ * 选中态使用主题主色 + 反白文字，对比明显。
+ */
+@Composable
+private fun CompactChoiceChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    val container = if (selected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+    val content   = if (selected) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = container,
+        // 未选态加灰色描边，让按钮形状可见；选中态实心高亮（无边框）
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.outlineVariant
+        ),
+        modifier = modifier
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 36.dp)
+                .padding(horizontal = 4.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = label,
+                color = content,
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                textAlign = TextAlign.Center,
+                maxLines = 2
+            )
         }
     }
 }

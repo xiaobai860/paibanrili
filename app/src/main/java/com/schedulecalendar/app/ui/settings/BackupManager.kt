@@ -452,13 +452,10 @@ class BackupManager @Inject constructor(
 
     private suspend fun buildAppDataJson(): String {
         val now = LocalDateTime.now().format(exportFormatter)
-        val today = LocalDate.now()
-        val allRecords = (-11..0).flatMap { offset ->
-            val ym = today.plusMonths(offset.toLong()).let { YearMonth.of(it.year, it.month) }
-            scheduleRepo.getByMonth("%04d-%02d".format(ym.year, ym.monthValue))
-        }
+        // 全量备份：导出所有排班记录（含历史与未来），不再仅限最近 12 个月，避免恢复后更早数据丢失
+        val allRecords = scheduleRepo.getAll()
         val backup = AppDataBackup(
-            version = 2, exportTime = now,
+            version = 3, exportTime = now,
             scheduleRecords = allRecords,
             shifts = shiftRepo.getAll().filter { !it.builtIn },
             globalBreaks = breakRepo.getAll(),
@@ -478,6 +475,7 @@ class BackupManager @Inject constructor(
             reminderClockOut = prefs.getReminderClockOut(),
             reminderClockInMinutes = prefs.getReminderClockInMinutes(),
             reminderClockOutMinutes = prefs.getReminderClockOutMinutes(),
+            reminderNotifyBar = prefs.getReminderNotifyBar(),
             // ── 排序顺序 ──
             shiftOrder = prefs.getShiftOrder(),
             statusOrder = prefs.getStatusOrder(),
@@ -493,11 +491,18 @@ class BackupManager @Inject constructor(
     private suspend fun buildShiftConfigJson(): String {
         val now = LocalDateTime.now().format(exportFormatter)
         val data = com.schedulecalendar.app.ui.shifts.ShiftExportData(
-            version = 5, exportTime = now,
+            version = 6, exportTime = now,
             shifts = shiftRepo.getAll().filter { !it.builtIn },
             globalBreaks = breakRepo.getAll(),
             shiftStatuses = statusRepo.getAll().filter { !it.builtIn },
-            extraItems = extraRepo.getAll()
+            extraItems = extraRepo.getAll(),
+            // 班次 Tab 内配置：排序顺序与颜色索引（v6 新增）
+            shiftOrder = prefs.getShiftOrder().takeIf { it.isNotEmpty() },
+            statusOrder = prefs.getStatusOrder().takeIf { it.isNotEmpty() },
+            extraOrder = prefs.getExtraOrder().takeIf { it.isNotEmpty() },
+            breakOrder = prefs.getBreakOrder().takeIf { it.isNotEmpty() },
+            shiftColorIndex = prefs.getShiftColorIndex(),
+            statusColorIndex = prefs.getStatusColorIndex()
         )
         return gson.toJson(data)
     }
@@ -505,12 +510,13 @@ class BackupManager @Inject constructor(
     private suspend fun restoreAppData(json: String) {
         val backup = gson.fromJson(json, AppDataBackup::class.java)
             ?: throw IllegalArgumentException("JSON 解析失败")
-        scheduleRepo.saveAll(backup.scheduleRecords)
-        backup.shifts.forEach { shiftRepo.save(it.copy(builtIn = false)) }
+        // 旧版本/损坏备份可能缺失列表字段，orEmpty 防御 NPE
+        scheduleRepo.saveAll(backup.scheduleRecords.orEmpty())
+        backup.shifts.orEmpty().forEach { shiftRepo.save(it.copy(builtIn = false)) }
         breakRepo.deleteAll()
-        backup.globalBreaks.forEach { breakRepo.save(it) }
-        backup.shiftStatuses.filter { !it.builtIn }.forEach { statusRepo.save(it) }
-        backup.extraItems.forEach { extraRepo.save(it) }
+        backup.globalBreaks.orEmpty().forEach { breakRepo.save(it) }
+        backup.shiftStatuses.orEmpty().filter { !it.builtIn }.forEach { statusRepo.save(it) }
+        backup.extraItems.orEmpty().forEach { extraRepo.save(it) }
         backup.salaryConfig?.let { prefs.saveSalaryConfig(it) }
         backup.attendConfig?.let { prefs.saveAttendConfig(it) }
         prefs.saveScheduleRule(backup.scheduleRule)
@@ -532,6 +538,7 @@ class BackupManager @Inject constructor(
         if (backup.reminderClockOut != null) prefs.saveReminderClockOut(backup.reminderClockOut)
         if (backup.reminderClockInMinutes != null) prefs.saveReminderClockInMinutes(backup.reminderClockInMinutes)
         if (backup.reminderClockOutMinutes != null) prefs.saveReminderClockOutMinutes(backup.reminderClockOutMinutes)
+        if (backup.reminderNotifyBar != null) prefs.saveReminderNotifyBar(backup.reminderNotifyBar)
         // ── 恢复排序顺序 ──
         if (backup.shiftOrder != null) prefs.saveShiftOrder(backup.shiftOrder)
         if (backup.statusOrder != null) prefs.saveStatusOrder(backup.statusOrder)
@@ -545,12 +552,19 @@ class BackupManager @Inject constructor(
     private suspend fun restoreShiftConfig(json: String) {
         val data = gson.fromJson(json, com.schedulecalendar.app.ui.shifts.ShiftExportData::class.java)
             ?: throw IllegalArgumentException("JSON 解析失败")
-        data.shifts.filter { !it.builtIn }.forEach { shiftRepo.save(it.copy(builtIn = false)) }
+        data.shifts.orEmpty().filter { !it.builtIn }.forEach { shiftRepo.save(it.copy(builtIn = false)) }
         breakRepo.deleteAll()
-        data.globalBreaks.forEach { breakRepo.save(it) }
-        data.shiftStatuses.filter { !it.builtIn }.forEach { statusRepo.save(it) }
+        data.globalBreaks.orEmpty().forEach { breakRepo.save(it) }
+        data.shiftStatuses.orEmpty().filter { !it.builtIn }.forEach { statusRepo.save(it) }
         extraRepo.deleteAll()
-        data.extraItems.forEach { extraRepo.save(it) }
+        data.extraItems.orEmpty().forEach { extraRepo.save(it) }
+        // v6：恢复排序顺序与颜色索引（旧版备份为 null 时跳过，保持现状）
+        data.shiftOrder?.let { prefs.saveShiftOrder(it) }
+        data.statusOrder?.let { prefs.saveStatusOrder(it) }
+        data.extraOrder?.let { prefs.saveExtraOrder(it) }
+        data.breakOrder?.let { prefs.saveBreakOrder(it) }
+        data.shiftColorIndex?.let { prefs.saveShiftColorIndex(it) }
+        data.statusColorIndex?.let { prefs.saveStatusColorIndex(it) }
     }
 
     private fun listBackupFiles(type: BackupType, dir: File): List<BackupFile> {
@@ -673,6 +687,7 @@ private data class AppDataBackup(
     val reminderClockOut: Boolean? = null,
     val reminderClockInMinutes: Int? = null,
     val reminderClockOutMinutes: Int? = null,
+    val reminderNotifyBar: Boolean? = null,
     val shiftOrder: List<String>? = null,
     val statusOrder: List<String>? = null,
     val extraOrder: List<String>? = null,

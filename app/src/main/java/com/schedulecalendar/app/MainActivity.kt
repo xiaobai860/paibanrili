@@ -39,7 +39,12 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_NAVIGATE_DATE = "navigate_date"
     }
 
-    var pendingNavigateDate: String? = null
+    /**
+     * 小组件点击日期跳转的目标日期（yyyy-MM-dd）。
+     * 用 Compose 状态承载：Activity 已存活时 onNewIntent 写入也能触发 CalendarScreen 重组消费，
+     * 否则仅冷启动（onCreate 首次组合）生效。
+     */
+    var pendingNavigateDate by mutableStateOf<String?>(null)
         private set
 
     // -- 生命周期 ---------------------------------------------------------------

@@ -48,12 +48,15 @@ object CalcUtils {
     }
 
     fun timeToMin(t: String): Int {
-        return timeToMinCache[t] ?: run {
-            val parts = t.split(":")
-            val v = if (parts.size < 2) 0
-            else (parts[0].toIntOrNull() ?: 0) * 60 + (parts[1].toIntOrNull() ?: 0)
-            timeToMinCache[t] = v
-            v
+        // 该函数被主线程与后台计算线程并发调用，LRU 缓存需同步保护
+        synchronized(timeToMinCache) {
+            return timeToMinCache[t] ?: run {
+                val parts = t.split(":")
+                val v = if (parts.size < 2) 0
+                else (parts[0].toIntOrNull() ?: 0) * 60 + (parts[1].toIntOrNull() ?: 0)
+                timeToMinCache[t] = v
+                v
+            }
         }
     }
 
@@ -100,7 +103,8 @@ object CalcUtils {
         ignoreLateLeave: Boolean,
         cfg: AttendConfig
     ): Pair<String, String> {
-        val grain    = cfg.overtimeGranMin
+        // 考勤粒度不允许为 0（防止配置异常时除零崩溃），最小按 1 分钟计
+        val grain    = cfg.overtimeGranMin.coerceAtLeast(1)
         val lateTol  = cfg.lateToleranceMin
         val earlyTol = cfg.earlyLeaveToleranceMin
 
@@ -494,7 +498,10 @@ object CalcUtils {
             salaryFp = salaryConfig.hashCode(),
             attendFp = attendConfig.hashCode()
         )
-        monthDetailsCache[key]?.let { return it }
+        // 该缓存被主线程与后台计算线程并发访问，需同步保护（计算在锁外执行，仅锁缓存读写）
+        synchronized(monthDetailsCache) {
+            monthDetailsCache[key]?.let { return it }
+        }
 
         val days   = daysInMonth(year, month)
         val result = mutableListOf<DayScheduleDetail>()
@@ -524,7 +531,9 @@ object CalcUtils {
                 extras        = extras
             ))
         }
-        monthDetailsCache[key] = result
+        synchronized(monthDetailsCache) {
+            monthDetailsCache[key] = result
+        }
         return result
     }
 

@@ -4,8 +4,8 @@ package com.schedulecalendar.app.ui.navigation
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -75,8 +75,9 @@ fun AppNavHost() {
         bottomBar = {
             AnimatedVisibility(
                 visible = showBottomBar,
-                enter = slideInVertically(initialOffsetY = { it }),
-                exit = slideOutVertically(targetOffsetY = { it })
+                // 用淡入淡出替代位移动画：位移会在快速切换 Tab 时触发整条导航栏的布局/绘制开销
+                enter = fadeIn(),
+                exit = fadeOut()
             ) {
                 NavigationBar {
                     tabs.forEach { tab ->
@@ -92,6 +93,8 @@ fun AppNavHost() {
                                 val now = android.os.SystemClock.elapsedRealtime()
                                 if (now - lastNavClickTime < navDebounceIntervalMs) return@NavigationBarItem
                                 lastNavClickTime = now
+                                // 切 Tab 时重置日历子模式（批量/复制/删除）状态，避免残留影响其他页返回键
+                                calendarSubModeActive = false
                                 navController.navigate(tab.route) {
                                     popUpTo(navController.graph.startDestinationRoute ?: return@navigate) {
                                         saveState = true

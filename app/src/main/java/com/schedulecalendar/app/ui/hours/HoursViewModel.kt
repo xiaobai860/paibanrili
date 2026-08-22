@@ -11,6 +11,7 @@ import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -85,7 +86,9 @@ class HoursViewModel @Inject constructor(
 
     private fun loadMonth(year: Int, month: Int) {
         loadJob?.cancel()
-        loadJob = viewModelScope.launch {
+        // 整月工时/明细/趋势计算量大（含多次 Room 查询与逐日遍历），必须放后台线程，
+        // 否则首次进入统计 Tab 时阻塞主线程造成掉帧；_state.update 为原子操作可跨线程。
+        loadJob = viewModelScope.launch(Dispatchers.Default) {
             // 仅首次加载（actual为空）时显示loading spinner，后续刷新保持现有内容
             if (_state.value.details.isEmpty()) {
                 _state.update { it.copy(loading = true) }
