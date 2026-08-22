@@ -36,8 +36,8 @@ import com.schedulecalendar.app.domain.model.HolidayData
 import com.schedulecalendar.app.domain.model.LunarCalendar
 import java.time.LocalDate
 
-private const val CALENDAR_WIDGET_DATA_PREFS = "calendar_widget_data_prefs"
-private const val KEY_CALENDAR_WIDGET_JSON = "calendar_widget_json"
+internal const val CALENDAR_WIDGET_DATA_PREFS = "calendar_widget_data_prefs"
+internal const val KEY_CALENDAR_WIDGET_JSON = "calendar_widget_json"
 
 data class CalendarWidgetDay(
     val day: Int = 0, val dateStr: String = "",
@@ -95,14 +95,12 @@ class OpenDateAction : ActionCallback {
     }
 }
 
-/** 小组件刷新动作回调：触发 UI 重渲染（数据同步由 APP ViewModel 负责） */
+/** 小组件刷新动作回调：回源数据库重新计算并写入数据 */
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        // 仅触发 UI 重渲染，从 Glance DataStore 状态中重新加载已有数据
-        // 数据同步由 CalendarViewModel.syncCalendarWidget 负责，确保数据源一致
-        CalendarGlanceWidget().update(context, glanceId)
+        val ok = syncAllWidgets(context)
         Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, "刷新成功", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, if (ok) "刷新成功" else "刷新失败", Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -149,7 +147,6 @@ private fun CalendarWidgetContent(
     val visibleRows = minOf(data.totalRows, maxVisibleRows)
     val headerUseBig = isLarge && !compact
     val headerFs = if (headerUseBig) 17.sp else 14.sp
-    val refreshIconFs = if (headerUseBig) 16.sp else 14.sp
     Box(
         modifier = GlanceModifier.fillMaxSize()
             .background(ColorProvider(ubg))
@@ -168,24 +165,26 @@ private fun CalendarWidgetContent(
                     style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = headerFs, fontWeight = FontWeight.Bold)
                 )
                 Spacer(modifier = GlanceModifier.defaultWeight())
-                Text(
-                    text = "⚙",
+                widgetIcon(
+                    context = context,
+                    resId = com.schedulecalendar.app.R.drawable.ic_widget_gear,
+                    color = if (isDark) utcDark else utc,
                     modifier = GlanceModifier
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .size(20.dp)
                         .clickable(
                             actionRunCallback<OpenWidgetConfigAction>(
                                 parameters = actionParametersOf(KEY_TYPE to WIDGET_TYPE_CALENDAR)
                             )
-                        ),
-                    style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = refreshIconFs, fontWeight = FontWeight.Bold)
+                        )
                 )
                 Spacer(modifier = GlanceModifier.width(4.dp))
-                Text(
-                    text = "↻",
+                widgetIcon(
+                    context = context,
+                    resId = com.schedulecalendar.app.R.drawable.ic_widget_refresh,
+                    color = if (isDark) utcDark else utc,
                     modifier = GlanceModifier
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                        .clickable(actionRunCallback<RefreshWidgetAction>()),
-                    style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = refreshIconFs, fontWeight = FontWeight.Bold)
+                        .size(20.dp)
+                        .clickable(actionRunCallback<RefreshWidgetAction>())
                 )
             }
             Row(modifier = GlanceModifier.fillMaxWidth()) {

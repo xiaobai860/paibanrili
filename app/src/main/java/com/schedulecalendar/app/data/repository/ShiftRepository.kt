@@ -5,6 +5,8 @@ import com.schedulecalendar.app.data.db.dao.ShiftDao
 import com.schedulecalendar.app.domain.model.BUILTIN_SHIFTS
 import com.schedulecalendar.app.domain.model.Shift
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -13,6 +15,12 @@ import javax.inject.Singleton
 class ShiftRepository @Inject constructor(
     private val dao: ShiftDao
 ) {
+    /** 班次数据变更信号：写操作后发出，供小组件等全局监听者响应 */
+    private val _changeSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
+    val changeSignal: Flow<Unit> = _changeSignal.asSharedFlow()
+
+    private suspend fun notifyChanged() { _changeSignal.tryEmit(Unit) }
+
     /** 观察有效（未归档）的班次 */
     fun observeActive(): Flow<List<Shift>> = dao.observeActive().map { list -> list.map { it.toDomain() } }
     /** 观察所有班次（含已归档 + 内置班次，用于日历网格历史数据展示查找） */
@@ -36,11 +44,15 @@ class ShiftRepository @Inject constructor(
     suspend fun getById(id: String): Shift? =
         BUILTIN_SHIFTS.find { it.id == id } ?: dao.getById(id)?.toDomain()
 
-    suspend fun save(shift: Shift) { if (!shift.builtIn) dao.upsert(shift.toEntity()) }
-    suspend fun saveAll(shifts: List<Shift>) =
-        dao.upsertAll(shifts.filter { !it.builtIn }.map { it.toEntity() })
+    suspend fun save(shift: Shift) {
+        if (!shift.builtIn) { dao.upsert(shift.toEntity()); notifyChanged() }
+    }
+    suspend fun saveAll(shifts: List<Shift>) {
+        val list = shifts.filter { !it.builtIn }.map { it.toEntity() }
+        if (list.isNotEmpty()) { dao.upsertAll(list); notifyChanged() }
+    }
     /** 归档项目（逻辑删除） */
-    suspend fun archive(id: String) = dao.archiveById(id, java.time.Instant.now().toString())
-    suspend fun delete(id: String) = dao.deleteById(id)
-    suspend fun deleteAll() = dao.deleteAll()
+    suspend fun archive(id: String) { dao.archiveById(id, java.time.Instant.now().toString()); notifyChanged() }
+    suspend fun delete(id: String) { dao.deleteById(id); notifyChanged() }
+    suspend fun deleteAll() { dao.deleteAll(); notifyChanged() }
 }

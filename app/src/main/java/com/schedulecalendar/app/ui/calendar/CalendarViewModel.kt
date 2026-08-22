@@ -142,16 +142,6 @@ class CalendarViewModel @Inject constructor(
     /** 当前月份数据收集 Job，切月时取消旧 Job 再启新 Job，防止 collector 累积泄漏 */
     private var collectJob: Job? = null
 
-    /** Widget 同步去抖 Job：数据变化后延迟合并写盘，避免每次 collect 都立即同步小组件 */
-    private var widgetSyncJob: Job? = null
-
-    /**
-     * 上次同步 widget 时数据指纹（shifts+schedules+statuses+year+month 组合）。
-     * 只有指纹变化（数据真变）才 dirty 触发 widget.update，避免切 Tab / ViewModel 重建时
-     * 数据未变也调用 widget.update 触发主线程 AppWidgetManager.updateAppWidgetIds Binder 阻塞。
-     */
-    private var lastWidgetSyncFp: Int = 0
-
     init {
         loadCurrentMonth()
         // 延迟执行非关键初始化，必须放到 Dispatchers.IO，
@@ -255,24 +245,8 @@ class CalendarViewModel @Inject constructor(
                         allShiftStatuses = allShiftStatuses,
                         loading        = false
                     )}
-                    // Widget 同步（去抖合并 + 后台线程 + 脏数据判断）
-                    // 仅当 shifts/schedules/statuses/year/month 组合指纹变化时才真正同步小组件，
-                    // 避免切 Tab / ViewModel 重建时重复调用 widget.update 触发主线程 AppWidgetManager Binder。
-                    val widgetFp = listOf(allShifts, schedules, allShiftStatuses, s.year, s.month).hashCode()
-                    if (widgetFp != lastWidgetSyncFp) {
-                        widgetSyncJob?.cancel()
-                        widgetSyncJob = viewModelScope.launch(Dispatchers.Default) {
-                            kotlinx.coroutines.delay(150)
-                            syncWidget(allShifts, schedules)
-                            syncCalendarWidget(
-                                year = s.year, month = s.month,
-                                allShifts = allShifts, schedules = schedules,
-                                allShiftStatuses = allShiftStatuses,
-                                selectedDate = _state.value.selectedDate
-                            )
-                            lastWidgetSyncFp = widgetFp
-                        }
-                    }
+                    // Widget 同步由 ScheduleApp 全局数据变更信号统一驱动（任何排班/班次/状态落库后 400ms 自动同步）。
+                    // 不再在此处额外同步：避免「ViewModel 同步 + 全局信号」双路 update 在部分 OEM 桌面上被丢弃。
                 }
                 // 加载选中日期的纪念日与日程（首次加载或切月后）
                 val selDate = _state.value.selectedDate ?: "%04d-%02d-%02d".format(s.year, s.month, LocalDate.now().dayOfMonth)
@@ -517,7 +491,7 @@ class CalendarViewModel @Inject constructor(
         val rec = (scheduleRepo.getByDate(date) ?: ScheduleRecord(date))
         scheduleRepo.save(rec.copy(actualStartTime = time))
         _uiEvent.send(CalendarUiEvent.ShowMessage("已记录上班打卡 $time"))
-        syncClockInWidget()
+        // 组件同步由 ScheduleApp 全局变更信号统一驱动（落库后 400ms 自动更新）
     }
 
     fun clockOut(date: String, time: String) = viewModelScope.launch {
@@ -539,7 +513,7 @@ class CalendarViewModel @Inject constructor(
         val targetRec = scheduleRepo.getByDate(actualTargetDate) ?: ScheduleRecord(actualTargetDate)
         scheduleRepo.save(targetRec.copy(actualEndTime = time))
         _uiEvent.send(CalendarUiEvent.ShowMessage("已记录下班打卡 $time"))
-        syncClockInWidget()
+        // 组件同步由 ScheduleApp 全局变更信号统一驱动（落库后 400ms 自动更新）
     }
 
     /** 补填漏打卡时间：内置附加状态写入 appliedStatus（并 clamp 到班次范围），普通写入 actualTime */
@@ -1177,10 +1151,5 @@ class CalendarViewModel @Inject constructor(
             widgetClockOutTime = actualEnd
         )
         ScheduleGlanceWidget.updateWidgetData(context, widgetData)
-    }
-
-    private suspend fun syncClockInWidget() {
-        val s = _state.value
-        syncWidget(s.allShifts, s.schedules)
     }
 }

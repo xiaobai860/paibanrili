@@ -29,9 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
-import androidx.glance.appwidget.GlanceAppWidgetManager
 import com.schedulecalendar.app.ui.theme.ScheduleCalendarTheme
-import kotlinx.coroutines.runBlocking
 
 // ── 配置持久化键 ──────────────────────────────────────────────────────
 const val WIDGET_CONFIG_PREFS = "widget_config_prefs"
@@ -88,18 +86,8 @@ class WidgetConfigActivity : ComponentActivity() {
     }
 
     private fun finishConfig(appWidgetId: Int) {
-        val appCtx = applicationContext
-        // runBlocking 保证 finish() 前同步完成更新，防止国产 ROM 销毁 Activity 后 IO 协程被丢弃
-        runBlocking {
-            runCatching {
-                CalendarGlanceWidget().let { w ->
-                    GlanceAppWidgetManager(appCtx).getGlanceIds(w.javaClass).forEach { w.update(appCtx, it) }
-                }
-                ScheduleGlanceWidget().let { w ->
-                    GlanceAppWidgetManager(appCtx).getGlanceIds(w.javaClass).forEach { w.update(appCtx, it) }
-                }
-            }
-        }
+        // 组件更新由 ScheduleApp 的「退到后台」钩子统一驱动（桌面可见时刻单次更新，避免 Activity 关闭瞬间
+        // 的桌面切换窗口期更新被 OEM 桌面丢弃）；此处不再自行 update。
         if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
             val resultIntent = Intent().apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)

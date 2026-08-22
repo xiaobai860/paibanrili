@@ -5,6 +5,8 @@ import com.schedulecalendar.app.data.db.dao.ShiftStatusDao
 import com.schedulecalendar.app.domain.model.BUILTIN_STATUSES
 import com.schedulecalendar.app.domain.model.ShiftStatus
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -13,6 +15,12 @@ import javax.inject.Singleton
 class ShiftStatusRepository @Inject constructor(
     private val dao: ShiftStatusDao
 ) {
+    /** 附加状态数据变更信号：写操作后发出，供小组件等全局监听者响应 */
+    private val _changeSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
+    val changeSignal: Flow<Unit> = _changeSignal.asSharedFlow()
+
+    private suspend fun notifyChanged() { _changeSignal.tryEmit(Unit) }
+
     /** 观察有效（未归档）的状态 */
     fun observeActive(): Flow<List<ShiftStatus>> =
         dao.observeActive().map { list -> list.map { it.toDomain() } }
@@ -47,9 +55,11 @@ class ShiftStatusRepository @Inject constructor(
             .forEach { dao.upsert(it.toEntity()) }
     }
 
-    suspend fun save(item: ShiftStatus) { if (!item.builtIn) dao.upsert(item.toEntity()) }
+    suspend fun save(item: ShiftStatus) {
+        if (!item.builtIn) { dao.upsert(item.toEntity()); notifyChanged() }
+    }
     /** 归档项目（逻辑删除） */
-    suspend fun archive(id: String) = dao.archiveById(id, java.time.Instant.now().toString())
-    suspend fun delete(id: String) = dao.deleteById(id)
-    suspend fun deleteAllUserDefined() = dao.deleteAllUserDefined()
+    suspend fun archive(id: String) { dao.archiveById(id, java.time.Instant.now().toString()); notifyChanged() }
+    suspend fun delete(id: String) { dao.deleteById(id); notifyChanged() }
+    suspend fun deleteAllUserDefined() { dao.deleteAllUserDefined(); notifyChanged() }
 }

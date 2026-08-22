@@ -15,7 +15,7 @@ class ScheduleRepository @Inject constructor(
     private val dao: ScheduleRecordDao
 ) {
     /** 数据变更信号：写操作后发出，供 ViewModel 响应刷新 */
-    private val _refreshSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val _refreshSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val refreshSignal: Flow<Unit> = _refreshSignal.asSharedFlow()
 
     private suspend fun notifyChanged() { _refreshSignal.tryEmit(Unit) }

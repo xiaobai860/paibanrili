@@ -40,6 +40,8 @@ import dagger.hilt.components.SingletonComponent
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // ── 打开小组件样式配置页 ──────────────────────────────────────────
 class OpenWidgetConfigAction : ActionCallback {
@@ -58,11 +60,13 @@ class OpenWidgetConfigAction : ActionCallback {
     }
 }
 
-/** 2x1 打卡组件手动刷新：触发自身重渲染（数据同步由 APP ViewModel 负责） */
+/** 2x1 打卡组件手动刷新：回源数据库重新计算并写入数据 */
 class RefreshScheduleWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        ScheduleGlanceWidget().update(context, glanceId)
-        Toast.makeText(context, "刷新成功", Toast.LENGTH_SHORT).show()
+        val ok = syncAllWidgets(context)
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(context, if (ok) "刷新成功" else "刷新失败", Toast.LENGTH_SHORT).show()
+        }
     }
 }
 
@@ -137,8 +141,10 @@ class WidgetClockInAction : ActionCallback {
             .getString(KEY_WIDGET_JSON, "") ?: ""
         val data = runCatching { Gson().fromJson(prefsJson, ClockInWidgetData::class.java) }
             .getOrElse { ClockInWidgetData() }
+        android.util.Log.d("WIDGET_DBG", "clockIn start date=${data.clockInDate} jsonLen=${prefsJson.length}")
 
         if (data.clockInDate.isBlank()) {
+            android.util.Log.d("WIDGET_DBG", "clockIn fallback path")
             fallbackClock(context, glanceId, true)
             return
         }
@@ -149,7 +155,7 @@ class WidgetClockInAction : ActionCallback {
         val hasBuiltInStatus = data.appliedStatusId.isNotBlank() && data.isBuiltInStatus
 
         // 持久化到数据库（widget 数据真值统一来自 ScheduleRecord）
-        runCatching {
+        try {
             val entryPoint = EntryPointAccessors.fromApplication(
                 context.applicationContext, WidgetClockEntryPoint::class.java
             )
@@ -187,12 +193,20 @@ class WidgetClockInAction : ActionCallback {
             }
 
             scheduleRepo.save(record)
+            android.util.Log.d("WIDGET_DBG", "clockIn saved target=$targetDate time=$currentTime")
+        } catch (e: Exception) {
+            android.util.Log.e("WIDGET_DBG", "clockIn save failed", e)
         }
 
-        // 刷新小组件
-        refreshWidgets(context, glanceId)
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, "已打上班卡 $currentTime", Toast.LENGTH_SHORT).show()
+        // 刷新小组件：数据落库后由 ScheduleApp 全局变更信号自动触发同步（避免动作内多次 update 被桌面丢弃）
+        android.util.Log.d("WIDGET_DBG", "clockIn posting toast")
+        Handler(Looper.getMainLooper()).postDelayed({
+            Toast.makeText(context.applicationContext, "已打上班卡 $currentTime", Toast.LENGTH_SHORT).show()
+        }, 500)
+        // 兜底：信号同步可能落在桌面「交互窗口期」被丢弃，延迟补一次单路更新
+        widgetFallbackScope.launch {
+            delay(1200)
+            runCatching { syncAllWidgets(context.applicationContext) }
         }
     }
 
@@ -213,7 +227,7 @@ class WidgetClockInAction : ActionCallback {
                 else record.copy(actualEndTime = currentTime)
             scheduleRepo.save(updated)
         }
-        refreshWidgets(context, glanceId)
+        // 全局变更信号会自动触发同步
         Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
     }
 }
@@ -246,7 +260,7 @@ class WidgetClockOutAction : ActionCallback {
         val hasBuiltInStatus = data.appliedStatusId.isNotBlank() && data.isBuiltInStatus
 
         // 持久化到数据库（widget 数据真值统一来自 ScheduleRecord）
-        runCatching {
+        try {
             val entryPoint = EntryPointAccessors.fromApplication(
                 context.applicationContext, WidgetClockEntryPoint::class.java
             )
@@ -290,12 +304,20 @@ class WidgetClockOutAction : ActionCallback {
             }
 
             scheduleRepo.save(record)
+            android.util.Log.d("WIDGET_DBG", "clockOut saved target=$targetDate time=$currentTime")
+        } catch (e: Exception) {
+            android.util.Log.e("WIDGET_DBG", "clockOut save failed", e)
         }
 
-        // 刷新小组件
-        refreshWidgets(context, glanceId)
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, "已打下班卡 $currentTime", Toast.LENGTH_SHORT).show()
+        // 刷新小组件：数据落库后由 ScheduleApp 全局变更信号自动触发同步
+        android.util.Log.d("WIDGET_DBG", "clockOut posting toast")
+        Handler(Looper.getMainLooper()).postDelayed({
+            Toast.makeText(context.applicationContext, "已打下班卡 $currentTime", Toast.LENGTH_SHORT).show()
+        }, 500)
+        // 兜底：信号同步可能落在桌面「交互窗口期」被丢弃，延迟补一次单路更新
+        widgetFallbackScope.launch {
+            delay(1200)
+            runCatching { syncAllWidgets(context.applicationContext) }
         }
     }
 
@@ -316,17 +338,8 @@ class WidgetClockOutAction : ActionCallback {
                 else record.copy(actualEndTime = currentTime)
             scheduleRepo.save(updated)
         }
-        refreshWidgets(context, glanceId)
+        // 全局变更信号会自动触发同步
         Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
-    }
-}
-
-/** 刷新两个小组件 */
-private suspend fun refreshWidgets(context: Context, glanceId: GlanceId) {
-    val widget = ScheduleGlanceWidget()
-    widget.update(context, glanceId)
-    CalendarGlanceWidget().let { w ->
-        GlanceAppWidgetManager(context).getGlanceIds(w.javaClass).forEach { w.update(context, it) }
     }
 }
 
@@ -471,32 +484,27 @@ private fun ClockInWidgetContent() {
                 } else {
                     Spacer(modifier = GlanceModifier.defaultWeight())
                 }
-                Text(
-                    text = "⚙",
+                Spacer(modifier = GlanceModifier.width(4.dp))
+                widgetIcon(
+                    context = context,
+                    resId = com.schedulecalendar.app.R.drawable.ic_widget_gear,
+                    color = if (isDark) utcDark.copy(alpha = 0.4f) else utc.copy(alpha = 0.4f),
                     modifier = GlanceModifier
-                        .padding(start = 4.dp)
+                        .size(18.dp)
                         .clickable(
                             actionRunCallback<OpenWidgetConfigAction>(
                                 parameters = actionParametersOf(OpenWidgetConfigAction.KEY_TYPE to WIDGET_TYPE_SCHEDULE)
                             )
-                        ),
-                    style = TextStyle(
-                        color = pickColor(utc.copy(alpha = 0.4f), utcDark.copy(alpha = 0.4f), isDark),
-                        fontSize = 12.sp
-                    ),
-                    maxLines = 1
+                        )
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
-                Text(
-                    text = "↻",
+                widgetIcon(
+                    context = context,
+                    resId = com.schedulecalendar.app.R.drawable.ic_widget_refresh,
+                    color = if (isDark) utcDark.copy(alpha = 0.4f) else utc.copy(alpha = 0.4f),
                     modifier = GlanceModifier
-                        .padding(start = 2.dp)
-                        .clickable(actionRunCallback<RefreshScheduleWidgetAction>()),
-                    style = TextStyle(
-                        color = pickColor(utc.copy(alpha = 0.4f), utcDark.copy(alpha = 0.4f), isDark),
-                        fontSize = 12.sp
-                    ),
-                    maxLines = 1
+                        .size(18.dp)
+                        .clickable(actionRunCallback<RefreshScheduleWidgetAction>())
                 )
             }
 
