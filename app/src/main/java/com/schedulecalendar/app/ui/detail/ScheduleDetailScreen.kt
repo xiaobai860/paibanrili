@@ -59,6 +59,7 @@ fun ScheduleDetailScreen(
     var showShiftPicker  by remember { mutableStateOf(false) }
     var showSalaryPicker by remember { mutableStateOf(false) }
     var showStatusEditor by remember { mutableStateOf<String?>(null) } // statusId being edited
+    var showStatusPicker by remember { mutableStateOf(false) }
 
     // ── 时间选择器对话框状态（提升到滚动容器外部渲染） ──
     data class TimeDialogConfig(
@@ -265,21 +266,60 @@ fun ScheduleDetailScreen(
                 }
             }
 
-            // ── 附加状态 ──────────────────────────────────────────────
+            // ── 附加状态（与班次一致：单行选择器） ──────────────────────
             if (visibleStatuses.isNotEmpty() && selectedShift != null) {
                 SectionLabel("附加状态")
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    visibleStatuses.forEach { status ->
-                        val appliedSt = if (record?.appliedStatus?.statusId == status.id) record?.appliedStatus else null
-                        val applied   = appliedSt != null
-                        StatusRow(
-                            status    = status,
-                            applied   = applied,
-                            startTime = appliedSt?.startTime,
-                            endTime   = appliedSt?.endTime,
-                            onToggle  = { vm.toggleStatus(status.id, null, null) },
-                            onEditTime = { showStatusEditor = status.id }
-                        )
+                val appliedSt = record?.appliedStatus
+                val appliedStatus = appliedSt?.let { st -> visibleStatuses.find { it.id == st.statusId } }
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (appliedStatus != null) MaterialTheme.colorScheme.secondaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        // 点击行主体 / > 图标 → 弹出附加状态选择页（与选择班次一致）
+                        .clickable { showStatusPicker = true }
+                ) {
+                    Row(
+                        // heightIn 保证「无附加状态」与已选状态行高一致
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 52.dp)
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (appliedStatus != null) {
+                            Box(Modifier.size(12.dp).clip(CircleShape).background(safeColor(appliedStatus.color)))
+                            Spacer(Modifier.width(10.dp))
+                            Text(appliedStatus.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        } else {
+                            Text(
+                                "无附加状态",
+                                Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        if (appliedSt != null) {
+                            val timeLabel = when {
+                                appliedSt.startTime != null && appliedSt.endTime != null ->
+                                    "${appliedSt.startTime}–${appliedSt.endTime}"
+                                appliedSt.startTime != null -> "${appliedSt.startTime}–"
+                                appliedSt.endTime != null -> "–${appliedSt.endTime}"
+                                else -> "全天"
+                            }
+                            // 时间按钮（> 左侧）：点击弹时间段设置；行其余位置 → 状态选择页
+                            TextButton(
+                                onClick = { showStatusEditor = appliedSt.statusId },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Text(timeLabel, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                        Spacer(Modifier.width(2.dp))
+                        Icon(Icons.Default.ChevronRight, contentDescription = "选择附加状态",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -410,9 +450,6 @@ fun ScheduleDetailScreen(
                     }
                 }
             }
-
-            // IME 适配：底部留白，确保输入框可滚动到键盘上方
-            Spacer(Modifier.height(200.dp))
         }
     }
 
@@ -422,6 +459,24 @@ fun ScheduleDetailScreen(
             shifts   = state.shifts,
             onSelect = { id -> vm.setShift(id); showShiftPicker = false },
             onDismiss = { showShiftPicker = false }
+        )
+    }
+
+    // ── 附加状态选择底部弹窗（与班次选择一致） ────────────────────────
+    if (showStatusPicker) {
+        StatusPickerSheet(
+            statuses   = visibleStatuses,
+            selectedId = record?.appliedStatus?.statusId,
+            onSelect   = { id ->
+                // toggleStatus：选中相同状态 = 取消；选不同状态 = 替换；id=null = 取消当前
+                if (id == null) {
+                    record?.appliedStatus?.statusId?.let { vm.toggleStatus(it, null, null) }
+                } else {
+                    vm.toggleStatus(id, null, null)
+                }
+                showStatusPicker = false
+            },
+            onDismiss = { showStatusPicker = false }
         )
     }
 
@@ -498,47 +553,6 @@ private fun SwitchRow(label: String, checked: Boolean, onChecked: (Boolean) -> U
         Switch(checked = checked, onCheckedChange = onChecked)
     }
 }
-
-@Composable
-private fun StatusRow(
-    status: ShiftStatus,
-    applied: Boolean,
-    startTime: String?,
-    endTime: String?,
-    onToggle: () -> Unit,
-    onEditTime: () -> Unit
-) {
-    val bg = if (applied) MaterialTheme.colorScheme.secondaryContainer
-             else MaterialTheme.colorScheme.surfaceVariant
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(bg)
-            .clickable { onToggle() }
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(Modifier.size(10.dp).clip(CircleShape).background(safeColor(status.color)))
-        Spacer(Modifier.width(10.dp))
-        Text(status.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        if (applied) {
-            val timeLabel = when {
-                startTime != null && endTime != null -> "$startTime–$endTime"
-                startTime != null -> "$startTime–"
-                endTime != null -> "–$endTime"
-                else -> "全天"
-            }
-            TextButton(
-                onClick      = onEditTime,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-            ) {
-                Text(timeLabel, style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-        Checkbox(checked = applied, onCheckedChange = { onToggle() })
-    }
-}
-
 @Composable
 private fun ExtraItemRow(item: ExtraItem, checked: Boolean, onToggle: () -> Unit) {
     Row(
@@ -706,6 +720,54 @@ private fun StatusTimeDialog(
                 TextButton(onClick = { editingField = null }) { Text("取消") }
             }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StatusPickerSheet(
+    statuses: List<ShiftStatus>,
+    selectedId: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(bottom = 32.dp)) {
+            Text("选择附加状态", style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+            HorizontalDivider()
+            // 取消附加状态（当前已选状态时显示）
+            if (selectedId != null) {
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clickable { onSelect(null) }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("无（取消附加状态）", style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.error)
+                }
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+            }
+            statuses.forEach { st ->
+                val selected = st.id == selectedId
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clickable { onSelect(st.id) }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.size(12.dp).clip(CircleShape).background(safeColor(st.color)))
+                    Spacer(Modifier.width(12.dp))
+                    Text(st.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    if (selected) {
+                        Icon(Icons.Filled.Check, contentDescription = "已选择",
+                            tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+            }
+        }
     }
 }
 
