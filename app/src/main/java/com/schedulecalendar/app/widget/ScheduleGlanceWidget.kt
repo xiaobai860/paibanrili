@@ -58,6 +58,14 @@ class OpenWidgetConfigAction : ActionCallback {
     }
 }
 
+/** 2x1 打卡组件手动刷新：触发自身重渲染（数据同步由 APP ViewModel 负责） */
+class RefreshScheduleWidgetAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        ScheduleGlanceWidget().update(context, glanceId)
+        Toast.makeText(context, "刷新成功", Toast.LENGTH_SHORT).show()
+    }
+}
+
 // ── 快捷打卡小组件数据模型 ──────────────────────────────────────────
 
 data class ClockInWidgetData(
@@ -424,7 +432,7 @@ private fun ClockInWidgetContent() {
         ) {
             // 第一行：班次徽章 + 附加状态名 + 齿轮（设置入口）
             Row(
-                modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+                modifier = GlanceModifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -478,6 +486,18 @@ private fun ClockInWidgetContent() {
                     ),
                     maxLines = 1
                 )
+                Spacer(modifier = GlanceModifier.width(2.dp))
+                Text(
+                    text = "↻",
+                    modifier = GlanceModifier
+                        .padding(start = 2.dp)
+                        .clickable(actionRunCallback<RefreshScheduleWidgetAction>()),
+                    style = TextStyle(
+                        color = pickColor(utc.copy(alpha = 0.4f), utcDark.copy(alpha = 0.4f), isDark),
+                        fontSize = 12.sp
+                    ),
+                    maxLines = 1
+                )
             }
 
             // 第二行：大号时间 + 打卡按钮
@@ -492,8 +512,8 @@ private fun ClockInWidgetContent() {
                         else -> pickColor(utc, utcDark, isDark)
                     }
                     Text(
-                        text = "$displayStart – $displayEnd",
-                        style = TextStyle(color = timeColor, fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                        text = "$displayStart–$displayEnd",
+                        style = TextStyle(color = timeColor, fontSize = 14.sp, fontWeight = FontWeight.Bold),
                         maxLines = 1,
                         modifier = GlanceModifier.defaultWeight()
                     )
@@ -528,10 +548,11 @@ private fun ClockInWidgetContent() {
                     }
                     Box(
                         modifier = GlanceModifier
-                            .padding(start = 6.dp)
+                            .padding(start = 0.dp)
+                            .fillMaxHeight()
                             .background(btnBgColor)
                             .cornerRadius(6.dp)
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                            .padding(start = 2.dp, top = 3.dp, end = 2.dp, bottom = 3.dp)
                             .clickable(actionRunCallback(btnAction::class.java)),
                         contentAlignment = Alignment.Center
                     ) {
@@ -539,7 +560,7 @@ private fun ClockInWidgetContent() {
                             text = btnLabel,
                             style = TextStyle(
                                 color = btnTextColor, fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold, textAlign = TextAlign.Center
+                                fontWeight = FontWeight.Bold
                             ),
                             maxLines = 1
                         )
@@ -555,7 +576,7 @@ private fun ClockInWidgetContent() {
             }
             if (footerText.isNotEmpty()) {
                 Box(
-                    modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+                    modifier = GlanceModifier.fillMaxWidth(),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Text(

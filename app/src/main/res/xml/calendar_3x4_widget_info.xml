@@ -9,7 +9,7 @@
     android:minResizeHeight="220dp"
     android:maxResizeWidth="240dp"
     android:resizeMode="horizontal"
-    android:updatePeriodMillis="1800000"
+    android:updatePeriodMillis="0"
     android:widgetCategory="home_screen"
     android:appCategory="productivity"
     android:description="@string/calendar_3x4_widget_description"

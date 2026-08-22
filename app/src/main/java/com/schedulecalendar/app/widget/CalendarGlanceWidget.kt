@@ -149,7 +149,6 @@ private fun CalendarWidgetContent(
     val visibleRows = minOf(data.totalRows, maxVisibleRows)
     val headerUseBig = isLarge && !compact
     val headerFs = if (headerUseBig) 17.sp else 14.sp
-    val refreshSize = if (headerUseBig) 28.dp else 24.dp
     val refreshIconFs = if (headerUseBig) 16.sp else 14.sp
     Box(
         modifier = GlanceModifier.fillMaxSize()
@@ -169,37 +168,25 @@ private fun CalendarWidgetContent(
                     style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = headerFs, fontWeight = FontWeight.Bold)
                 )
                 Spacer(modifier = GlanceModifier.defaultWeight())
-                Box(
+                Text(
+                    text = "⚙",
                     modifier = GlanceModifier
-                        .width(refreshSize).height(refreshSize)
-                        .background(ColorProvider(utc.copy(alpha = 0.08f * bgAlpha)))
-                        .cornerRadius(if (isLarge) 6.dp else 6.dp)
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
                         .clickable(
                             actionRunCallback<OpenWidgetConfigAction>(
                                 parameters = actionParametersOf(KEY_TYPE to WIDGET_TYPE_CALENDAR)
                             )
                         ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "⚙",
-                        style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = refreshIconFs, fontWeight = FontWeight.Bold)
-                    )
-                }
+                    style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = refreshIconFs, fontWeight = FontWeight.Bold)
+                )
                 Spacer(modifier = GlanceModifier.width(4.dp))
-                Box(
+                Text(
+                    text = "↻",
                     modifier = GlanceModifier
-                        .width(refreshSize).height(refreshSize)
-                        .background(ColorProvider(utc.copy(alpha = 0.08f * bgAlpha)))
-                        .cornerRadius(6.dp)
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
                         .clickable(actionRunCallback<RefreshWidgetAction>()),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "↻",
-                        style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = refreshIconFs, fontWeight = FontWeight.Bold)
-                    )
-                }
+                    style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = refreshIconFs, fontWeight = FontWeight.Bold)
+                )
             }
             Row(modifier = GlanceModifier.fillMaxWidth()) {
                 weekLabels.forEachIndexed { i, label ->

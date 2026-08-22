@@ -127,6 +127,9 @@ dependencies {
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)
 
+    // WorkManager（小组件周期刷新兜底：事件驱动为主 + 15min 周期兜底）
+    implementation(libs.workmanager.runtime)
+
     // Coroutines
     implementation(libs.coroutines.android)
 

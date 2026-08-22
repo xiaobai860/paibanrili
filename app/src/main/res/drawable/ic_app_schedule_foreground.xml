@@ -1,80 +1,56 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 白日历主体（圆角矩形，对应设计图 1024 坐标系下 x278~744 y222~744） -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M29,29 h50 a5,5 0 0 1 5,5 v44 a5,5 0 0 1 -5,5 H29 a5,5 0 0 1 -5,-5 V34 a5,5 0 0 1 5,-5 z"/>
+    <!-- 白色日历卡 -->
+    <path android:fillColor="#FFFFFF" android:pathData="M27,34 a11,11 0 0 1 11,-11 H70 a11,11 0 0 1 11,11 V72 a11,11 0 0 1 -11,11 H38 a11,11 0 0 1 -11,-11 Z"/>
 
-    <!-- 顶部挂耳（x=42~46, x=62~66，对应设计图挂耳位置） -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M42,25 h3.5 a1.5,1.5 0 0 1 1.5,1.5 v4 H40.5 v-4 a1.5,1.5 0 0 1 1.5,-1.5 z"/>
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M62.5,25 h3.5 a1.5,1.5 0 0 1 1.5,1.5 v4 H61 v-4 a1.5,1.5 0 0 1 1.5,-1.5 z"/>
+    <!-- 顶部装订环 -->
+    <path android:fillColor="#FFFFFF" android:pathData="M47,17 h0 a2,2 0 0 1 2,2 v7 a2,2 0 0 1 -2,2 h0 a2,2 0 0 1 -2,-2 v-7 a2,2 0 0 1 2,-2 z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M61,17 h0 a2,2 0 0 1 2,2 v7 a2,2 0 0 1 -2,2 h0 a2,2 0 0 1 -2,-2 v-7 a2,2 0 0 1 2,-2 z"/>
 
-    <!-- 日历内页网格（4列3行灰色细线，对应设计图网格） -->
-    <!-- 顶部横线：日期区与月份条分隔（更深） -->
-    <path
-        android:strokeColor="#BDBDBD"
-        android:strokeWidth="0.8"
-        android:pathData="M27,40 H81"/>
-    <!-- 中间两条横线 -->
-    <path
-        android:strokeColor="#E0E0E0"
-        android:strokeWidth="0.6"
-        android:pathData="M27,52 H81"/>
-    <path
-        android:strokeColor="#E0E0E0"
-        android:strokeWidth="0.6"
-        android:pathData="M27,64 H81"/>
-    <!-- 底部横线 -->
-    <path
-        android:strokeColor="#E0E0E0"
-        android:strokeWidth="0.6"
-        android:pathData="M27,76 H81"/>
-    <!-- 4条竖线 -->
-    <path
-        android:strokeColor="#E0E0E0"
-        android:strokeWidth="0.6"
-        android:pathData="M42,42 V78"/>
-    <path
-        android:strokeColor="#E0E0E0"
-        android:strokeWidth="0.6"
-        android:pathData="M54,42 V78"/>
-    <path
-        android:strokeColor="#E0E0E0"
-        android:strokeWidth="0.6"
-        android:pathData="M66,42 V78"/>
+    <!-- 紫色月份条 -->
+    <path android:pathData="M27,34 a11,11 0 0 1 11,-11 H70 a11,11 0 0 1 11,11 V37 H27 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="27" android:startY="23"
+                android:endX="81" android:endY="37"
+                android:startColor="#8E6BF0"
+                android:endColor="#5B3FD1"/>
+        </aapt:attr>
+    </path>
 
-    <!-- 双色班次条（teal + orange），圆角胶囊，对应设计图 y488~562 / 592~666 -->
-    <path
-        android:fillColor="#26C6DA"
-        android:pathData="M34,55 h30 a4,4 0 0 1 4,4 v0 a4,4 0 0 1 -4,4 H34 a4,4 0 0 1 -4,-4 v0 a4,4 0 0 1 4,-4 z"/>
-    <path
-        android:fillColor="#FF8A3D"
-        android:pathData="M34,68 h30 a4,4 0 0 1 4,4 v0 a4,4 0 0 1 -4,4 H34 a4,4 0 0 1 -4,-4 v0 a4,4 0 0 1 4,-4 z"/>
+    <!-- 日期圆点（灰） -->
+    <path android:fillColor="#E6E3EF" android:pathData="
+        M37,43 a3,3 0 1 0 0.01,0 z
+        M49,43 a3,3 0 1 0 0.01,0 z
+        M61,43 a3,3 0 1 0 0.01,0 z
+        M73,43 a3,3 0 1 0 0.01,0 z
+        M37,53 a3,3 0 1 0 0.01,0 z
+        M49,53 a3,3 0 1 0 0.01,0 z
+        M73,53 a3,3 0 1 0 0.01,0 z
+        M37,63 a3,3 0 1 0 0.01,0 z
+        M49,63 a3,3 0 1 0 0.01,0 z
+        M61,63 a3,3 0 1 0 0.01,0 z
+        M73,63 a3,3 0 1 0 0.01,0 z"/>
 
-    <!-- 顶部居中时钟徽章（圆心 54,22 半径 6.5，对应设计图钟铃效果） -->
-    <group>
-        <!-- 紫色描边圈 -->
-        <path
-            android:fillColor="#4A2D9B"
-            android:pathData="M54,15.5 a6.5,6.5 0 1 0 0.01,0 z"/>
-        <!-- 白色钟面 -->
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M54,17.5 a4.5,4.5 0 1 0 0.01,0 z"/>
-        <!-- 时钟指针（深紫/黑，参考设计图深色） -->
-        <path
-            android:strokeColor="#3A2D9B"
-            android:strokeWidth="0.7"
-            android:strokeLineCap="round"
-            android:pathData="M54,21 V18.5 M54,21 L56,22"/>
-    </group>
+    <!-- 今日高亮（琥珀） -->
+    <path android:pathData="M61,50 a6,6 0 1 0 0.01,0 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="55" android:startY="50"
+                android:endX="67" android:endY="62"
+                android:startColor="#FFC15E"
+                android:endColor="#FF7A1A"/>
+        </aapt:attr>
+    </path>
+
+    <!-- 班次条（青） -->
+    <path android:fillColor="#16C2C2" android:pathData="M38,73 h32 a3,3 0 0 1 3,3 v0 a3,3 0 0 1 -3,3 h-32 a3,3 0 0 1 -3,-3 v0 a3,3 0 0 1 3,-3 z"/>
 </vector>

@@ -14,6 +14,7 @@ appcompat            = "1.7.0"
 coroutines           = "1.9.0"
 gson                 = "2.11.0"
 glance               = "1.1.1"
+workmanager          = "2.9.1"
 
 # 农历计算库（tyme4j 是 lunar 的升级版）
 tyme4j               = "1.5.1"
@@ -70,6 +71,9 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 # Glance（桌面小组件 Compose-first）
 glance-appwidget        = { group = "androidx.glance",              name = "glance-appwidget",             version.ref = "glance" }
 glance-material3        = { group = "androidx.glance",              name = "glance-material3",             version.ref = "glance" }
+
+# WorkManager（小组件周期刷新兜底，替代不可靠的 updatePeriodMillis）
+workmanager-runtime     = { group = "androidx.work",               name = "work-runtime",                 version.ref = "workmanager" }
 
 # 农历计算库（tyme4j 是 lunar 的升级版）
 tyme4j                  = { group = "cn.6tail",                    name = "tyme4j",                       version.ref = "tyme4j" }
