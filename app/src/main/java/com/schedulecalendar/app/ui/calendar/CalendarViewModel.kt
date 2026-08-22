@@ -19,6 +19,7 @@ import com.schedulecalendar.app.widget.CalendarWidgetDay
 import com.schedulecalendar.app.widget.CalendarWidgetInfo
 import com.schedulecalendar.app.widget.ClockInWidgetData
 import com.schedulecalendar.app.widget.ScheduleGlanceWidget
+import com.schedulecalendar.app.widget.applyS4StatusRange
 import com.schedulecalendar.app.widget.isBuiltInStatus
 import java.time.LocalTime
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -280,18 +281,34 @@ class CalendarViewModel @Inject constructor(
             val dateStr = "%04d-%02d-%02d".format(year, month, d)
             val record  = schedules[dateStr]
             val shift   = record?.shiftId?.let { id -> shifts.find { it.id == id } }
-            if (shift == null || shift.builtInType == "rest" || shift.builtInType == "swap") continue
+            if (shift == null) continue
 
             val sn = shift.name
-            val st = if (shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) "${shift.startTime}-${shift.endTime}" else ""
-            val stStart = shift.startTime
-            val stEnd = shift.endTime
             // 检测是否有内置附加状态（请假/调休）
             val applied = record.appliedStatus
             val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
             val stLabel = if (isBuiltIn) {
                 if (applied!!.statusId == BUILTIN_STATUS_LEAVE) "请假" else "调休"
             } else ""
+
+            // S1/S3：休息/调休班次（无时间段）
+            if (shift.builtInType == "rest" || shift.builtInType == "swap") {
+                if (applied == null) continue   // S1：无附加状态 → 无待办
+                // S3：附加状态时间段即打卡记录；"已打上班卡但未打下班卡"且已过截止（次日 24:00 / 次日班次−5h）→ 漏打卡
+                val stFilled = !applied.startTime.isNullOrEmpty()
+                val etFilled = !applied.endTime.isNullOrEmpty()
+                val pastCutoff = LocalDate.parse(dateStr).isBefore(today.minusDays(1))
+                if (stFilled && !etFilled && pastCutoff) {
+                    todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_OUT, "下班漏打卡", shiftName = sn, statusLabel = stLabel))
+                } else if (stFilled && etFilled) {
+                    todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_OUT, "下班已补录", shiftName = sn, clockTime = applied.endTime ?: "", statusLabel = stLabel))
+                }
+                continue
+            }
+
+            val st = if (shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) "${shift.startTime}-${shift.endTime}" else ""
+            val stStart = shift.startTime
+            val stEnd = shift.endTime
             // 内置状态：检查 appliedStatus 时间；普通：检查 actualStartTime/actualEndTime（空字符串也视为未填写）
             val startFilled = if (isBuiltIn) !applied?.startTime.isNullOrEmpty() else !record.actualStartTime.isNullOrEmpty()
             val endFilled   = if (isBuiltIn) !applied?.endTime.isNullOrEmpty() else !record.actualEndTime.isNullOrEmpty()
@@ -488,8 +505,23 @@ class CalendarViewModel @Inject constructor(
     }
 
     fun clockIn(date: String, time: String) = viewModelScope.launch {
-        val rec = (scheduleRepo.getByDate(date) ?: ScheduleRecord(date))
-        scheduleRepo.save(rec.copy(actualStartTime = time))
+        var rec = scheduleRepo.getByDate(date) ?: ScheduleRecord(date)
+        val shift = rec.shiftId?.let { id -> shiftRepo.getById(id) }
+        val isRestSwap = shift?.builtIn == true && (shift.builtInType == "rest" || shift.builtInType == "swap")
+        val ap = rec.appliedStatus
+        val isLeaveSwap = ap != null && isBuiltInStatus(ap.statusId)
+        rec = when {
+            // S3：休息/调休 + 附加状态 → 写入附加状态开始时间
+            isRestSwap && ap != null -> rec.copy(appliedStatus = ap.copy(startTime = time))
+            // S4：正常班 + 请假/调休 → 写实际上班时间 + 重算附加状态时间段
+            !isRestSwap && isLeaveSwap && shift != null -> {
+                val grain = prefs.attendConfigFlow.first().overtimeGranMin
+                applyS4StatusRange(rec.copy(actualStartTime = time), shift, grain)
+            }
+            // S2 / S5：写实际上班时间
+            else -> rec.copy(actualStartTime = time)
+        }
+        scheduleRepo.save(rec)
         _uiEvent.send(CalendarUiEvent.ShowMessage("已记录上班打卡 $time"))
         // 组件同步由 ScheduleApp 全局变更信号统一驱动（落库后 400ms 自动更新）
     }
@@ -510,8 +542,23 @@ class CalendarViewModel @Inject constructor(
             } else date
         } else date
 
-        val targetRec = scheduleRepo.getByDate(actualTargetDate) ?: ScheduleRecord(actualTargetDate)
-        scheduleRepo.save(targetRec.copy(actualEndTime = time))
+        var targetRec = scheduleRepo.getByDate(actualTargetDate) ?: ScheduleRecord(actualTargetDate)
+        val targetShift = targetRec.shiftId?.let { id -> shiftRepo.getById(id) }
+        val isRestSwap = targetShift?.builtIn == true && (targetShift.builtInType == "rest" || targetShift.builtInType == "swap")
+        val ap = targetRec.appliedStatus
+        val isLeaveSwap = ap != null && isBuiltInStatus(ap.statusId)
+        targetRec = when {
+            // S3：休息/调休 + 附加状态 → 写入附加状态结束时间（支持跨天加班）
+            isRestSwap && ap != null -> targetRec.copy(appliedStatus = ap.copy(endTime = time))
+            // S4：正常班 + 请假/调休 → 写实际下班时间 + 重算附加状态时间段
+            !isRestSwap && isLeaveSwap && targetShift != null -> {
+                val grain = prefs.attendConfigFlow.first().overtimeGranMin
+                applyS4StatusRange(targetRec.copy(actualEndTime = time), targetShift, grain)
+            }
+            // S2 / S5：写实际下班时间（允许未打上班卡直接打下班卡）
+            else -> targetRec.copy(actualEndTime = time)
+        }
+        scheduleRepo.save(targetRec)
         _uiEvent.send(CalendarUiEvent.ShowMessage("已记录下班打卡 $time"))
         // 组件同步由 ScheduleApp 全局变更信号统一驱动（落库后 400ms 自动更新）
     }

@@ -2,22 +2,21 @@
 package com.schedulecalendar.app.widget
 
 import android.content.Context
-import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 
 /**
- * 小组件周期刷新兜底 Worker。
+ * 小组件周期刷新兜底 Worker（15 分钟）。
  *
- * 设计原则（对齐硬约束 #2）：
- * - 真正的「数据变了才更新」由 App 的 ViewModel（CalendarViewModel.syncWidget / syncCalendarWidget）
- *   事件驱动完成，并调用各 Widget 的 updateXxx 方法写入最新 SharedPreferences 数据。
- * - 本 Worker 仅做「兜底」：每 15 分钟枚举三类小组件的所有实例，触发一次重渲染（从已有
- *   SharedPreferences 重新加载），避免系统杀进程 / 重启后桌面组件长期显示陈旧内容，
- *   同时保证「今日高亮 / 明天班次 / 节假日倒计时」等日期相关 UI 随日期推进而刷新。
- * - 不在 Worker 内做重数据拉取（重活交给事件驱动的 ViewModel），本 Worker 只重渲染，
- *   轻量且不会与事件驱动路径冲突。
+ * 职责：从数据库回源重新计算并写入全部小组件数据，使以下「时间敏感」内容随当前时间自动更新，
+ * 无需用户打开 App：
+ * - 2x1 打卡按钮状态（上班卡/下班卡随班次时间窗口出现/消失，含提前 5 分钟预展示）
+ * - 「明天：X」班次信息（零点后自动切换到新的一天）
+ * - 「距 X 还有 N 天」节假日倒计时（每日刷新）
+ * - 日历组件当天高亮与日期推进
+ *
+ * 触发链：ScheduleApp.onCreate 注册的 15 分钟周期任务；任何一次运行都会读取数据库最新数据重算，
+ * 轻量（3~4 次 Room 查询 + 组件重绘），并由 syncAllWidgets 内部互斥锁串行化，不与事件驱动路径冲突。
  */
 class WidgetRefreshWorker(
     private val appContext: Context,
@@ -26,17 +25,7 @@ class WidgetRefreshWorker(
 
     override suspend fun doWork(): Result {
         return runCatching {
-            val manager = GlanceAppWidgetManager(appContext)
-            val widgets: List<GlanceAppWidget> = listOf(
-                ScheduleGlanceWidget(),
-                CalendarGlanceWidget(),
-                Calendar3x4GlanceWidget()
-            )
-            widgets.forEach { widget ->
-                manager.getGlanceIds(widget.javaClass).forEach { glanceId ->
-                    widget.update(appContext, glanceId)
-                }
-            }
+            syncAllWidgets(appContext)
         }.fold(
             onSuccess = { Result.success() },
             onFailure = { Result.retry() }

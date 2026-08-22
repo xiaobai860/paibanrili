@@ -29,6 +29,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
+import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.domain.model.*
 import java.time.LocalDate
 import java.time.LocalTime
@@ -41,6 +42,7 @@ import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // ── 打开小组件样式配置页 ──────────────────────────────────────────
@@ -77,10 +79,14 @@ data class ClockInWidgetData(
     val startTime: String = "",
     val endTime: String = "",
     val tomorrowShiftName: String = "",
+    val tomorrowStatusName: String = "",
     val actualStartTime: String = "",
     val actualEndTime: String = "",
     val shiftColor: String = "#059669",
     val statusName: String = "",
+    // ── 附加状态时间段（内置班次+附加状态场景的打卡与显示）──
+    val statusStartTime: String = "",
+    val statusEndTime: String = "",
     // ── 新增：打卡按钮规则控制字段 ──
     val shiftId: String = "",
     val isBuiltInShift: Boolean = false,
@@ -92,7 +98,9 @@ data class ClockInWidgetData(
     val hasClockOut: Boolean = false,
     val clockInDate: String = "",
     val widgetClockInTime: String = "",
-    val widgetClockOutTime: String = ""
+    val widgetClockOutTime: String = "",
+    /** S1：休息/调休且无附加状态时第二行显示的文案 */
+    val restMessage: String = ""
 )
 
 // ── 存储键 ──────────────────────────────────────────────────
@@ -164,32 +172,22 @@ class WidgetClockInAction : ActionCallback {
 
             var record = scheduleRepo.getByDate(targetDate) ?: ScheduleRecord(targetDate)
 
-            if (isBuiltInShift && hasCustomStatus) {
-                // 规则4：内置班次+自定义附加状态 → 打卡时间写入附加状态.startTime
+            if (isBuiltInShift && (hasCustomStatus || hasBuiltInStatus)) {
+                // S3：休息/调休 + 附加状态 → 写入附加状态开始时间（需求 §3.3）
                 val newStatus = record.appliedStatus?.copy(startTime = currentTime)
                     ?: AppliedStatus(data.appliedStatusId, startTime = currentTime)
                 record = record.copy(appliedStatus = newStatus)
-            } else {
-                // 规则1/2/3：普通班次 → 写入实际上班时间
+            } else if (!isBuiltInShift && hasBuiltInStatus) {
+                // S4：正常班 + 请假/调休 → 写实际上班时间 + 重算附加状态时间段（需求 §3.5）
                 record = record.copy(actualStartTime = currentTime)
-
-                if (hasBuiltInStatus && record.shiftId != null) {
-                    // 规则3：迟到时段自动填入附加状态
-                    val shift = shiftRepo.getById(record.shiftId)
-                    if (shift != null && shift.startTime.isNotEmpty()) {
-                        val shiftStartMin = CalcUtils.timeToMin(shift.startTime)
-                        val actualMin = CalcUtils.timeToMin(currentTime)
-                        if (actualMin > shiftStartMin) {
-                            val lateEnd = currentTime
-                            val newStatus = record.appliedStatus?.copy(
-                                startTime = shift.startTime, endTime = lateEnd
-                            ) ?: AppliedStatus(
-                                data.appliedStatusId, startTime = shift.startTime, endTime = lateEnd
-                            )
-                            record = record.copy(appliedStatus = newStatus)
-                        }
-                    }
+                val shift = record.shiftId?.let { id -> shiftRepo.getById(id) }
+                if (shift != null) {
+                    val grain = entryPoint.appPreferences().attendConfigFlow.first().overtimeGranMin
+                    record = applyS4StatusRange(record, shift, grain)
                 }
+            } else {
+                // S2 / S5（按 S2 处理）：写实际上班时间
+                record = record.copy(actualStartTime = currentTime)
             }
 
             scheduleRepo.save(record)
@@ -269,38 +267,22 @@ class WidgetClockOutAction : ActionCallback {
 
             var record = scheduleRepo.getByDate(targetDate) ?: ScheduleRecord(targetDate)
 
-            if (isBuiltInShift && hasCustomStatus) {
-                // 规则4：内置班次+自定义附加状态 → 写入附加状态.endTime
+            if (isBuiltInShift && (hasCustomStatus || hasBuiltInStatus)) {
+                // S3：休息/调休 + 附加状态 → 写入附加状态结束时间（需求 §3.3，支持跨天加班）
                 val newStatus = record.appliedStatus?.copy(endTime = currentTime)
                     ?: AppliedStatus(data.appliedStatusId, endTime = currentTime)
                 record = record.copy(appliedStatus = newStatus)
-            } else {
-                // 规则1/2/3：写入实际下班时间
+            } else if (!isBuiltInShift && hasBuiltInStatus) {
+                // S4：正常班 + 请假/调休 → 写实际下班时间 + 重算附加状态时间段（需求 §3.5）
                 record = record.copy(actualEndTime = currentTime)
-
-                if (hasBuiltInStatus && record.shiftId != null) {
-                    // 规则3：早退时段自动填入附加状态
-                    val shift = shiftRepo.getById(record.shiftId)
-                    if (shift != null && shift.endTime.isNotEmpty()) {
-                        val (_, normSE) = CalcUtils.normRange(
-                            CalcUtils.timeToMin(shift.startTime),
-                            CalcUtils.timeToMin(shift.endTime)
-                        )
-                        val (_, normAE) = CalcUtils.normRange(
-                            CalcUtils.timeToMin(shift.startTime),
-                            CalcUtils.timeToMin(currentTime)
-                        )
-                        if (normSE - normAE > 0) {
-                            val earlyStart = currentTime
-                            val newStatus = record.appliedStatus?.copy(
-                                startTime = earlyStart, endTime = shift.endTime
-                            ) ?: AppliedStatus(
-                                data.appliedStatusId, startTime = earlyStart, endTime = shift.endTime
-                            )
-                            record = record.copy(appliedStatus = newStatus)
-                        }
-                    }
+                val shift = record.shiftId?.let { id -> shiftRepo.getById(id) }
+                if (shift != null) {
+                    val grain = entryPoint.appPreferences().attendConfigFlow.first().overtimeGranMin
+                    record = applyS4StatusRange(record, shift, grain)
                 }
+            } else {
+                // S2 / S5（按 S2 处理）：写实际下班时间（允许未打上班卡直接打下班卡）
+                record = record.copy(actualEndTime = currentTime)
             }
 
             scheduleRepo.save(record)
@@ -429,6 +411,19 @@ private fun ClockInWidgetContent() {
     val displayStart = actualStart.ifEmpty { data.startTime }
     val displayEnd = actualEnd.ifEmpty { data.endTime }
 
+    // 内置班次（休息/调休）+ 附加状态（内置或自定义）：打卡与显示均以附加状态时间段为准
+    val isBuiltInWithStatus = data.isBuiltInShift && data.appliedStatusId.isNotBlank()
+    val statusHasTime = data.statusStartTime.isNotEmpty() || data.statusEndTime.isNotEmpty()
+    val statusTimeText = when {
+        data.statusStartTime.isNotEmpty() && data.statusEndTime.isNotEmpty() ->
+            "${data.statusStartTime}–${data.statusEndTime}"
+        data.statusStartTime.isNotEmpty() -> data.statusStartTime
+        data.statusEndTime.isNotEmpty() -> data.statusEndTime
+        else -> "未设置时间段"
+    }
+    val timeText = if (isBuiltInWithStatus) statusTimeText else "$displayStart–$displayEnd"
+    val hasTimeContent = isBuiltInWithStatus || data.startTime.isNotEmpty() || data.endTime.isNotEmpty()
+
     // === 新外观 2x1 V4 (返回 3 行 defaultWeight 等分高度布局) ===
 
     Box(
@@ -508,19 +503,35 @@ private fun ClockInWidgetContent() {
                 )
             }
 
-            // 第二行：大号时间 + 打卡按钮
+            // 第二行：大号时间 + 打卡按钮（S1 显示休息文案）
             Row(
                 modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (data.startTime.isNotEmpty() || data.endTime.isNotEmpty()) {
+                if (data.restMessage.isNotEmpty()) {
+                    // S1：休息/调休且无附加状态 → 显示文案，无按钮（需求规则1）
+                    Text(
+                        text = data.restMessage,
+                        style = TextStyle(
+                            color = pickColor(utc.copy(alpha = 0.6f), utcDark.copy(alpha = 0.6f), isDark),
+                            fontSize = 13.sp
+                        ),
+                        maxLines = 1,
+                        modifier = GlanceModifier.defaultWeight()
+                    )
+                } else if (hasTimeContent) {
                     val timeColor = when {
+                        isBuiltInWithStatus -> when {
+                            data.statusEndTime.isNotEmpty() -> pickColor(Color(0xFF10B981), Color(0xFF4ADE80), isDark)
+                            data.statusStartTime.isNotEmpty() -> pickColor(Color(0xFFF59E0B), Color(0xFFFBBF24), isDark)
+                            else -> pickColor(utc.copy(alpha = 0.6f), utcDark.copy(alpha = 0.6f), isDark)
+                        }
                         hasClockIn && !hasClockOut -> pickColor(Color(0xFFF59E0B), Color(0xFFFBBF24), isDark)
                         hasClockOut -> pickColor(Color(0xFF10B981), Color(0xFF4ADE80), isDark)
                         else -> pickColor(utc, utcDark, isDark)
                     }
                     Text(
-                        text = "$displayStart–$displayEnd",
+                        text = timeText,
                         style = TextStyle(color = timeColor, fontSize = 14.sp, fontWeight = FontWeight.Bold),
                         maxLines = 1,
                         modifier = GlanceModifier.defaultWeight()
@@ -530,18 +541,22 @@ private fun ClockInWidgetContent() {
                 }
                 val showBtn = data.showClockIn || data.showClockOut
                 if (showBtn) {
+                    // 内置班次+附加状态：以附加状态时间作为打卡进度；普通班次用实际打卡时间
+                    val btnInDone = if (isBuiltInWithStatus) data.statusStartTime.isNotEmpty() else data.hasClockIn
+                    val btnOutDone = if (isBuiltInWithStatus) data.statusEndTime.isNotEmpty() else data.hasClockOut
                     val btnLabel: String
                     val btnBgColor: ColorProvider
                     val btnTextColor: ColorProvider
                     val btnAction: ActionCallback
                     when {
-                        data.showClockIn && !data.hasClockIn -> {
+                        data.showClockIn && !btnInDone -> {
                             btnLabel = "上班卡"
                             btnBgColor = pickColor(Color(0xFF059669).copy(alpha = 0.18f * bgAlpha), Color(0xFF059669).copy(alpha = 0.30f), isDark)
                             btnTextColor = pickColor(Color(0xFF059669), Color(0xFF4ADE80), isDark)
                             btnAction = WidgetClockInAction()
                         }
-                        data.showClockOut && data.hasClockIn && !data.hasClockOut -> {
+                        data.showClockOut && !btnOutDone -> {
+                            // 允许未打上班卡直接打下班卡（决策点6，仅 S2 窗口内会出现）
                             btnLabel = "下班卡"
                             btnBgColor = pickColor(Color(0xFFF59E0B).copy(alpha = 0.18f * bgAlpha), Color(0xFFF59E0B).copy(alpha = 0.30f), isDark)
                             btnTextColor = pickColor(Color(0xFFD97706), Color(0xFFFBBF24), isDark)
@@ -576,11 +591,14 @@ private fun ClockInWidgetContent() {
                 }
             }
 
-            // 第三行：明天班次 / 节假日倒计时（字号 12sp）
+            // 第三行：明天班次（含附加状态）/ 节假日倒计时（字号 12sp）
             val footerText = when (displayMode) {
                 DISPLAY_MODE_SHIFT_HOLIDAY -> getHolidayCountdownText()
-                else -> if (data.tomorrowShiftName.isNotEmpty())
-                    "明天：${data.tomorrowShiftName}" else ""
+                else -> if (data.tomorrowShiftName.isNotEmpty()) {
+                    if (data.tomorrowStatusName.isNotEmpty())
+                        "明天：${data.tomorrowShiftName} · ${data.tomorrowStatusName}"
+                    else "明天：${data.tomorrowShiftName}"
+                } else ""
             }
             if (footerText.isNotEmpty()) {
                 Box(
@@ -643,4 +661,5 @@ interface WidgetClockEntryPoint {
     fun scheduleRepository(): ScheduleRepository
     fun shiftRepository(): ShiftRepository
     fun shiftStatusRepository(): ShiftStatusRepository
+    fun appPreferences(): AppPreferences
 }

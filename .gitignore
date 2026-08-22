@@ -35,5 +35,9 @@ captures/
 .externalNativeBuild/
 .cxx/
 
-# CodeBuddy 工作区数据
+# CodeBuddy / WorkBuddy 工作区数据
 .codebuddy/
+.workbuddy/
+
+# docs 目录（本地需求/设计文档，不进版本库）
+docs/

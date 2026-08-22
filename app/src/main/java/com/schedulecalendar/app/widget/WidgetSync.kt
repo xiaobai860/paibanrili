@@ -4,6 +4,7 @@ package com.schedulecalendar.app.widget
 import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
+import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
@@ -17,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -31,12 +33,11 @@ import kotlinx.coroutines.sync.withLock
  * 现在所有刷新动作统一改调 [syncAllWidgets]，保证点击刷新即拉取最新数据。
  */
 
-private data class ActiveShiftResult(
-    val date: LocalDate,
-    val shift: Shift,
-    val showClockIn: Boolean,
-    val showClockOut: Boolean
-)
+/** 休息/调休（无时间段班次）判定 */
+private fun isRestShift(shift: Shift?): Boolean =
+    shift?.builtIn == true && (shift.builtInType == "rest" || shift.builtInType == "swap")
+
+private fun fmtDate(d: LocalDate): String = "%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)
 
 private suspend fun getRepos(context: Context): Triple<ScheduleRepository, ShiftRepository, ShiftStatusRepository> {
     val ep = EntryPointAccessors.fromApplication(context.applicationContext, WidgetClockEntryPoint::class.java)
@@ -58,6 +59,10 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
     Log.d("WIDGET_SYNC", "syncAllWidgets start")
     return@withLock try {
         val (scheduleRepo, shiftRepo, statusRepo) = getRepos(context)
+        val granularityMin = runCatching {
+            EntryPointAccessors.fromApplication(context.applicationContext, WidgetClockEntryPoint::class.java)
+                .appPreferences().attendConfigFlow.first().overtimeGranMin
+        }.getOrDefault(30)
 
         val shifts = shiftRepo.getAllWithBuiltin()
         val statuses = statusRepo.getAllWithBuiltin()
@@ -73,8 +78,12 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
             key to scheduleRepo.getByDate(key)
         }.filterValues { it != null }.mapValues { it.value!! }
 
-        val widgetData = computeClockInWidgetData(shifts, schedules, statusMap)
-        Log.d("WIDGET_SYNC", "syncAllWidgets 2x1 shift=${widgetData.shiftName} showIn=${widgetData.showClockIn} showOut=${widgetData.showClockOut}")
+        // S4（正常班+请假/调休）未打卡时，默认附加状态时间段 = 覆盖当天班次时间段（§3.5）
+        repairS4DefaultStatus(scheduleRepo, shifts, fmtDate(today))
+
+        val widgetData = computeClockInWidgetData(shifts, schedules, statusMap, granularityMin)
+        Log.d("WIDGET_SYNC", "syncAllWidgets 2x1 shift=${widgetData.shiftName} showIn=${widgetData.showClockIn} showOut=${widgetData.showClockOut} rest=${widgetData.restMessage}")
+        Log.d("WIDGET_DBG", "widgetData: start=${widgetData.startTime} end=${widgetData.endTime} builtIn=${widgetData.isBuiltInShift} statusId=${widgetData.appliedStatusId} st=${widgetData.statusStartTime} et=${widgetData.statusEndTime} isBuiltInStatus=${widgetData.isBuiltInStatus}")
         ScheduleGlanceWidget.updateWidgetData(context, widgetData)
 
         // 日历组件：按已存储的显示月份重新计算
@@ -87,136 +96,240 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
     }
 }
 
-/** 复制自 CalendarViewModel 的活跃班次判定，保证打卡按钮规则与 APP 内一致。 */
-private fun findActiveShift(
+/** S4 未打卡默认全天：正常班 + 请假/调休、实际无打卡、状态无时间段 → 补写班次时间段（幂等） */
+private suspend fun repairS4DefaultStatus(
+    scheduleRepo: ScheduleRepository,
     shifts: List<Shift>,
-    schedules: Map<String, ScheduleRecord>
-): ActiveShiftResult? {
-    val today = LocalDate.now()
-    val yesterday = today.minusDays(1)
-    val now = LocalTime.now()
-    val nowMin = now.hour * 60 + now.minute
-
-    // 第一步：检查今天
-    val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
-    val todayRecord = schedules[todayStr]
-    if (todayRecord?.type == ScheduleType.SHIFT && todayRecord.shiftId != null) {
-        val shift = shifts.find { it.id == todayRecord.shiftId }
-        if (shift != null && shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) {
-            val ss = CalcUtils.timeToMin(shift.startTime)
-            val se = CalcUtils.timeToMin(shift.endTime)
-            val (_, normE) = CalcUtils.normRange(ss, se)
-
-            val showClockIn = nowMin >= (ss - 300) && nowMin < normE
-            val showClockOut = nowMin >= ss && nowMin <= (normE + 300)
-
-            if (showClockIn || showClockOut) {
-                return ActiveShiftResult(today, shift, showClockIn, showClockOut)
-            }
-        }
+    todayStr: String
+) {
+    runCatching {
+        val rec = scheduleRepo.getByDate(todayStr) ?: return
+        val ap = rec.appliedStatus ?: return
+        if (!isBuiltInStatus(ap.statusId)) return
+        if (!rec.actualStartTime.isNullOrEmpty() || !rec.actualEndTime.isNullOrEmpty()) return
+        if (!ap.startTime.isNullOrEmpty() || !ap.endTime.isNullOrEmpty()) return
+        val shift = rec.shiftId?.let { id -> shifts.find { it.id == id } } ?: return
+        if (shift.startTime.isEmpty() || shift.endTime.isEmpty()) return
+        scheduleRepo.save(rec.copy(appliedStatus = ap.copy(startTime = shift.startTime, endTime = shift.endTime)))
+        Log.d("WIDGET_SYNC", "S4 default status filled $todayStr ${shift.startTime}-${shift.endTime}")
     }
-
-    // 第二步：检查昨天（针对跨午夜夜班的下班打卡）
-    val yesterdayStr = "%04d-%02d-%02d".format(yesterday.year, yesterday.monthValue, yesterday.dayOfMonth)
-    val yesterdayRecord = schedules[yesterdayStr]
-    if (yesterdayRecord?.type == ScheduleType.SHIFT && yesterdayRecord.shiftId != null) {
-        val shift = shifts.find { it.id == yesterdayRecord.shiftId }
-        if (shift != null && shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) {
-            val ss = CalcUtils.timeToMin(shift.startTime) - 1440
-            val se = CalcUtils.timeToMin(shift.endTime) - 1440
-            val (_, normE) = CalcUtils.normRange(ss, se)
-
-            val showClockOut = nowMin >= ss && nowMin <= (normE + 300)
-
-            if (showClockOut) {
-                return ActiveShiftResult(yesterday, shift, false, true)
-            }
-        }
-    }
-
-    return null
 }
 
-/** 复制自 CalendarViewModel.syncWidget，回源数据库计算 2x1 打卡组件数据。 */
+/**
+ * 规则4（正常班 + 请假/调休）附加状态时间段计算（需求 §3.5）。
+ * 返回状态时间段 [start, end]（HH:mm）；无需写入时返回 null。
+ * - 未打卡 → 全天（= 覆盖当天班次时间段 [shiftStart, shiftEnd]）
+ * - 迟到段 [shiftStart, ceil_G(clockIn)]；早退段 [floor_G(clockOut), shiftEnd]
+ * - 迟到 + 早退并存 → 仅迟到段写入（早退段记早退，不写入状态）
+ * - 全勤（打卡覆盖班次）→ null
+ */
+internal fun computeStatusRange(
+    shiftStart: String,
+    shiftEnd: String,
+    clockIn: String?,
+    clockOut: String?,
+    granularityMin: Int
+): Pair<String, String>? {
+    if (clockIn.isNullOrEmpty()) {
+        // 未打卡 → 全天 = 覆盖当天班次时间段
+        return if (shiftStart.isNotEmpty() && shiftEnd.isNotEmpty()) shiftStart to shiftEnd else null
+    }
+    val ss = CalcUtils.timeToMin(shiftStart)
+    val (_, normE) = CalcUtils.normRange(ss, CalcUtils.timeToMin(shiftEnd))
+    val clockInMin = CalcUtils.timeToMin(clockIn)
+    val late = clockInMin > ss
+    val clockOutMin = clockOut?.let { CalcUtils.timeToMin(it) }
+    val early = clockOutMin != null && normAdjust(ss, clockOutMin) < normE
+    return when {
+        late -> shiftStart to fmtMin(ceilGran(clockInMin, granularityMin))
+        !late && early -> fmtMin(floorGran(clockOutMin!!, granularityMin)) to shiftEnd
+        else -> null
+    }
+}
+
+/** 跨午夜归一：时刻早于班次开始视为次日 */
+private fun normAdjust(ss: Int, t: Int): Int = if (t < ss) t + 1440 else t
+
+/** 向上取整到粒度倍数（9:20 → 9:30 @30min） */
+private fun ceilGran(min: Int, g: Int): Int = if (min % g == 0) min else min + (g - min % g)
+
+/** 向下取整到粒度倍数（16:12 → 16:00 @30min） */
+private fun floorGran(min: Int, g: Int): Int = min - (min % g)
+
+private fun fmtMin(min: Int): String {
+    val m = if (min < 0) 0 else min
+    return "%02d:%02d".format((m / 60) % 24, m % 60)
+}
+
+/**
+ * S4（正常班 + 请假/调休）打卡后：按 §3.5 重算并写回附加状态时间段。
+ * 全勤 → 清除状态时间段；未打卡（理论上由 UI 保证不会发生）→ 全天。
+ */
+internal suspend fun applyS4StatusRange(
+    record: ScheduleRecord,
+    shift: Shift,
+    granularityMin: Int
+): ScheduleRecord {
+    if (shift.startTime.isEmpty() || shift.endTime.isEmpty()) return record
+    val range = computeStatusRange(
+        shift.startTime, shift.endTime,
+        record.actualStartTime, record.actualEndTime, granularityMin
+    )
+    val ap = record.appliedStatus ?: return record
+    return if (range == null) record.copy(appliedStatus = ap.copy(startTime = null, endTime = null))
+    else record.copy(appliedStatus = ap.copy(startTime = range.first, endTime = range.second))
+}
+
+/** 回源数据库计算 2x1 打卡组件数据（S1–S5 场景 + 时间窗规则，需求 §3）。 */
 private fun computeClockInWidgetData(
     shifts: List<Shift>,
     schedules: Map<String, ScheduleRecord>,
-    statusMap: Map<String, ShiftStatus>
+    statusMap: Map<String, ShiftStatus>,
+    granularityMin: Int
 ): ClockInWidgetData {
     val today = LocalDate.now()
-    val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
-    val tomorrow = today.plusDays(1)
-    val tomorrowStr = "%04d-%02d-%02d".format(tomorrow.year, tomorrow.monthValue, tomorrow.dayOfMonth)
+    val todayStr = fmtDate(today)
+    val tomorrowStr = fmtDate(today.plusDays(1))
+    val yesterdayStr = fmtDate(today.minusDays(1))
+    val now = LocalTime.now()
+    val nowMin = now.hour * 60 + now.minute
 
-    val active = findActiveShift(shifts, schedules)
+    val todayRecord = schedules[todayStr]
+    val todayShift = todayRecord?.shiftId?.let { id -> shifts.find { it.id == id } }
+    val todayRest = isRestShift(todayShift)
+    val todayStatus = todayRecord?.appliedStatus
+    val todayHasStatus = todayStatus != null
+    val todayStatusIsLeaveSwap = todayStatus?.let { isBuiltInStatus(it.statusId) } == true
 
-    val targetDate = active?.date ?: today
-    val targetDateStr = "%04d-%02d-%02d".format(targetDate.year, targetDate.monthValue, targetDate.dayOfMonth)
-    val targetRecord = schedules[targetDateStr]
-    val targetShift = targetRecord?.shiftId?.let { id -> shifts.find { it.id == id } }
-    val tomorrowShift = schedules[tomorrowStr]?.shiftId?.let { id -> shifts.find { it.id == id } }
+    val tomorrowRecord = schedules[tomorrowStr]
+    val tomorrowShift = tomorrowRecord?.shiftId?.let { id -> shifts.find { it.id == id } }
+    val tomorrowRest = isRestShift(tomorrowShift)
+    val tomorrowNormalStart = if (!tomorrowRest && tomorrowShift != null && tomorrowShift.startTime.isNotEmpty())
+        tomorrowShift.startTime else null
 
-    val isBuiltInShift = targetShift?.builtIn == true &&
-        (targetShift?.builtInType == "rest" || targetShift?.builtInType == "swap")
-    val hasAppliedStatus = targetRecord?.appliedStatus != null
-    val hasBuiltInStatus = hasAppliedStatus && isBuiltInStatus(targetRecord!!.appliedStatus!!.statusId)
-    val hasCustomStatus = hasAppliedStatus && !hasBuiltInStatus
+    var targetDate = today
+    var targetDateStr = todayStr
+    var targetRecord = todayRecord
+    var targetShift = todayShift
+    var showClockIn = false
+    var showClockOut = false
+    var restMessage = ""
 
-    var showClockIn = active?.showClockIn ?: false
-    var showClockOut = active?.showClockOut ?: false
-
-    when {
-        isBuiltInShift && !hasCustomStatus -> {
-            showClockIn = false
-            showClockOut = false
-        }
-        isBuiltInShift && hasCustomStatus -> {
-            showClockIn = true
-            showClockOut = true
+    // ── 场景 A：昨天遗留的 S3 跨天加班下班卡 ──
+    // 下班卡截止：今天有正常班 → 今天班次开始 − 5h；今天休息（含带状态）→ 今天 24:00；不顺延
+    val yRec = schedules[yesterdayStr]
+    val yShift = yRec?.shiftId?.let { id -> shifts.find { it.id == id } }
+    if (isRestShift(yShift) && yRec?.appliedStatus != null) {
+        val ySt = yRec.appliedStatus.startTime
+        val yEt = yRec.appliedStatus.endTime
+        if (!ySt.isNullOrEmpty() && yEt.isNullOrEmpty()) {
+            val cutoffMin = if (!todayRest && todayShift?.startTime?.isNotEmpty() == true)
+                CalcUtils.timeToMin(todayShift.startTime) - 300
+            else 1440
+            if (nowMin <= cutoffMin) {
+                targetDate = today.minusDays(1)
+                targetDateStr = yesterdayStr
+                targetRecord = yRec
+                targetShift = yShift
+                showClockOut = true
+            }
         }
     }
 
-    val statusName = targetRecord?.appliedStatus?.let { applied ->
-        statusMap[applied.statusId]?.name
-    } ?: ""
+    // ── 场景 B：今天正常班（S2 / S4 / S5）──
+    if (targetDate == today && !todayRest && todayShift != null &&
+        todayShift.startTime.isNotEmpty() && todayShift.endTime.isNotEmpty()
+    ) {
+        val ss = CalcUtils.timeToMin(todayShift.startTime)
+        val (_, normE) = CalcUtils.normRange(ss, CalcUtils.timeToMin(todayShift.endTime))
+        val clockIn = todayRecord?.actualStartTime ?: ""
+        val clockOut = todayRecord?.actualEndTime ?: ""
+        val isS4 = todayHasStatus && todayStatusIsLeaveSwap
 
-    // 打卡时间统一来自数据库 ScheduleRecord（单一数据源）
+        if (isS4) {
+            // S4：上班卡 [start−5h, end]；下班卡 [点击上班卡后, end+5h]；未打上班卡且已过下班时间 → 全隐藏
+            showClockIn = clockIn.isEmpty() && nowMin >= ss - 300 && nowMin <= normE
+            showClockOut = clockIn.isNotEmpty() && clockOut.isEmpty() && nowMin >= ss - 300 && nowMin <= normE + 300
+        } else {
+            // S2 / S5（按 S2）：上班卡 [start−5h, start+2h]；下班卡 [end−2h, end+5h]
+            showClockIn = clockIn.isEmpty() && nowMin >= ss - 300 && nowMin <= ss + 120
+            showClockOut = clockOut.isEmpty() && nowMin >= normE - 120 && nowMin <= normE + 300
+            // 跨午夜夜班：今天窗口未命中时，尝试昨天夜班的下班卡窗口
+            if (!showClockIn && !showClockOut) {
+                val yNShift = yShift
+                if (yNShift != null && !isRestShift(yNShift) &&
+                    yNShift.startTime.isNotEmpty() && yNShift.endTime.isNotEmpty()
+                ) {
+                    val yss = CalcUtils.timeToMin(yNShift.startTime) - 1440
+                    val (_, yNormE) = CalcUtils.normRange(yss, CalcUtils.timeToMin(yNShift.endTime) - 1440)
+                    val yClockOut = yRec?.actualEndTime ?: ""
+                    if (yClockOut.isEmpty() && nowMin >= yNormE - 120 && nowMin <= yNormE + 300) {
+                        targetDate = today.minusDays(1)
+                        targetDateStr = yesterdayStr
+                        targetRecord = yRec
+                        targetShift = yNShift
+                        showClockOut = true
+                    }
+                }
+            }
+        }
+    }
+
+    // ── 场景 C：今天休息/调休（S1 / S3）──
+    if (targetDate == today && todayRest) {
+        if (!todayHasStatus) {
+            // S1：休息文案，无按钮
+            restMessage = "好好休息一下哦！"
+        } else {
+            // S3：上班卡全天可见；下班卡自点击上班卡后持续至次日截止
+            val st = todayStatus?.startTime ?: ""
+            val et = todayStatus?.endTime ?: ""
+            when {
+                st.isEmpty() -> showClockIn = true
+                et.isEmpty() -> {
+                    // 下班卡截止：明天正常班 → 明天班次开始 − 5h；明天休息（含带状态）→ 明天 24:00
+                    val cutoffMin = if (tomorrowNormalStart != null)
+                        1440 + CalcUtils.timeToMin(tomorrowNormalStart) - 300
+                    else 1440
+                    showClockOut = nowMin <= cutoffMin
+                }
+                else -> { /* 上下班均已打卡 */ }
+            }
+        }
+    }
+
+    val isBuiltInShift = isRestShift(targetShift)
+    val targetStatus = targetRecord?.appliedStatus
+    val hasAppliedStatus = targetStatus != null
+    val hasBuiltInStatus = hasAppliedStatus && isBuiltInStatus(targetStatus!!.statusId)
+    val hasCustomStatus = hasAppliedStatus && !hasBuiltInStatus
+
+    val statusStart = targetStatus?.startTime ?: ""
+    val statusEnd = targetStatus?.endTime ?: ""
     val actualStart = targetRecord?.actualStartTime ?: ""
     val actualEnd = targetRecord?.actualEndTime ?: ""
     val hasClockedIn = actualStart.isNotEmpty()
     val hasClockedOut = actualEnd.isNotEmpty()
 
-    when {
-        isBuiltInShift && hasCustomStatus && hasClockedOut -> {
-            showClockIn = false
-            showClockOut = false
-        }
-        isBuiltInShift && hasCustomStatus && hasClockedIn && !hasClockedOut -> {
-            showClockIn = false
-            showClockOut = true
-        }
-        !isBuiltInShift && hasClockedIn && hasClockedOut -> {
-            showClockIn = false
-            showClockOut = false
-        }
-        !isBuiltInShift && hasClockedIn && !hasClockedOut -> {
-            showClockIn = false
-            showClockOut = true
-        }
-    }
+    val statusName = targetStatus?.let { statusMap[it.statusId]?.name } ?: ""
+    // 明天班次的附加状态（需求：明天信息同时显示附加状态）
+    val tomorrowStatusName = tomorrowRecord?.appliedStatus?.let { statusMap[it.statusId]?.name } ?: ""
 
     return ClockInWidgetData(
         shiftName = targetShift?.name ?: "",
         startTime = targetShift?.startTime ?: "",
         endTime = targetShift?.endTime ?: "",
         tomorrowShiftName = tomorrowShift?.name ?: "",
+        tomorrowStatusName = tomorrowStatusName,
         actualStartTime = actualStart,
         actualEndTime = actualEnd,
         shiftColor = targetShift?.color ?: "#059669",
         statusName = statusName,
+        statusStartTime = statusStart,
+        statusEndTime = statusEnd,
         shiftId = targetShift?.id ?: "",
         isBuiltInShift = isBuiltInShift,
-        appliedStatusId = targetRecord?.appliedStatus?.statusId ?: "",
+        appliedStatusId = targetStatus?.statusId ?: "",
         isBuiltInStatus = hasBuiltInStatus,
         showClockIn = showClockIn,
         showClockOut = showClockOut,
@@ -224,7 +337,8 @@ private fun computeClockInWidgetData(
         hasClockOut = hasClockedOut,
         clockInDate = targetDateStr,
         widgetClockInTime = actualStart,
-        widgetClockOutTime = actualEnd
+        widgetClockOutTime = actualEnd,
+        restMessage = restMessage
     )
 }
 
