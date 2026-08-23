@@ -1,7 +1,9 @@
 // app/src/main/java/com/schedulecalendar/app/ui/detail/ScheduleDetailScreen.kt
 package com.schedulecalendar.app.ui.detail
+import android.util.Log
 
 import androidx.core.graphics.toColorInt
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -37,13 +39,14 @@ import com.schedulecalendar.app.domain.model.HolidayData
 import java.time.DayOfWeek
 import java.time.LocalDate
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ScheduleDetailScreen(
     navController: NavController,
     vm: ScheduleDetailViewModel = hiltViewModel()
 ) {
     val state       by vm.state.collectAsStateWithLifecycle()
+    Log.e("WBD", "detail: composed date=" + state.date)
     val snackbar     = remember { SnackbarHostState() }
     val scrollState  = rememberScrollState()
 
@@ -69,6 +72,18 @@ fun ScheduleDetailScreen(
         val onConfirm: (String) -> Unit
     )
     var timeDialogConfig by remember { mutableStateOf<TimeDialogConfig?>(null) }
+
+    // 返回键分级：弹窗/对话框打开时第一次返回只关闭弹窗，避免「sheet 关闭动画 + 导航返回转场」
+    // 叠加在 ColorOS 上偶发渲染冻结（白屏 1-2 秒自愈）；全部关闭后再按返回才 popBackStack
+    BackHandler(
+        enabled = showShiftPicker || showStatusPicker || showStatusEditor != null || timeDialogConfig != null
+    ) {
+        Log.e("WBD", "detail: back -> close overlays")
+        showShiftPicker  = false
+        showStatusPicker = false
+        showStatusEditor = null
+        timeDialogConfig = null
+    }
 
     val date    = state.date
     val record  = state.record
@@ -100,7 +115,7 @@ fun ScheduleDetailScreen(
         topBar = {
             ScheduleTopBar(
                 title   = "排班编辑",
-                onBack  = { navController.popBackStack() },
+                onBack  = { Log.e("WBD", "detail: topbar back"); navController.popBackStack() },
                 actions = {
                     // 清除按钮（左侧）
                     if (record?.shiftId != null) {
@@ -173,9 +188,11 @@ fun ScheduleDetailScreen(
             Row(
                 Modifier.fillMaxWidth()
                     .clip(MaterialTheme.shapes.medium)
-                    .clickable { showShiftPicker = true }
+                    .clickable { Log.e("WBD", "detail: click shift row"); showShiftPicker = true }
                     .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(16.dp),
+                    // 与附加状态行高一致（min 52dp）
+                    .heightIn(min = 52.dp)
+                    .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (selectedShift != null) {
@@ -279,7 +296,7 @@ fun ScheduleDetailScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
                         // 点击行主体 / > 图标 → 弹出附加状态选择页（与选择班次一致）
-                        .clickable { showStatusPicker = true }
+                        .clickable { Log.e("WBD", "detail: click status row"); showStatusPicker = true }
                 ) {
                     Row(
                         // heightIn 保证「无附加状态」与已选状态行高一致
@@ -350,42 +367,31 @@ fun ScheduleDetailScreen(
             // ── 计薪方式 ──────────────────────────────────────────────
             if (selectedShift != null && (!isRestOrSwap || hasStatusTimeSegment)) {
                 SectionLabel("计薪方式")
-                if (record?.salaryMode == null) {
-                    // 自动模式：显示只读标签
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    ) {
-                        Text(
-                            text = "自动（${state.autoModeLabel.ifEmpty { "按日期判断" }}）",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-                    }
-                }
                 val modes = listOf(SalaryMode.NORMAL to "工作日",
                     SalaryMode.WEEKEND to "周末", SalaryMode.HOLIDAY to "节假日")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement   = Arrangement.spacedBy(8.dp)
+                ) {
+                    // 自动模式按钮（常驻）：选中时显示「自动-工作日/周末/节假日」随当天规则动态变化；
+                    // 选择其它模式后文案变为「自动计算」，提示点击可恢复自动
+                    val isAuto = record?.salaryMode == null
+                    FilterChip(
+                        selected = isAuto,
+                        onClick  = { vm.setSalaryMode(null) },
+                        label    = {
+                            Text(
+                                if (isAuto) "自动-${state.autoModeLabel.ifEmpty { "按日期判断" }}" else "自动计算",
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    )
                     modes.forEach { (mode, label) ->
                         val selected = record?.salaryMode == mode
                         FilterChip(
                             selected = selected,
                             onClick  = { vm.setSalaryMode(mode) },
                             label    = { Text(label, style = MaterialTheme.typography.labelMedium) }
-                        )
-                    }
-                    // 点击已选中的模式可以取消，恢复自动
-                    val currentMode = record?.salaryMode
-                    if (currentMode != null) {
-                        FilterChip(
-                            selected = false,
-                            onClick  = { vm.setSalaryMode(null) },
-                            label    = { Text("自动", style = MaterialTheme.typography.labelMedium) },
-                            colors   = FilterChipDefaults.filterChipColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
                         )
                     }
                 }
@@ -458,7 +464,7 @@ fun ScheduleDetailScreen(
         ShiftPickerSheet(
             shifts   = state.shifts,
             onSelect = { id -> vm.setShift(id); showShiftPicker = false },
-            onDismiss = { showShiftPicker = false }
+            onDismiss = { Log.e("WBD", "detail: shift sheet dismiss"); showShiftPicker = false }
         )
     }
 
@@ -476,7 +482,7 @@ fun ScheduleDetailScreen(
                 }
                 showStatusPicker = false
             },
-            onDismiss = { showStatusPicker = false }
+            onDismiss = { Log.e("WBD", "detail: status sheet dismiss"); showStatusPicker = false }
         )
     }
 
@@ -560,7 +566,9 @@ private fun ExtraItemRow(item: ExtraItem, checked: Boolean, onToggle: () -> Unit
             .clip(RoundedCornerShape(10.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             .clickable { onToggle() }
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            // 与附加状态行高一致（min 52dp）
+            .heightIn(min = 52.dp)
+            .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val typeColor = if (item.type == "allowance") AllowanceGreen else DeductionRed
@@ -759,7 +767,18 @@ private fun StatusPickerSheet(
                 ) {
                     Box(Modifier.size(12.dp).clip(CircleShape).background(safeColor(st.color)))
                     Spacer(Modifier.width(12.dp))
-                    Text(st.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text(st.name, style = MaterialTheme.typography.bodyLarge)
+                        if (st.builtIn) {
+                            Spacer(Modifier.width(8.dp))
+                            Surface(shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer) {
+                                Text("内置", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                            }
+                        }
+                    }
                     if (selected) {
                         Icon(Icons.Filled.Check, contentDescription = "已选择",
                             tint = MaterialTheme.colorScheme.primary)

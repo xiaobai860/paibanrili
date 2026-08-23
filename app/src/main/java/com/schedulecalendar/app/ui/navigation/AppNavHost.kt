@@ -1,9 +1,11 @@
 // app/src/main/java/com/schedulecalendar/app/ui/navigation/AppNavHost.kt
 package com.schedulecalendar.app.ui.navigation
+import android.util.Log
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.padding
@@ -58,6 +60,7 @@ fun AppNavHost() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
+    Log.e("WBD", "navhost: dest=" + (navBackStackEntry?.destination?.route ?: "null"))
     val currentDest = navBackStackEntry?.destination
     val tabRouteNames = tabs.map { (it.route::class).qualifiedName }
     val showBottomBar = currentDest?.route in tabRouteNames
@@ -113,7 +116,12 @@ fun AppNavHost() {
         NavHost(
             navController    = navController,
             startDestination = RouteCalendar,
-            modifier         = Modifier.padding(paddingValues)
+            modifier         = Modifier.padding(paddingValues),
+            // 简化导航转场：避免与 ModalBottomSheet 关闭动画叠加，在 ColorOS 上偶发渲染冻结（白屏 1-2 秒自愈）
+            enterTransition     = { fadeIn(animationSpec = tween(120)) },
+            exitTransition      = { fadeOut(animationSpec = tween(120)) },
+            popEnterTransition  = { fadeIn(animationSpec = tween(120)) },
+            popExitTransition   = { fadeOut(animationSpec = tween(120)) }
         ) {
             // ── Tab 主页面 ──────────────────────────────────────────
             composable<RouteCalendar>(
@@ -159,6 +167,7 @@ fun AppNavHost() {
         // BackHandler 放在 NavHost 之后组合（后注册 → 优先级高于 NavHost 的返回处理），
         // 确保在任意 Tab 页按返回一次直接退出，而不会被 NavHost 先 popBackStack 回退到上一级。
         BackHandler(enabled = showBottomBar && !calendarSubModeActive) {
+            Log.e("WBD", "navhost: BACK pressed (finish) dest=" + (currentDest?.route ?: "null"))
             val act = context as? Activity
             if (act != null && !act.isFinishing) {
                 act.finishAndRemoveTask()

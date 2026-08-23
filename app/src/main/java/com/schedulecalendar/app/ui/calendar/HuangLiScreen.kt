@@ -54,6 +54,7 @@ fun HuangLiScreen(navController: NavController) {
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("黄历详情") },
@@ -61,7 +62,12 @@ fun HuangLiScreen(navController: NavController) {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
-                }
+                },
+                // 与其他 Tab 页（事项/统计/班次）保持一致：顶格显示，不带状态栏空白
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         }
     ) { padding ->
@@ -69,279 +75,293 @@ fun HuangLiScreen(navController: NavController) {
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.background)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
 
             // ══════════════════════════════════════════════════════════
-            // 顶部日期卡片区：左侧大号日期数字 + 右侧农历/干支/宜忌全文
+            // 顶部日期 Hero 卡：日期 + 农历/干支 + 宜忌
             // ══════════════════════════════════════════════════════════
             Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // 左侧：大号日期数字
-                    Text(
-                        text = "$day",
-                        fontSize = 44.sp,
-                        fontWeight = FontWeight.Light,
-                        color = Color(0xFF1A1A1A),
-                        lineHeight = 48.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Clip,
-                        modifier = Modifier.width(60.dp)
-                    )
-
-                    // 右侧：全部信息
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        // 农历日期 + 星期
-                        Text(
-                            text = "${huangLi.lunar.monthText}${huangLi.lunar.dayText} $weekDay",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF1A1A1A)
-                        )
-
-                        // 年干支·月干支·日干支
-                        Text(
-                            text = "${huangLi.lunar.yearGanZhi}·${huangLi.lunar.monthGanZhi}·${huangLi.lunar.dayGanZhi}",
-                            fontSize = 14.sp,
-                            color = Color(0xFF666666)
-                        )
-
-                        // 宜（绿色标签 + 完整列表）
-                        Row(verticalAlignment = Alignment.Top) {
-                            Text(
-                                text = "宜",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Green700,
-                                modifier = Modifier.width(30.dp)
-                            )
-                            Text(
-                                text = huangLi.huangLi.yi.joinToString(", "),
-                                fontSize = 15.sp,
-                                color = Color(0xFF333333),
-                                lineHeight = 24.sp
-                            )
-                        }
-
-                        // 忌（红色标签 + 完整列表）
-                        Row(verticalAlignment = Alignment.Top) {
-                            Text(
-                                text = "忌",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.width(30.dp)
-                            )
-                            Text(
-                                text = huangLi.huangLi.ji.joinToString(", "),
-                                fontSize = 15.sp,
-                                color = Color(0xFF333333),
-                                lineHeight = 24.sp
-                            )
-                        }
-                    }
-                }
-            }
-
-            // ══════════════════════════════════════════════════════════
-            // 信息区卡片：胎神/相冲/彭祖百忌/吉神凶神/建除值神/星宿五行
-            // ══════════════════════════════════════════════════════════
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // 胎神
-                    InfoRowSimple("胎神", huangLi.taiShen)
-
-                    // 相冲
-                    InfoRowSimple("相冲", huangLi.chongSha)
-
-                    // 彭祖百忌
-                    InfoRowSimple("彭祖百忌", huangLi.pengZu)
-
-                    // 吉神宜趋
-                    InfoRowSimple("吉神宜趋", huangLi.jiShen.joinToString(", "))
-
-                    // 凶煞宜忌
-                    InfoRowSimple("凶煞宜忌", huangLi.xiongSha.joinToString(", "))
-
-                    // 建除十二神 + 值神（同行两列）
-                    InfoRowDouble(
-                        label1 = "建除十二神", value1 = "${huangLi.zhiChu}日",
-                        label2 = "值神", value2 = huangLi.zhiShen
-                    )
-
-                    // 星宿 + 五行（同行两列）
-                    InfoRowDouble(
-                        label1 = "星宿", value1 = huangLi.xingXiu,
-                        label2 = "五行", value2 = huangLi.naYinWuXing
-                    )
-                }
-            }
-
-            // ══════════════════════════════════════════════════════════
-            // 吉时区：12列网格
-            // ══════════════════════════════════════════════════════════
-            if (huangLi.shiChen.isNotEmpty()) {
-                Card(
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp)
+                    // 第一行：日期大数字 + 农历/干支
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "吉时",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1A1A1A)
+                            text = "$day",
+                            fontSize = 48.sp,
+                            fontWeight = FontWeight.Light,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            lineHeight = 52.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.width(72.dp)
                         )
-
-                        Spacer(Modifier.height(12.dp))
-
-                        // 12列网格：每列包含干支、动物、时间范围、吉凶
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            huangLi.shiChen.forEach { sc ->
-                                ShiChenColumn(sc)
+                            Text(
+                                text = "${huangLi.lunar.monthText}${huangLi.lunar.dayText} $weekDay",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "${huangLi.lunar.yearGanZhi}·${huangLi.lunar.monthGanZhi}·${huangLi.lunar.dayGanZhi}",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                            // 节气 / 节日（可选）
+                            val tag = huangLi.solarTerm ?: huangLi.festival
+                            if (tag != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f)
+                                ) {
+                                    Text(
+                                        text = tag,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
+                    }
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f)
+                    )
+
+                    // 第二行：宜（绿）
+                    Row(verticalAlignment = Alignment.Top) {
+                        YiJiBadge(text = "宜", color = Green700)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = huangLi.huangLi.yi.joinToString("、").ifEmpty { "无" },
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // 第三行：忌（红）
+                    Row(verticalAlignment = Alignment.Top) {
+                        YiJiBadge(text = "忌", color = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = huangLi.huangLi.ji.joinToString("、").ifEmpty { "无" },
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            // ══════════════════════════════════════════════════════════
+            // 今日信息卡：胎神/相冲/彭祖/吉神/凶煞/建除/值神/星宿/五行
+            // ══════════════════════════════════════════════════════════
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    SectionTitle("今日信息")
+
+                    InfoRow("胎神", huangLi.taiShen)
+                    InfoRow("相冲", huangLi.chongSha)
+                    InfoRow("彭祖百忌", huangLi.pengZu)
+                    InfoRow("吉神宜趋", huangLi.jiShen.joinToString("、"))
+                    InfoRow("凶煞宜忌", huangLi.xiongSha.joinToString("、"))
+
+                    Spacer(Modifier.height(10.dp))
+
+                    Row(verticalAlignment = Alignment.Top) {
+                        InfoLabel("建除", Modifier.width(68.dp))
+                        Text("${huangLi.zhiChu}日", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f))
+                        InfoLabel("值神", Modifier.width(48.dp))
+                        Text(huangLi.zhiShen, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.Top) {
+                        InfoLabel("星宿", Modifier.width(68.dp))
+                        Text(huangLi.xingXiu, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f))
+                        InfoLabel("五行", Modifier.width(48.dp))
+                        Text(huangLi.naYinWuXing, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+
+            // ══════════════════════════════════════════════════════════
+            // 吉时卡：12 时辰 2 行 × 6 列网格
+            // ══════════════════════════════════════════════════════════
+            if (huangLi.shiChen.isNotEmpty()) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 16.dp)
+                    ) {
+                        SectionTitle("吉时")
+                        Spacer(Modifier.height(12.dp))
+                        ShiChenGrid(huangLi.shiChen)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
         }
     }
 }
 
 // ── 辅助组件 ──────────────────────────────────────────────────
 
+/** 区块标题 */
 @Composable
-private fun InfoRowSimple(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top
-    ) {
-        Text(
-            text = label,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color(0xFF333333),
-            modifier = Modifier.width(80.dp)
-        )
-        Text(
-            text = value,
-            fontSize = 15.sp,
-            color = Color(0xFF333333),
-            modifier = Modifier.weight(1f)
-        )
-    }
+private fun SectionTitle(title: String) {
+    Text(
+        text = title,
+        fontSize = 16.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(bottom = 10.dp)
+    )
 }
 
+/** 宜/忌 胶囊标签 */
 @Composable
-private fun InfoRowDouble(
-    label1: String, value1: String,
-    label2: String, value2: String
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top
+private fun YiJiBadge(text: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = color,
+        modifier = Modifier.width(34.dp)
     ) {
         Text(
-            text = label1,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color(0xFF333333),
-            modifier = Modifier.width(80.dp)
-        )
-        Text(
-            text = value1,
-            fontSize = 15.sp,
-            color = Color(0xFF333333),
-            modifier = Modifier.weight(1f)
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = label2,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color(0xFF333333),
-            modifier = Modifier.width(48.dp)
-        )
-        Text(
-            text = value2,
-            fontSize = 15.sp,
-            color = Color(0xFF333333),
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
-private fun ShiChenColumn(sc: ShiChen) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(24.dp)
-    ) {
-        // 干支（上方汉字 + 下方汉字）
-        Text(
-            text = sc.ganZhi[0].toString(),
-            fontSize = 11.sp,
-            color = Color(0xFF333333)
-        )
-        Text(
-            text = sc.ganZhi[1].toString(),
-            fontSize = 11.sp,
-            color = Color(0xFF333333)
-        )
-        // 动物
-        Text(
-            text = sc.name,
-            fontSize = 11.sp,
-            color = Color(0xFF333333)
-        )
-        // 时间范围
-        Text(
-            text = sc.startTime,
-            fontSize = 10.sp,
-            color = if (sc.isGood) Green700 else Color(0xFF333333)
-        )
-        Text(
-            text = sc.endTime,
-            fontSize = 10.sp,
-            color = if (sc.isGood) Green700 else Color(0xFF333333)
-        )
-        // 吉/凶
-        Text(
-            text = if (sc.isGood) "吉" else "凶",
-            fontSize = 11.sp,
+            text = text,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
-            color = if (sc.isGood) Green700 else Color(0xFF999999)
+            color = Color.White,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(vertical = 3.dp)
         )
+    }
+}
+
+/** 信息区标签 */
+@Composable
+private fun InfoLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier
+    )
+}
+
+/** 单行信息：标签 + 内容 + 分隔线 */
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        InfoLabel(label, Modifier.width(68.dp))
+        Text(
+            text = value.ifEmpty { "—" },
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+}
+
+/** 吉时网格：2 行 × 6 列 */
+@Composable
+private fun ShiChenGrid(shiChen: List<ShiChen>) {
+    val row1 = shiChen.take(6)
+    val row2 = shiChen.drop(6)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            row1.forEach { sc -> ShiChenCell(sc, Modifier.weight(1f)) }
+        }
+        if (row2.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                row2.forEach { sc -> ShiChenCell(sc, Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+/** 单个时辰卡片 */
+@Composable
+private fun ShiChenCell(sc: ShiChen, modifier: Modifier = Modifier) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (sc.isGood) Green700.copy(alpha = 0.14f)
+                else MaterialTheme.colorScheme.surfaceVariant,
+        modifier = modifier
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 2.dp)
+        ) {
+            Text(
+                text = sc.ganZhi,
+                fontSize = 12.sp,
+                fontWeight = if (sc.isGood) FontWeight.Bold else FontWeight.Normal,
+                color = if (sc.isGood) Green700 else MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = sc.name,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "${sc.startTime}-${sc.endTime}",
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+            Text(
+                text = if (sc.isGood) "吉" else "凶",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (sc.isGood) Green700 else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }

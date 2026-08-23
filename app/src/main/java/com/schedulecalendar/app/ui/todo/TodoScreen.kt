@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -27,6 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,7 +53,15 @@ import com.schedulecalendar.app.ui.theme.CategoryBlue
 import com.schedulecalendar.app.ui.theme.CategoryGreen
 import com.schedulecalendar.app.ui.theme.CategoryOrange
 import com.schedulecalendar.app.ui.theme.HolidayRed
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -307,21 +318,31 @@ private fun TodoTab(
             }
         }
 
-        // 可滚动的待办列表区域
-        Column(
-            Modifier
+                    val missedByDate = remember(missedTodos) {
+                sortTodosByDateDesc(missedTodos).groupBy { it.date }
+                    .toSortedMap(compareByDescending { it })
+            }
+                    val filledByDate = remember(filledTodos) {
+                sortTodosByDateDesc(filledTodos).groupBy { it.date }
+                    .toSortedMap(compareByDescending { it })
+            }
+                    val sortedPendingOT = remember(pendingOTTodos) { sortTodosByDateDesc(pendingOTTodos) }
+                    val sortedConfirmed = remember(confirmedOTTodos) { sortTodosByDateDesc(confirmedOTTodos) }
+                    val sortedIgnored = remember(ignoredOTTodos) { sortTodosByDateDesc(ignoredOTTodos) }
+
+        // 可滚动的待办列表区域（LazyColumn 懒加载：todo 多时只渲染可见项，避免全量渲染卡顿掉帧）
+        LazyColumn(
+            modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .padding(horizontal = 4.dp, vertical = 4.dp)
-                .padding(bottom = 8.dp)
-                .verticalScroll(rememberScrollState()),
+                .padding(bottom = 8.dp),
+            contentPadding = PaddingValues(vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
 
             // ── 漏打卡待补录（同一天上班/下班合并显示） ──────────────────────────────────────────
-            val sortedMissed = sortTodosByDateDesc(missedTodos)
-            val missedByDate = sortedMissed.groupBy { it.date }
-                .toSortedMap(compareByDescending { it })
+            item(key = "missed") {
             TodoCardSection(
                 icon = Icons.Default.Warning, title = "漏打卡待补录",
                 count = missedTodos.size, expanded = missedExpanded,
@@ -340,9 +361,8 @@ private fun TodoTab(
             }
 
             // ── 已补录（同一天上班/下班合并显示） ────────────────────────────────
-            val sortedFilled = sortTodosByDateDesc(filledTodos)
-            val filledByDate = sortedFilled.groupBy { it.date }
-                .toSortedMap(compareByDescending { it })
+            }
+            item(key = "filled") {
             TodoCardSection(
                 icon = Icons.Default.CheckCircle, title = "已补录",
                 count = filledTodos.size, expanded = filledExpanded,
@@ -362,13 +382,15 @@ private fun TodoTab(
             }
 
             // ── 疑似加班待确认（合并早到+晚退） ────────────────────────
+            }
+            item(key = "ot_pending") {
             TodoCardSection(
                 icon = Icons.Default.Schedule, title = "疑似加班待确认",
                 count = pendingOTTodos.size, expanded = otPendingExpanded,
                 onToggle = onOtPendingToggle,
                 iconTint = MaterialTheme.colorScheme.tertiary
             ) {
-                sortTodosByDateDesc(pendingOTTodos).forEach { todo ->
+                sortedPendingOT.forEach { todo ->
                     val isEarly = todo.type == TodoType.PENDING_EARLY_OT
                     UnifiedTodoRow(
                         todo = todo, isClockIn = isEarly,
@@ -379,7 +401,8 @@ private fun TodoTab(
             }
 
             // ── 是加班（内联展开列表） ──────────────────────────────
-            val sortedConfirmed = sortTodosByDateDesc(confirmedOTTodos)
+            }
+            item(key = "ot_confirmed") {
             TodoCardSection(
                 icon = Icons.Default.CheckCircle, title = "是加班",
                 count = confirmedOTTodos.size, expanded = otConfirmedExpanded,
@@ -400,7 +423,8 @@ private fun TodoTab(
             }
 
             // ── 不是加班（内联展开列表） ──────────────────────────────
-            val sortedIgnored = sortTodosByDateDesc(ignoredOTTodos)
+            }
+            item(key = "ot_ignored") {
             TodoCardSection(
                 icon = Icons.Default.Cancel, title = "不是加班",
                 count = ignoredOTTodos.size, expanded = otIgnoredExpanded,
@@ -419,7 +443,8 @@ private fun TodoTab(
                     )
                 }
             }
-        } // end scrollable Column
+            } // end ot_ignored item
+        } // end LazyColumn
     } // end outer Column
 }
 
@@ -435,12 +460,12 @@ private fun TodoCardSection(
     onToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    OutlinedCard(
+    // 与其他页面一致的浅灰卡片语言：surfaceVariant 不透明底 + 12dp 圆角
+    // （半透明背景在展开内容多时会透出下方内容，视觉上像「透明+叠加」）
+    Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+        color = MaterialTheme.colorScheme.surfaceVariant
     ) {
         // 区块标题行
         Row(
@@ -470,8 +495,9 @@ private fun TodoCardSection(
                 )
             }
         }
-        // 展开的内容
-        AnimatedVisibility(visible = expanded && count > 0) {
+        // 展开的内容（用条件渲染替代 AnimatedVisibility：展开/收起动画在部分 ColorOS 上
+        // 会触发「内容透明 + 叠加覆盖下一项」的渲染 bug）
+        if (expanded && count > 0) {
             Column(
                 Modifier.padding(horizontal = 10.dp, vertical = 0.dp)
                     .padding(bottom = 10.dp),
@@ -896,34 +922,42 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
             }
         }
         else -> {
-            val listState = rememberLazyListState()
-            val grouped = eventState.events.groupBy { event ->
-                try {
-                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                    sdf.format(Date(event.dtStart))
-                } catch (_: Exception) { "未知日期" }
+            // 缓存分组结果，避免每次重组重复计算（性能优化）
+            val grouped = remember(eventState.events) {
+                eventState.events.groupBy { event ->
+                    try {
+                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                        sdf.format(Date(event.dtStart))
+                    } catch (_: Exception) { "未知日期" }
+                }
             }
-            val sortedDates = grouped.keys.sorted()
+            val sortedDates = remember(grouped) { grouped.keys.sorted() }
 
-            // 自动滚动定位到当天日期或最近有数据的日期
-            LaunchedEffect(sortedDates) {
-                if (sortedDates.isEmpty()) return@LaunchedEffect
-                val todayStr = LocalDate.now().toString()
-                // 找到距离今天最近的有数据日期
-                val targetDate = sortedDates.firstOrNull { it >= todayStr }
-                    ?: sortedDates.last()
-                // 计算该日期在 LazyColumn 中的索引（包含 stickyHeader 偏移）
-                val targetIdx = sortedDates.indexOf(targetDate)
-                if (targetIdx >= 0) {
+            // 首次组合即定位到「距离今天最近」的有数据日期（含 stickyHeader 偏移）：
+            // 用 rememberLazyListState 初始位置参数，列表第一帧直接渲染在目标位置，无跳动动画
+            val density = LocalDensity.current
+            val stickyHeaderOffsetPx = with(density) { 32.dp.toPx().toInt() }
+            val todayDate = LocalDate.now()
+            val initialIndex = remember(sortedDates, grouped) {
+                if (sortedDates.isEmpty()) 0
+                else {
+                    val targetDate = sortedDates.minByOrNull { ds ->
+                        try {
+                            kotlin.math.abs(ChronoUnit.DAYS.between(todayDate, LocalDate.parse(ds)))
+                        } catch (_: Exception) { Long.MAX_VALUE }
+                    } ?: sortedDates.first()
+                    val targetIdx = sortedDates.indexOf(targetDate)
                     var index = 0
                     for (i in 0 until targetIdx) {
                         index += 1 + (grouped[sortedDates[i]]?.size ?: 0)
                     }
-                    // 跳过目标日期自身的 stickyHeader，定位到事件列表
-                    index += 1
-                    listState.scrollToItem(index)
+                    index + 1 // 跳过目标日期自身的 stickyHeader
                 }
             }
+            val listState = rememberLazyListState(
+                initialFirstVisibleItemIndex = initialIndex,
+                initialFirstVisibleItemScrollOffset = -stickyHeaderOffsetPx
+            )
 
             LazyColumn(
                 state = listState,
@@ -1451,33 +1485,37 @@ private data class HolidayListItem(
     val dayOfWeek: String
 )
 
-private fun gatherAllHolidays(): List<HolidayListItem> {
-    val today = LocalDate.now()
-    val currentYear = today.year
-    val startYear = currentYear
-    val endYear = currentYear + 2
-    val results = mutableListOf<HolidayListItem>()
-    val dowLabels = arrayOf("周一","周二","周三","周四","周五","周六","周日")
+/**
+ * 节假日按年生成结果缓存（进程级单例）：
+ * 生成含农历转换开销较大，缓存后切 Tab/重新进入页面秒开，不再重复计算。
+ */
+private object HolidayYearCache {
+    val yearData = mutableMapOf<Int, List<HolidayListItem>>()
+}
 
+/** 按年生成节假日列表（法定 + 节气 + 传统 + 国际；农历转换较重，需在后台线程调用） */
+private fun generateHolidaysForYear(year: Int): List<HolidayListItem> {
+    HolidayYearCache.yearData[year]?.let { return it }
+    val dowLabels = arrayOf("周一","周二","周三","周四","周五","周六","周日")
     fun fmtDow(ds: String): String {
         val d = LocalDate.parse(ds)
         return dowLabels[d.dayOfWeek.value - 1]
     }
 
+    val results = mutableListOf<HolidayListItem>()
+
     // 1. 法定节假日（取每个假期第一天）
     val legalDates = mutableSetOf<String>()
     val allHolidayNames = mutableMapOf<String, String>() // date -> name
-    for (year in startYear..endYear) {
-        for (m in 1..12) {
-            for (d in 1..31) {
-                try {
-                    val ds = "%04d-%02d-%02d".format(year, m, d)
-                    val hn = HolidayData.getHolidayName(ds)
-                    if (hn != null && !hn.contains("补班")) {
-                        allHolidayNames[ds] = hn
-                    }
-                } catch (_: Exception) {}
-            }
+    for (m in 1..12) {
+        for (d in 1..31) {
+            try {
+                val ds = "%04d-%02d-%02d".format(year, m, d)
+                val hn = HolidayData.getHolidayName(ds)
+                if (hn != null && !hn.contains("补班")) {
+                    allHolidayNames[ds] = hn
+                }
+            } catch (_: Exception) {}
         }
     }
     // 取每个假期最早的那天
@@ -1494,69 +1532,148 @@ private fun gatherAllHolidays(): List<HolidayListItem> {
     }
 
     // 2. 节气 + 传统节日 + 国际节日（扫描每天）
-    for (year in startYear..endYear) {
-        val start = LocalDate.of(year, 1, 1)
-        val daysInYear = start.lengthOfYear()
-        for (i in 0 until daysInYear) {
-            val d = start.plusDays(i.toLong())
-            val ds = d.toString()
-            if (ds in legalDates) continue
+    val start = LocalDate.of(year, 1, 1)
+    val daysInYear = start.lengthOfYear()
+    for (i in 0 until daysInYear) {
+        val d = start.plusDays(i.toLong())
+        val ds = d.toString()
+        if (ds in legalDates) continue
 
-            val solarTerm = HolidayData.getSolarTerm(ds)
-            if (solarTerm != null) {
-                results.add(HolidayListItem(ds, solarTerm, "节气", fmtDow(ds)))
-            }
-            val trad = HolidayData.getTraditionalFestival(ds)
-            if (trad != null) {
-                results.add(HolidayListItem(ds, trad, "传统", fmtDow(ds)))
-            }
-            val intl = HolidayData.getInternationalFestival(ds)
-            if (intl != null) {
-                results.add(HolidayListItem(ds, intl, "国际", fmtDow(ds)))
-            }
+        val solarTerm = HolidayData.getSolarTerm(ds)
+        if (solarTerm != null) {
+            results.add(HolidayListItem(ds, solarTerm, "节气", fmtDow(ds)))
+        }
+        val trad = HolidayData.getTraditionalFestival(ds)
+        if (trad != null) {
+            results.add(HolidayListItem(ds, trad, "传统", fmtDow(ds)))
+        }
+        val intl = HolidayData.getInternationalFestival(ds)
+        if (intl != null) {
+            results.add(HolidayListItem(ds, intl, "国际", fmtDow(ds)))
         }
     }
 
-    return results.sortedBy { it.date }
+    HolidayYearCache.yearData[year] = results
+    return results
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HolidayTab() {
-    val holidays = remember { gatherAllHolidays() }
     val today = remember { LocalDate.now() }
-    val listState = rememberLazyListState()
-    val grouped = remember(holidays) { holidays.groupBy { it.date.substring(0, 7) } }
-    val sortedMonths = remember(grouped) { grouped.keys.sorted() }
 
-    // 自动滚动到当前月份
-    LaunchedEffect(holidays) {
-        val currentMonthKey = "%04d-%02d".format(today.year, today.monthValue)
-        val todayStr = today.toString()
+    // 懒加载年份范围：初始 = 去年 ~ 未来 2 年；滑动到顶部/底部边界时扩展
+    var startYear by remember { mutableIntStateOf(today.year - 1) }
+    var endYear by remember { mutableIntStateOf(today.year + 2) }
+    var loading by remember { mutableStateOf(true) }
 
-        // 找到目标月份
-        val targetMonth = sortedMonths.firstOrNull { it == currentMonthKey }
-            ?: sortedMonths.firstOrNull { it > currentMonthKey }
-            ?: sortedMonths.lastOrNull()
-            ?: return@LaunchedEffect
-
-        // 计算 LazyColumn 索引（含 stickyHeader 偏移）
-        val targetMonthIdx = sortedMonths.indexOf(targetMonth)
-        var listIndex = 0
-        for (i in 0 until targetMonthIdx) {
-            listIndex += 1 + (grouped[sortedMonths[i]]?.size ?: 0)
+    // 数据加载（首屏 + 扩展年份；generateHolidaysForYear 内部有进程级缓存，重复进入秒开）
+    LaunchedEffect(startYear, endYear) {
+        loading = true
+        withContext(Dispatchers.Default) {
+            for (y in startYear..endYear) {
+                generateHolidaysForYear(y)
+            }
         }
-        // 跳过当月 stickyHeader，定位到第一个节假日
-        listIndex += 1
+        loading = false
+    }
 
-        // 如果当月有节假日，定位到离今天最近的；否则定位到当月第一个
-        val monthItems = grouped[targetMonth] ?: emptyList()
-        val futureItem = monthItems.firstOrNull { it.date >= todayStr }
-        if (futureItem != null) {
-            listIndex += monthItems.indexOf(futureItem)
+    // 已加载年份的月份分组（保持有序）
+    val months = remember(startYear, endYear, loading) {
+        val all = (startYear..endYear).flatMap { HolidayYearCache.yearData[it] ?: emptyList() }
+        val grouped = all.groupBy { it.date.substring(0, 7) }
+        grouped.keys.sorted().map { k -> k to (grouped[k] ?: emptyList()) }
+    }
+
+    if (loading && months.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
         }
+        return
+    }
 
-        listState.scrollToItem(listIndex)
+    // 数据就绪 → 独立列表 Composable：首次组合就用「最近节日」作为初始滚动位置，
+    // 进入页面直接显示定位结果（无跳动动画），与主流 App 行为一致
+    HolidayList(
+        months = months,
+        today = today,
+        startYear = startYear,
+        endYear = endYear,
+        loading = loading,
+        onLoadEarlier = { loading = true; startYear-- },
+        onLoadMore     = { loading = true; endYear++ }
+    )
+}
+
+/** 计算「距离今天最近」节假日（含月份 stickyHeader 偏移）在 LazyColumn 中的 index */
+private fun computeNearestHolidayIndex(
+    months: List<Pair<String, List<HolidayListItem>>>,
+    today: LocalDate
+): Int {
+    if (months.isEmpty()) return 0
+    val nearest = months.asSequence().flatMap { it.second.asSequence() }.minByOrNull { item ->
+        try {
+            kotlin.math.abs(ChronoUnit.DAYS.between(today, LocalDate.parse(item.date)))
+        } catch (_: Exception) { Long.MAX_VALUE }
+    } ?: return 0
+    val targetMonthIdx = months.indexOfFirst { it.first == nearest.date.substring(0, 7) }
+    if (targetMonthIdx < 0) return 0
+    var index = 0
+    for (i in 0 until targetMonthIdx) {
+        index += 1 + months[i].second.size
+    }
+    index += 1 // 跳过目标月份 stickyHeader
+    val idxInMonth = months[targetMonthIdx].second.indexOfFirst { it.date == nearest.date }
+    if (idxInMonth > 0) index += idxInMonth
+    return index
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HolidayList(
+    months: List<Pair<String, List<HolidayListItem>>>,
+    today: LocalDate,
+    startYear: Int,
+    endYear: Int,
+    loading: Boolean,
+    onLoadEarlier: () -> Unit,
+    onLoadMore: () -> Unit
+) {
+    val density = LocalDensity.current
+    // 初始滚动偏移 = -stickyHeader 高度：让最近节日顶部在月份标题（stickyHeader）下方完整可见
+    val stickyHeaderOffsetPx = with(density) { 32.dp.toPx().toInt() }
+
+    // 首次组合即定位到最近节日（rememberLazyListState 初始参数只在首次创建时生效，
+    // 之后加载更多时列表状态保留，不会跳动也不会闪回）
+    val initialIndex = remember(months) { computeNearestHolidayIndex(months, today) }
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = initialIndex,
+        initialFirstVisibleItemScrollOffset = -stickyHeaderOffsetPx
+    )
+
+    // ── 标准无限滚动检测（derivedStateOf 基于滚动位置，顶部/底部对称）──
+    val nearTop = remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val total = info.totalItemsCount
+            val firstVisible = info.visibleItemsInfo.firstOrNull()?.index ?: 0
+            total > 0 && firstVisible <= 2 && startYear > today.year - 5
+        }
+    }
+    val nearBottom = remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val total = info.totalItemsCount
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            total > 0 && lastVisible >= total - 3 && endYear < today.year + 5
+        }
+    }
+    // 接近顶部/底部 → 触发加载（值变化沿触发；加载中不重复）
+    LaunchedEffect(nearTop.value) {
+        if (nearTop.value && !loading) onLoadEarlier()
+    }
+    LaunchedEffect(nearBottom.value) {
+        if (nearBottom.value && !loading) onLoadMore()
     }
 
     LazyColumn(
@@ -1565,15 +1682,15 @@ private fun HolidayTab() {
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // 按月份分组显示
-        for (month in sortedMonths) {
-            val items = grouped[month] ?: continue
+        for ((month, items) in months) {
+            if (items.isEmpty()) continue
             val monthLabel = try {
                 val y = month.substring(0, 4).toInt()
                 val m = month.substring(5, 7).toInt()
                 "${y}年${m}月"
             } catch (_: Exception) { month }
 
-            stickyHeader {
+            stickyHeader(key = "hdr_$month") {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     color = MaterialTheme.colorScheme.surface
@@ -1597,8 +1714,9 @@ private fun HolidayTab() {
                 }
             }
 
-            items(items) { item ->
-                HolidayRow(item, today)
+            // key 用 月份_日期_节日名：同一天可能同时是节气+传统+国际等多个节日，必须保证唯一
+            items(items.size, key = { i -> "${month}_${items[i].date}_${items[i].name}" }) { i ->
+                HolidayRow(items[i], today)
             }
         }
     }

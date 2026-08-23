@@ -41,7 +41,16 @@ fun SettingsScreen(navController: NavController, vm: SettingsViewModel = hiltVie
     val state  by vm.state.collectAsStateWithLifecycle()
 
     Scaffold(
-        topBar = { /* 无顶部栏，内容紧贴状态栏 */ }
+        topBar = {
+            // 与其他 Tab 页（事项/统计/班次）一致的顶格标题栏，消除状态栏空白
+            CenterAlignedTopAppBar(
+                title = { Text("设置") },
+                windowInsets = WindowInsets(0, 0, 0, 0),
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+        }
     ) { padding ->
         LazyColumn(
             Modifier.padding(padding),

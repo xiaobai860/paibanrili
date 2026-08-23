@@ -1,5 +1,6 @@
 // app/src/main/java/com/schedulecalendar/app/ui/calendar/CalendarScreen.kt
 package com.schedulecalendar.app.ui.calendar
+import android.util.Log
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
@@ -232,6 +233,9 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
     var showCopyDialog        by remember { mutableStateOf(false) }
     var showDatePicker    by remember { mutableStateOf(false) }
     var editMenuExpanded by remember { mutableStateOf(false) }
+    // 批量排班面板展开状态（提升到本层：返回键需要「第一次收起面板、第二次退出模式」）
+    var batchExpanded by remember { mutableStateOf(false) }
+    Log.e("WBD", "calendar: composed mode=[b=" + state.batchMode + ",c=" + state.copyMode + ",d=" + state.deleteMode + "] expanded=" + batchExpanded)
 
     // 处理快捷方式Intent
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -245,7 +249,13 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
         onSubModeChange(isInSubMode)
     }
     BackHandler(enabled = isInSubMode) {
-        vm.exitAllModes()
+        when {
+            // 批量排班：面板展开时第一次返回只收起面板，再次返回才退出模式
+            state.batchMode && batchExpanded -> batchExpanded = false
+            // 批量复制：phase 2（选目标位置）时第一次返回回到 phase 1 选择状态，再次返回才退出
+            state.copyMode && state.copyPhase == 2 -> vm.copyBackToPhase1()
+            else -> { batchExpanded = false; vm.exitAllModes() }
+        }
     }
 
     // 处理小组件点击日期导航 → 进入日历主页并选中该日期
@@ -253,6 +263,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
     val activity = context as? MainActivity
     val pendingDate = activity?.pendingNavigateDate
     LaunchedEffect(pendingDate) {
+        Log.e("WBD", "calendar: pendingDate effect, pending=" + (pendingDate ?: "null"))
         val date = activity?.consumeNavigateDate() ?: return@LaunchedEffect
         val parts = date.split("-")
         if (parts.size == 3) {
@@ -363,7 +374,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                     actions = {
                         // 编辑菜单按钮（位于导航栏右侧）
                         Box {
-                            IconButton(onClick = { editMenuExpanded = true }) {
+                            IconButton(onClick = { Log.e("WBD", "calendar: edit btn"); editMenuExpanded = true }) {
                                 Icon(
                                     Icons.Default.EditCalendar,
                                     contentDescription = "编辑",
@@ -376,17 +387,16 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             ) {
                                 DropdownMenuItem(
                                     text = { Text("显示方案") },
-                                    onClick = {
-                                        editMenuExpanded = false
-                                        navController.navigate(RouteDisplaySchemes)
-                                    },
+                                    onClick = { Log.e("WBD", "calendar: menu 显示方案"); editMenuExpanded = false; navController.navigate(RouteDisplaySchemes) },
                                     leadingIcon = { Icon(Icons.Default.ViewModule, null) }
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("批量排班") },
                                     onClick = {
+                                        Log.e("WBD", "calendar: menu 批量排班")
                                         editMenuExpanded = false
+                                        batchExpanded = false
                                         vm.enterBatchMode()
                                     },
                                     leadingIcon = { Icon(Icons.Default.CheckBox, null) }
@@ -394,6 +404,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 DropdownMenuItem(
                                     text = { Text("复制排班") },
                                     onClick = {
+                                        Log.e("WBD", "calendar: menu 复制排班")
                                         editMenuExpanded = false
                                         vm.enterCopyMode()
                                     },
@@ -402,6 +413,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 DropdownMenuItem(
                                     text = { Text("删除排班", color = MaterialTheme.colorScheme.error) },
                                     onClick = {
+                                        Log.e("WBD", "calendar: menu 删除排班")
                                         editMenuExpanded = false
                                         vm.enterDeleteMode()
                                     },
@@ -537,9 +549,14 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                         shifts          = state.shifts,
                         shiftStatuses   = state.shiftStatuses,
                         isDeleteMode    = false,
+                        expanded        = batchExpanded,
+                        onExpandedChange = { batchExpanded = it },
                         onClearSel      = vm::batchClearSelection,
-                        onCancel        = { vm.exitAllModes() },
-                        onApplyShift    = { shiftId, statusId -> vm.batchApplyShift(shiftId, statusId) }
+                        onCancel        = { batchExpanded = false; vm.exitAllModes() },
+                        onApplyShift    = { shiftId, statusId ->
+                            vm.batchApplyShift(shiftId, statusId)
+                            batchExpanded = false
+                        }
                     )
                 }
             }
@@ -1100,14 +1117,21 @@ private fun BatchToolbar(
     shifts: List<Shift>,
     shiftStatuses: List<ShiftStatus>,
     isDeleteMode: Boolean = false,
+    expanded: Boolean = false,
+    onExpandedChange: (Boolean) -> Unit = {},
     onClearSel:    () -> Unit,
     onCancel:      () -> Unit,
     onApplyShift:  (String, String?) -> Unit = { _, _ -> },
     onConfirmDelete: () -> Unit = {}
 ) {
-    var expanded by remember { mutableStateOf(false) }
     var selectedShiftId by remember { mutableStateOf<String?>(null) }
     var selectedStatusId by remember { mutableStateOf<String?>(null) }
+    // 选中班次为内置休息/调休时，隐藏请假/调休附加状态（与排班编辑页一致）
+    val selectedShift = shifts.find { it.id == selectedShiftId }
+    val isRestOrSwap = selectedShift?.builtInType == "rest" || selectedShift?.builtInType == "swap"
+    val visibleStatuses = if (isRestOrSwap) {
+        shiftStatuses.filter { s -> s.id != BUILTIN_STATUS_SWAP && s.id != BUILTIN_STATUS_LEAVE }
+    } else shiftStatuses
 
     Surface(
         Modifier.fillMaxWidth(),
@@ -1156,10 +1180,40 @@ private fun BatchToolbar(
                     ) {
                         Text("退出", style = MaterialTheme.typography.bodyMedium)
                     }
+                } else if (expanded) {
+                    // 批量排班面板已展开：确认应用（原「应用排班」位）、返回上一级（原「取消选择」位）、退出
+                    OutlinedButton(
+                        onClick  = {
+                            selectedShiftId?.let { shiftId ->
+                                onApplyShift(shiftId, selectedStatusId)
+                            }
+                        },
+                        enabled  = selectedShiftId != null,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Check, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("确认应用", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    OutlinedButton(
+                        onClick  = { onExpandedChange(false) },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 6.dp)
+                    ) {
+                        Text("返回上一级", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    OutlinedButton(
+                        onClick  = onCancel,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(vertical = 6.dp)
+                    ) {
+                        Text("退出", style = MaterialTheme.typography.bodyMedium)
+                    }
                 } else {
                     // 批量排班模式：应用排班、取消选择、退出
                     OutlinedButton(
-                        onClick  = { expanded = !expanded },
+                        onClick  = { onExpandedChange(true) },
                         enabled  = selectedCount > 0,
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(vertical = 6.dp)
@@ -1208,15 +1262,28 @@ private fun BatchToolbar(
                             val shiftColor = safeColor(shift.color)
                             FilterChip(
                                 selected = isSelected,
-                                onClick = { selectedShiftId = shift.id },
-                                leadingIcon = if (isSelected) {
-                                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                } else null,
-                                label = { Text(shift.name, style = MaterialTheme.typography.bodySmall) },
+                                onClick = {
+                                    selectedShiftId = shift.id
+                                    selectedStatusId = null  // 切班次时清空已选状态
+                                },
+                                label = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            shift.name,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
+                                        )
+                                        if (shift.builtIn) {
+                                            Spacer(Modifier.width(4.dp))
+                                            BuiltinTag()
+                                        }
+                                    }
+                                },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = shiftColor.copy(alpha = 0.18f)
+                                    selectedContainerColor = shiftColor.copy(alpha = 0.4f),
+                                    selectedLabelColor    = Color(0xFF1A1A1A)
                                 ),
-                                border = BorderStroke(1.dp, if (isSelected) shiftColor.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                                border = BorderStroke(1.dp, if (isSelected) shiftColor.copy(alpha = 0.8f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                             )
                         }
                     }
@@ -1227,13 +1294,13 @@ private fun BatchToolbar(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
-                    // 附加状态标签（FlowRow 换行布局）
-                    if (shiftStatuses.isNotEmpty()) {
+                    // 附加状态标签（FlowRow 换行布局；休息/调休班次时隐藏请假/调休内置状态）
+                    if (visibleStatuses.isNotEmpty()) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            shiftStatuses.forEach { status ->
+                            visibleStatuses.forEach { status ->
                                 val isSelected = status.id == selectedStatusId
                                 val statusColor = safeColor(status.color)
                                 FilterChip(
@@ -1241,14 +1308,24 @@ private fun BatchToolbar(
                                     onClick = {
                                         selectedStatusId = if (isSelected) null else status.id
                                     },
-                                    leadingIcon = if (isSelected) {
-                                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                    } else null,
-                                    label = { Text(status.name, style = MaterialTheme.typography.bodySmall) },
+                                    label = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                status.name,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
+                                            )
+                                            if (status.builtIn) {
+                                                Spacer(Modifier.width(4.dp))
+                                                BuiltinTag()
+                                            }
+                                        }
+                                    },
                                     colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = statusColor.copy(alpha = 0.18f)
+                                        selectedContainerColor = statusColor.copy(alpha = 0.4f),
+                                        selectedLabelColor    = Color(0xFF1A1A1A)
                                     ),
-                                    border = BorderStroke(1.dp, if (isSelected) statusColor.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                                    border = BorderStroke(1.dp, if (isSelected) statusColor.copy(alpha = 0.8f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                                 )
                             }
                         }
@@ -1259,32 +1336,6 @@ private fun BatchToolbar(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-
-                    // 应用按钮
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(
-                            onClick = { expanded = false },
-                            contentPadding = PaddingValues(horizontal = 16.dp)
-                        ) {
-                            Text("取消")
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                selectedShiftId?.let { shiftId ->
-                                    onApplyShift(shiftId, selectedStatusId)
-                                }
-                                expanded = false
-                            },
-                            enabled = selectedShiftId != null,
-                            contentPadding = PaddingValues(horizontal = 16.dp)
-                        ) {
-                            Text("应用")
-                        }
-                    }
                 }
             }
         }
@@ -1294,6 +1345,22 @@ private fun BatchToolbar(
 // ════════════════════════════════════════════════════════════════════════════
 // 月份复制弹窗
 // ════════════════════════════════════════════════════════════════════════════
+
+/** 内置项小标记（系统内置班次/状态） */
+@Composable
+private fun BuiltinTag() {
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    ) {
+        Text(
+            text  = "内置",
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+        )
+    }
+}
 
 @Composable
 private fun CopyMonthDialog(
