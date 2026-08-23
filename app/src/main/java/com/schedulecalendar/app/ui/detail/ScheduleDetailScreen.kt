@@ -813,19 +813,22 @@ private fun ShiftPickerSheet(
                     Box(Modifier.size(12.dp).clip(CircleShape).background(c))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(shift.name, style = MaterialTheme.typography.bodyLarge)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(shift.name, style = MaterialTheme.typography.bodyLarge)
+                            if (shift.builtIn) {
+                                Spacer(Modifier.width(8.dp))
+                                Surface(shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer) {
+                                    Text("内置", style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                }
+                            }
+                        }
                         if (shift.startTime.isNotEmpty() && shift.builtInType != "rest" && shift.builtInType != "swap")
                             Text("${shift.startTime} – ${shift.endTime}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (shift.builtIn) {
-                        Surface(shape = RoundedCornerShape(4.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer) {
-                            Text("内置", style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                        }
                     }
                 }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))

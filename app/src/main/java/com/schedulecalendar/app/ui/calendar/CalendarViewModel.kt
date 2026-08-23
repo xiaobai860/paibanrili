@@ -224,7 +224,7 @@ class CalendarViewModel @Inject constructor(
                         nextYM.year, nextYM.monthValue, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
                     ).associateBy { it.date }
                     val allDetails = curDetails + prevDetails + nextDetails
-                    val todos      = buildTodos(s.year, s.month, schedules, allShifts, attendConf)
+                    val todos      = buildTodos(s.year, s.month, schedules, allShifts, attendConf, allShiftStatuses)
                     _state.update { it.copy(
                         shifts         = shifts,
                         allShifts      = allShifts,
@@ -255,7 +255,8 @@ class CalendarViewModel @Inject constructor(
         year: Int, month: Int,
         schedules: Map<String, ScheduleRecord>,
         shifts: List<Shift>,
-        attendConfig: AttendConfig
+        attendConfig: AttendConfig,
+        statuses: List<ShiftStatus>
     ): List<TodoItem> {
         val today      = LocalDate.now()
         val todayY     = today.year
@@ -276,12 +277,15 @@ class CalendarViewModel @Inject constructor(
             if (shift == null) continue
 
             val sn = shift.name
-            // 检测是否有内置附加状态（请假/调休）
             val applied = record.appliedStatus
             val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
-            val stLabel = if (isBuiltIn) {
-                if (applied!!.statusId == BUILTIN_STATUS_LEAVE) "请假" else "调休"
-            } else ""
+            // 解析附加状态名称（内置请假/调休 + 自定义状态），供待办项显示
+            val stLabel = when {
+                applied == null -> ""
+                applied.statusId == BUILTIN_STATUS_LEAVE -> "请假"
+                applied.statusId == BUILTIN_STATUS_SWAP -> "调休"
+                else -> statuses.find { it.id == applied.statusId }?.name ?: ""
+            }
 
             // S1/S3：休息/调休班次（无时间段）
             if (shift.builtInType == "rest" || shift.builtInType == "swap") {
@@ -324,14 +328,14 @@ class CalendarViewModel @Inject constructor(
                 val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime)
                 val grain = attendConfig.overtimeGranMin
                 if (earlyMin >= grain) {
-                    todos.add(TodoItem(dateStr, TodoType.PENDING_EARLY_OT, "早到加班待确认", shiftName = sn, shiftTime = st, overtimeMinutes = earlyMin, actualTime = record.actualStartTime))
+                    todos.add(TodoItem(dateStr, TodoType.PENDING_EARLY_OT, "早到加班待确认", shiftName = sn, shiftTime = st, overtimeMinutes = earlyMin, actualTime = record.actualStartTime, statusLabel = stLabel))
                 }
             } else if (record.confirmEarlyOT) {
                 val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
-                todos.add(TodoItem(dateStr, TodoType.CONFIRMED_EARLY_OT, "已确认早到加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: ""))
+                todos.add(TodoItem(dateStr, TodoType.CONFIRMED_EARLY_OT, "已确认早到加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: "", statusLabel = stLabel))
             } else if (record.ignoreEarlyArrival) {
                 val earlyMin = CalcUtils.timeToMin(shift.startTime) - CalcUtils.timeToMin(record.actualStartTime ?: shift.startTime)
-                todos.add(TodoItem(dateStr, TodoType.IGNORED_EARLY_OT, "忽略早到加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: ""))
+                todos.add(TodoItem(dateStr, TodoType.IGNORED_EARLY_OT, "忽略早到加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, earlyMin), actualTime = record.actualStartTime ?: "", statusLabel = stLabel))
             }
             // 晚退加班待确认：有实际下班时间 & 比班次晚 & 未忽略晚退 & 未确认晚退加班
             if (!record.actualEndTime.isNullOrEmpty() && !record.ignoreLateLeave && !record.confirmLateOT) {
@@ -341,20 +345,20 @@ class CalendarViewModel @Inject constructor(
                 val lateMin = normAE - normSE
                 val grain = attendConfig.overtimeGranMin
                 if (lateMin >= grain) {
-                    todos.add(TodoItem(dateStr, TodoType.PENDING_LATE_OT, "晚退加班待确认", shiftName = sn, shiftTime = st, overtimeMinutes = lateMin, actualTime = record.actualEndTime))
+                    todos.add(TodoItem(dateStr, TodoType.PENDING_LATE_OT, "晚退加班待确认", shiftName = sn, shiftTime = st, overtimeMinutes = lateMin, actualTime = record.actualEndTime, statusLabel = stLabel))
                 }
             } else if (record.confirmLateOT) {
                 val sS = CalcUtils.timeToMin(shift.startTime)
                 val (_, normSE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(shift.endTime))
                 val (_, normAE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(record.actualEndTime ?: shift.endTime))
                 val lateMin = normAE - normSE
-                todos.add(TodoItem(dateStr, TodoType.CONFIRMED_LATE_OT, "已确认晚退加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, lateMin), actualTime = record.actualEndTime ?: ""))
+                todos.add(TodoItem(dateStr, TodoType.CONFIRMED_LATE_OT, "已确认晚退加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, lateMin), actualTime = record.actualEndTime ?: "", statusLabel = stLabel))
             } else if (record.ignoreLateLeave) {
                 val sS = CalcUtils.timeToMin(shift.startTime)
                 val (_, normSE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(shift.endTime))
                 val (_, normAE) = CalcUtils.normRange(sS, CalcUtils.timeToMin(record.actualEndTime ?: shift.endTime))
                 val lateMin = normAE - normSE
-                todos.add(TodoItem(dateStr, TodoType.IGNORED_LATE_OT, "忽略晚退加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, lateMin), actualTime = record.actualEndTime ?: ""))
+                todos.add(TodoItem(dateStr, TodoType.IGNORED_LATE_OT, "忽略晚退加班", shiftName = sn, shiftTime = st, overtimeMinutes = maxOf(0, lateMin), actualTime = record.actualEndTime ?: "", statusLabel = stLabel))
             }
         }
 

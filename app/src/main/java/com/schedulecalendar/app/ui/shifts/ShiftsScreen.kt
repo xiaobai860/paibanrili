@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -198,6 +199,46 @@ fun ShiftsScreen(navController: NavController, vm: ShiftsViewModel = hiltViewMod
     }
 }
 
+// ── 通用排序上下箭头（紧凑尺寸，可整体垂直居中于 70dp 行内）─────────────────
+// 注意：不用 IconButton（其内部 minimumInteractiveComponentSize 强制最小 48dp，
+// 两枚堆叠 96dp 会超出 70dp 行高导致看似未居中被挤出卡片），改用可点击 Icon 控制尺寸。
+@Composable
+private fun ReorderArrows(
+    canUp: Boolean,
+    canDown: Boolean,
+    onUp: () -> Unit,
+    onDown: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        ReorderArrow(Icons.Default.KeyboardDoubleArrowUp, "上移", canUp, onUp)
+        ReorderArrow(Icons.Default.KeyboardDoubleArrowDown, "下移", canDown, onDown)
+    }
+}
+
+@Composable
+private fun ReorderArrow(
+    imageVector: ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
+               else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+    Icon(
+        imageVector = imageVector,
+        contentDescription = contentDescription,
+        modifier = Modifier
+            .size(36.dp)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(8.dp),
+        tint = tint
+    )
+}
+
 // ── Tab 1: 班次列表 ────────────────────────────────────────────────────────────
 
 @Composable
@@ -227,7 +268,7 @@ private fun ShiftsTab(
 
             Card(
                 Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(1.dp)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
                 Row(
                     Modifier.padding(vertical = 2.dp, horizontal = 14.dp)
@@ -287,24 +328,10 @@ private fun ShiftsTab(
                             }
                         }
                         // 排序按钮（垂直排列）
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            IconButton(
-                                onClick = { onMoveUp(shift.id) },
-                                enabled = !isFirst,
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.Default.KeyboardDoubleArrowUp, "上移", modifier = Modifier.size(20.dp),
-                                    tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            IconButton(
-                                onClick = { onMoveDown(shift.id) },
-                                enabled = !isLast,
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.Default.KeyboardDoubleArrowDown, "下移", modifier = Modifier.size(20.dp),
-                                    tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
+                        ReorderArrows(
+                            canUp = !isFirst, canDown = !isLast,
+                            onUp = { onMoveUp(shift.id) }, onDown = { onMoveDown(shift.id) }
+                        )
                     }
                 }
             }
@@ -336,7 +363,7 @@ private fun GlobalBreaksTab(
             val idx = breaks.indexOf(brk)
             val isFirst = idx == 0
             val isLast = idx == breaks.size - 1
-            Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(1.dp)) {
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
                 Row(
                     Modifier.padding(vertical = 2.dp, horizontal = 14.dp)
                         .height(70.dp),
@@ -358,24 +385,10 @@ private fun GlobalBreaksTab(
                         Icon(Icons.Default.Edit, "编辑", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     }
                     // 排序按钮（垂直排列，与班次Tab一致）
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        IconButton(
-                            onClick = { onMoveUp(brk.id) },
-                            enabled = !isFirst,
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Icon(Icons.Default.KeyboardDoubleArrowUp, "上移", modifier = Modifier.size(20.dp),
-                                tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(
-                            onClick = { onMoveDown(brk.id) },
-                            enabled = !isLast,
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Icon(Icons.Default.KeyboardDoubleArrowDown, "下移", modifier = Modifier.size(20.dp),
-                                tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
+                    ReorderArrows(
+                        canUp = !isFirst, canDown = !isLast,
+                        onUp = { onMoveUp(brk.id) }, onDown = { onMoveDown(brk.id) }
+                    )
                 }
             }
         }
@@ -472,7 +485,7 @@ private fun StatusTypesTab(
         items(statuses, key = { it.id }) { status ->
             val idx = statuses.indexOf(status)
             val c = safeColor(status.color)
-            Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(1.dp)) {
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
                 Row(Modifier.padding(vertical = 2.dp, horizontal = 14.dp).height(70.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(12.dp).clip(CircleShape).background(c))
                     Spacer(Modifier.width(12.dp))
@@ -502,26 +515,10 @@ private fun StatusTypesTab(
                         }
                     }
                     // 排序按钮（垂直排列，与班次Tab一致）
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        val isFirst = idx == 0
-                        val isLast = idx == statuses.size - 1
-                        IconButton(
-                            onClick = { onMoveUp(status.id) },
-                            enabled = !isFirst,
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Icon(Icons.Default.KeyboardDoubleArrowUp, "上移", modifier = Modifier.size(20.dp),
-                                tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(
-                            onClick = { onMoveDown(status.id) },
-                            enabled = !isLast,
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Icon(Icons.Default.KeyboardDoubleArrowDown, "下移", modifier = Modifier.size(20.dp),
-                                tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
+                    ReorderArrows(
+                        canUp = idx == 0, canDown = idx == statuses.size - 1,
+                        onUp = { onMoveUp(status.id) }, onDown = { onMoveDown(status.id) }
+                    )
                 }
             }
         }
@@ -707,7 +704,7 @@ private fun ExtraItemCard(
     onMoveUp: () -> Unit, onMoveDown: () -> Unit,
     isFirst: Boolean, isLast: Boolean
 ) {
-    Card(Modifier.fillMaxWidth()) {
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
         Row(
             Modifier.padding(vertical = 2.dp, horizontal = 14.dp).height(70.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -724,24 +721,7 @@ private fun ExtraItemCard(
             IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) { Icon(Icons.Filled.Delete, "删除", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp)) }
             IconButton(onClick = onEdit, modifier = Modifier.size(48.dp))   { Icon(Icons.Filled.Edit,   "编辑", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) }
             // 排序按钮（垂直排列，与班次Tab一致）
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(
-                    onClick = onMoveUp,
-                    enabled = !isFirst,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(Icons.Default.KeyboardDoubleArrowUp, "上移", modifier = Modifier.size(20.dp),
-                        tint = if (isFirst) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                IconButton(
-                    onClick = onMoveDown,
-                    enabled = !isLast,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(Icons.Default.KeyboardDoubleArrowDown, "下移", modifier = Modifier.size(20.dp),
-                        tint = if (isLast) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            ReorderArrows(canUp = !isFirst, canDown = !isLast, onUp = onMoveUp, onDown = onMoveDown)
         }
     }
 }

@@ -76,22 +76,22 @@ fun ShiftColorDot(hexColor: String, size: Int = 10) {
     )
 }
 
-/** 班次颜色选择器（两行布局，共18色，均匀分布） */
+/** 班次颜色选择器（2行×6列，共12色；每行 6 个单元格均分水平空间，圆形自适应不挤压变形） */
 @Composable
 fun ColorPicker(selected: String, onSelect: (String) -> Unit) {
-    val rows = ShiftPresetColors.chunked(9)
+    val rows = ShiftPresetColors.chunked(6)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         rows.forEach { rowColors ->
+            // 固定尺寸圆点 + 水平均分（SpaceEvenly 自带间隙），不再随宽度撑大
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 rowColors.forEach { hex ->
                     val color = runCatching { Color(hex.toColorInt()) }.getOrElse { Color.Gray }
                     Box(
                         Modifier
-                            .size(48.dp)
-                            .padding(10.dp)
+                            .size(34.dp)
                             .clip(CircleShape)
                             .background(color)
                             .then(if (hex == selected) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)

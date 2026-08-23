@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -275,7 +276,7 @@ private fun TodoTab(
         Modifier
             .fillMaxSize()
     ) {
-        // 月份选择器（固定不滚动）
+        // 月份选择器（固定不滚动）：与统计页「工时薪资」一致的导航样式
         val today = java.time.LocalDate.now()
         val isNotCurrentMonth = year != today.year || month != today.monthValue
         Row(
@@ -292,7 +293,7 @@ private fun TodoTab(
             }
             Spacer(Modifier.weight(1f))
             Text(
-                year.toString() + "年" + month.toString() + "月",
+                "${year}年${month}月",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -318,6 +319,7 @@ private fun TodoTab(
             }
         }
 
+
                     val missedByDate = remember(missedTodos) {
                 sortTodosByDateDesc(missedTodos).groupBy { it.date }
                     .toSortedMap(compareByDescending { it })
@@ -329,6 +331,9 @@ private fun TodoTab(
                     val sortedPendingOT = remember(pendingOTTodos) { sortTodosByDateDesc(pendingOTTodos) }
                     val sortedConfirmed = remember(confirmedOTTodos) { sortTodosByDateDesc(confirmedOTTodos) }
                     val sortedIgnored = remember(ignoredOTTodos) { sortTodosByDateDesc(ignoredOTTodos) }
+        // 全部待办总数：用于空状态判断
+        val totalTodos = missedTodos.size + filledTodos.size + pendingOTTodos.size +
+            confirmedOTTodos.size + ignoredOTTodos.size
 
         // 可滚动的待办列表区域（LazyColumn 懒加载：todo 多时只渲染可见项，避免全量渲染卡顿掉帧）
         LazyColumn(
@@ -337,14 +342,41 @@ private fun TodoTab(
                 .fillMaxWidth()
                 .padding(horizontal = 4.dp, vertical = 4.dp)
                 .padding(bottom = 8.dp),
-            contentPadding = PaddingValues(vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
 
+            // ── 全部为空：显示友好空状态 ──────────────────────────────────────────
+            if (totalTodos == 0) {
+                item(key = "empty") {
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.EventAvailable, null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                modifier = Modifier.size(52.dp)
+                            )
+                            Spacer(Modifier.height(14.dp))
+                            Text("暂无待办事项", style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "漏打卡和加班提醒会显示在这里",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            } else {
             // ── 漏打卡待补录（同一天上班/下班合并显示） ──────────────────────────────────────────
             item(key = "missed") {
             TodoCardSection(
                 icon = Icons.Default.Warning, title = "漏打卡待补录",
+                subtitle = "需补录的打卡记录",
                 count = missedTodos.size, expanded = missedExpanded,
                 onToggle = onMissedToggle,
                 iconTint = MaterialTheme.colorScheme.error
@@ -365,6 +397,7 @@ private fun TodoTab(
             item(key = "filled") {
             TodoCardSection(
                 icon = Icons.Default.CheckCircle, title = "已补录",
+                subtitle = "已补录的打卡",
                 count = filledTodos.size, expanded = filledExpanded,
                 onToggle = onFilledToggle,
                 iconTint = MaterialTheme.colorScheme.primary
@@ -386,6 +419,7 @@ private fun TodoTab(
             item(key = "ot_pending") {
             TodoCardSection(
                 icon = Icons.Default.Schedule, title = "疑似加班待确认",
+                subtitle = "早到/晚退待处理",
                 count = pendingOTTodos.size, expanded = otPendingExpanded,
                 onToggle = onOtPendingToggle,
                 iconTint = MaterialTheme.colorScheme.tertiary
@@ -405,6 +439,7 @@ private fun TodoTab(
             item(key = "ot_confirmed") {
             TodoCardSection(
                 icon = Icons.Default.CheckCircle, title = "是加班",
+                subtitle = "已确认的加班",
                 count = confirmedOTTodos.size, expanded = otConfirmedExpanded,
                 onToggle = onOtConfirmedToggle,
                 iconTint = AllowanceGreen
@@ -427,6 +462,7 @@ private fun TodoTab(
             item(key = "ot_ignored") {
             TodoCardSection(
                 icon = Icons.Default.Cancel, title = "不是加班",
+                subtitle = "已忽略的早到/晚退",
                 count = ignoredOTTodos.size, expanded = otIgnoredExpanded,
                 onToggle = onOtIgnoredToggle,
                 iconTint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
@@ -444,6 +480,7 @@ private fun TodoTab(
                 }
             }
             } // end ot_ignored item
+            } // end else (有数据时显示分类卡片)
         } // end LazyColumn
     } // end outer Column
 }
@@ -455,55 +492,84 @@ private fun TodoCardSection(
     icon: ImageVector,
     iconTint: Color,
     title: String,
+    subtitle: String,
     count: Int,
     expanded: Boolean,
     onToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    // 与其他页面一致的浅灰卡片语言：surfaceVariant 不透明底 + 12dp 圆角
-    // （半透明背景在展开内容多时会透出下方内容，视觉上像「透明+叠加」）
+    // 与节假日行一致的卡片语言：10dp 圆角 + surfaceVariant 半透明底（展开时转不透明防内容透出）
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant
+        shape = RoundedCornerShape(10.dp),
+        color = if (expanded && count > 0) MaterialTheme.colorScheme.surfaceVariant
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
-        // 区块标题行
-        Row(
-            Modifier.fillMaxWidth()
-                .clickable { onToggle() }
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, contentDescription = null, tint = iconTint,
-                modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(10.dp))
-            Text(
-                "$title($count)",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
-            )
-            if (count == 0) {
-                Text("无", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Icon(
-                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-        // 展开的内容（用条件渲染替代 AnimatedVisibility：展开/收起动画在部分 ColorOS 上
-        // 会触发「内容透明 + 叠加覆盖下一项」的渲染 bug）
-        if (expanded && count > 0) {
-            Column(
-                Modifier.padding(horizontal = 10.dp, vertical = 0.dp)
-                    .padding(bottom = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+        Column {
+            // 区块标题行：小图标 + 标题/副标题（2 行结构，与节假日行同高同字体）
+            Row(
+                Modifier.fillMaxWidth()
+                    .clickable { onToggle() }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                content()
+                Icon(icon, contentDescription = null, tint = iconTint,
+                    modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                // 标题 + 副标题（对齐 HolidayRow：bodyMedium + labelSmall）
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (count > 0) {
+                    // 数量徽章
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = iconTint.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            "$count",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = iconTint,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "收起" else "展开",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                } else {
+                    Text("无待办", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            // 展开的内容（用条件渲染替代 AnimatedVisibility：展开/收起动画在部分 ColorOS 上
+            // 会触发「内容透明 + 叠加覆盖下一项」的渲染 bug）
+            if (expanded && count > 0) {
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                    modifier = Modifier.padding(horizontal = 14.dp)
+                )
+                Column(
+                    Modifier.padding(horizontal = 10.dp, vertical = 0.dp)
+                        .padding(bottom = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    content()
+                }
             }
         }
     }
@@ -541,7 +607,7 @@ private fun UnifiedTodoRow(
     val typeLabel = if (isClockIn) "上班" else "下班"
 
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 左侧：日期 + 星期（固定宽度）
@@ -557,8 +623,9 @@ private fun UnifiedTodoRow(
             }
         }
         Spacer(Modifier.width(8.dp))
-        // 中间：类型标签 + 班次信息
+        // 中间：类型标签 + 班次信息（最多 2 行，与节假日行高度一致）
         Column(Modifier.weight(1f)) {
+            // 第一行：类型标签 + 班次名称/时间
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     shape = RoundedCornerShape(3.dp),
@@ -570,7 +637,6 @@ private fun UnifiedTodoRow(
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
                 }
                 Spacer(Modifier.width(6.dp))
-                // 班次名称 + 班次时间
                 val shiftInfo = buildString {
                     append(todo.shiftName)
                     if (todo.shiftTime.isNotEmpty()) {
@@ -580,31 +646,47 @@ private fun UnifiedTodoRow(
                 }
                 if (shiftInfo.isNotEmpty()) {
                     Text(shiftInfo,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface)
+                }
+                // 附加状态标签（如请假/调休），与合并模式 MergedClockSubRow 一致
+                if (todo.statusLabel.isNotEmpty()) {
+                    Spacer(Modifier.width(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(3.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                    ) {
+                        Text(todo.statusLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
+                    }
                 }
             }
-            if (todo.overtimeMinutes > 0) {
-                val otLabel = if (isClockIn) "早到" else "晚退"
-                Text("$otLabel ${todo.overtimeMinutes}分钟",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary)
+            // 第二行：早到/晚退 · 已录 · 实际 合并为一行
+            val extras = buildList {
+                if (todo.overtimeMinutes > 0) {
+                    add("${if (isClockIn) "早到" else "晚退"} ${todo.overtimeMinutes}分钟")
+                }
+                if (todo.clockTime.isNotEmpty()) {
+                    add("已录 ${todo.clockTime}")
+                }
+                if (todo.actualTime.isNotEmpty() && todo.overtimeMinutes > 0) {
+                    add("实际 ${todo.actualTime}")
+                }
             }
-            if (todo.clockTime.isNotEmpty()) {
-                Text("已录: ${todo.clockTime}",
+            if (extras.isNotEmpty()) {
+                Text(
+                    extras.joinToString(" · "),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (todo.actualTime.isNotEmpty() && todo.overtimeMinutes > 0) {
-                Text("实际: ${todo.actualTime}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         // 右侧：操作
         if (onAction != null) {
             if (actionIcon != null) {
-                IconButton(onClick = onAction, modifier = Modifier.size(48.dp)) {
+                IconButton(onClick = onAction, modifier = Modifier.size(36.dp)) {
                     Icon(actionIcon, contentDescription = null,
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -613,9 +695,9 @@ private fun UnifiedTodoRow(
                 TextButton(
                     onClick = onAction,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    modifier = Modifier.defaultMinSize(minHeight = 40.dp)
+                    modifier = Modifier.defaultMinSize(minHeight = 32.dp)
                 ) {
-                    Text(actionLabel, style = MaterialTheme.typography.labelLarge)
+                    Text(actionLabel, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -641,7 +723,7 @@ private fun MergedClockRow(
     }
 
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.Top
     ) {
         // 左侧：日期 + 星期（固定宽度）
@@ -830,7 +912,7 @@ private fun OvertimeActionDialog(
             Button(
                 onClick = onConfirm,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = AllowanceGreen
+                    containerColor = MaterialTheme.colorScheme.primary
                 )
             ) {
                 Icon(Icons.Default.Check, null, Modifier.size(16.dp))
@@ -1679,7 +1761,7 @@ private fun HolidayList(
     LazyColumn(
         state = listState,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         // 按月份分组显示
         for ((month, items) in months) {
@@ -1752,7 +1834,7 @@ private fun HolidayRow(item: HolidayListItem, today: LocalDate) {
                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 左侧：日期 + 星期

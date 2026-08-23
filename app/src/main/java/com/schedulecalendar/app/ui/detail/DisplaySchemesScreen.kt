@@ -6,9 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -44,6 +41,7 @@ import com.schedulecalendar.app.domain.model.NO_SCHEME_ID
 import com.schedulecalendar.app.domain.model.textColorForBackground
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import com.schedulecalendar.app.ui.component.stableLabelColors
+import com.schedulecalendar.app.ui.theme.ShiftPresetColors
 import java.util.UUID
 
 @Composable
@@ -783,58 +781,50 @@ private fun SimpleColorPicker(
     onClear: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val colors = listOf(
-        "#FFFFFF", "#F3F4F6", "#E5E7EB", "#D1D5DB",
-        "#FEE2E2", "#FECACA", "#FCA5A5", "#F87171",
-        "#FEF3C7", "#FDE68A", "#FCD34D", "#FBBF24",
-        "#D1FAE5", "#A7F3D0", "#6EE7B7", "#34D399",
-        "#DBEAFE", "#BFDBFE", "#93C5FD", "#60A5FA",
-        "#E0E7FF", "#C7D2FE", "#A5B4FC", "#818CF8"
-    )
+    // 与班次/附加状态统一的 12 色调色板（2行×6列）
+    val colors = ShiftPresetColors
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("选择背景色") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(6),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.height(200.dp)
-                ) {
-                    items(colors) { color ->
-                        val isSelected = color == initialColor
-                        Surface(
-                            onClick = { onColorSelected(color) },
-                            modifier = Modifier
-                                .size(32.dp)
-                                .then(
-                                    if (isSelected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp))
-                                    else Modifier
-                                ),
-                            shape = RoundedCornerShape(4.dp),
-                            color = try {
-                                Color(color.toColorInt())
-                            } catch (_: Exception) {
-                                Color.White
-                            },
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // 与班次/附加状态编辑器一致的 2 行 × 6 列均分布局（改用普通 Row，避免 LazyVerticalGrid 固定高度裁切选中边框）
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    colors.chunked(6).forEach { rowColors ->
+                        // 固定尺寸方块 + 水平均分（SpaceEvenly 自带间隙），不再随宽度撑大
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
-                            Box(
-                                modifier = Modifier.fillMaxSize().padding(2.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (color == "#FFFFFF") {
-                                    Text("白", fontSize = 8.sp)
+                            rowColors.forEach { color ->
+                                val isSelected = color == initialColor
+                                val swatchColor = try {
+                                    Color(color.toColorInt())
+                                } catch (_: Exception) {
+                                    Color.White
                                 }
-                                if (isSelected) {
-                                    Icon(
-                                        Icons.Filled.Check,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
+                                Surface(
+                                    onClick = { onColorSelected(color) },
+                                    modifier = Modifier.size(34.dp),
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = swatchColor,
+                                    border = if (isSelected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary)
+                                    else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isSelected) {
+                                            Icon(
+                                                Icons.Filled.Check,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
