@@ -236,6 +236,40 @@ private fun computeClockInWidgetData(
         }
     }
 
+    // ── 场景 A+：跨午夜夜班下班卡（优先于今天任何场景）──
+    // 昨天是正常班（含跨午夜），且昨天尚未打下班卡：只要当前仍处于其下班窗口
+    // [end−2h, end+5h]（跨零点后归属次日 nowMin 已是 0~，需把 yesterday 下班时刻归一为次日），
+    // 就优先显示「昨天夜班」的下班卡，并阻断今天（含今天休息/调休+附加状态）的上班卡。
+    // 这样可避免「当前班次未结束却提前显示下个班次上班卡」的错误（见 #23 夜班 20:30-8:30 案例）。
+    var overriddenByNightShift = false
+    run {
+        val yNShift = yShift
+        if (yNShift != null && !isRestShift(yNShift) &&
+            yNShift.startTime.isNotEmpty() && yNShift.endTime.isNotEmpty()
+        ) {
+            val yClockOut = yRec?.actualEndTime ?: ""
+            if (yClockOut.isEmpty()) {
+                // 昨天班次开始/结束（小时制），跨午夜则结束归入次日（+1440）
+                val yss = CalcUtils.timeToMin(yNShift.startTime)
+                val (_, yNormE) = CalcUtils.normRange(yss, CalcUtils.timeToMin(yNShift.endTime))
+                // 跨午夜后，昨天的结束时刻在「今天（次日）」的取值 = yNormE − 1440
+                val endNextDayMin = yNormE - 1440
+                // 下班窗口：end−2h 到 end+5h（按今天 nowMin 对齐）
+                val winStart = endNextDayMin - 120
+                val winEnd = endNextDayMin + 300
+                val inWindow = nowMin >= winStart && nowMin <= winEnd
+                if (inWindow) {
+                    targetDate = today.minusDays(1)
+                    targetDateStr = yesterdayStr
+                    targetRecord = yRec
+                    targetShift = yNShift
+                    showClockOut = true
+                    overriddenByNightShift = true
+                }
+            }
+        }
+    }
+
     // ── 场景 B：今天正常班（S2 / S4 / S5）──
     if (targetDate == today && !todayRest && todayShift != null &&
         todayShift.startTime.isNotEmpty() && todayShift.endTime.isNotEmpty()
@@ -254,29 +288,12 @@ private fun computeClockInWidgetData(
             // S2 / S5（按 S2）：上班卡 [start−5h, start+2h]；下班卡 [end−2h, end+5h]
             showClockIn = clockIn.isEmpty() && nowMin >= ss - 300 && nowMin <= ss + 120
             showClockOut = clockOut.isEmpty() && nowMin >= normE - 120 && nowMin <= normE + 300
-            // 跨午夜夜班：今天窗口未命中时，尝试昨天夜班的下班卡窗口
-            if (!showClockIn && !showClockOut) {
-                val yNShift = yShift
-                if (yNShift != null && !isRestShift(yNShift) &&
-                    yNShift.startTime.isNotEmpty() && yNShift.endTime.isNotEmpty()
-                ) {
-                    val yss = CalcUtils.timeToMin(yNShift.startTime) - 1440
-                    val (_, yNormE) = CalcUtils.normRange(yss, CalcUtils.timeToMin(yNShift.endTime) - 1440)
-                    val yClockOut = yRec?.actualEndTime ?: ""
-                    if (yClockOut.isEmpty() && nowMin >= yNormE - 120 && nowMin <= yNormE + 300) {
-                        targetDate = today.minusDays(1)
-                        targetDateStr = yesterdayStr
-                        targetRecord = yRec
-                        targetShift = yNShift
-                        showClockOut = true
-                    }
-                }
-            }
         }
     }
 
     // ── 场景 C：今天休息/调休（S1 / S3）──
-    if (targetDate == today && todayRest) {
+    // 注意：若已被「跨午夜夜班下班卡」覆盖（overriddenByNightShift），则不再显示今天上班卡。
+    if (targetDate == today && todayRest && !overriddenByNightShift) {
         if (!todayHasStatus) {
             // S1：休息文案，无按钮
             restMessage = "好好休息一下哦！"
