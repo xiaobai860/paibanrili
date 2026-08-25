@@ -57,12 +57,6 @@ android {
     buildFeatures { compose = true }
     // Kotlin 2.0+ 使用独立 Compose Compiler 插件，不再需要 composeOptions.kotlinCompilerExtensionVersion
 
-    // Room schema 导出目录（便于追踪迁移历史，Google 正式推荐）
-    ksp {
-        arg("room.schemaLocation", "$projectDir/schemas")
-        arg("room.incremental", "true")
-    }
-
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
         // useLegacyPackaging = true — 控制 .so 打包方式，对 strip 警告无抑制效果
@@ -83,6 +77,13 @@ android {
         disable += "NewerVersionAvailable"
         disable += "ReportShortcutUsage"
     }
+}
+
+// Room schema 导出目录（便于追踪迁移历史，Google 正式推荐）
+// ksp 配置块必须位于 android {} 之外（顶层 Project 作用域），否则触发 DSL "Suspicious receiver type" 警告
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.incremental", "true")
 }
 
 dependencies {
