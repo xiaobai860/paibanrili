@@ -102,9 +102,8 @@ fun ScheduleDetailScreen(
     val isRestShift   = selectedShift?.builtInType == "rest"
     val isSwapShift   = selectedShift?.builtInType == "swap"
     val isRestOrSwap  = isRestShift || isSwapShift
-    // 休息/调休班次选择了带时间段的附加状态
-    val hasStatusTimeSegment = isRestOrSwap &&
-        record?.appliedStatus?.startTime != null && record?.appliedStatus?.endTime != null
+    // 休息/调休班次选择了任意附加状态（不论是否带时间段）时显示计薪方式
+    val hasAppliedStatus = isRestOrSwap && record?.appliedStatus != null
 
     val visibleStatuses = if (isRestOrSwap) {
         state.shiftStatuses.filter { s -> s.id != BUILTIN_STATUS_SWAP && s.id != BUILTIN_STATUS_LEAVE }
@@ -365,7 +364,7 @@ fun ScheduleDetailScreen(
             )
 
             // ── 计薪方式 ──────────────────────────────────────────────
-            if (selectedShift != null && (!isRestOrSwap || hasStatusTimeSegment)) {
+            if (selectedShift != null && (!isRestOrSwap || hasAppliedStatus)) {
                 SectionLabel("计薪方式")
                 val modes = listOf(SalaryMode.NORMAL to "工作日",
                     SalaryMode.WEEKEND to "周末", SalaryMode.HOLIDAY to "节假日")
