@@ -180,6 +180,65 @@ internal suspend fun applyS4StatusRange(
     else record.copy(appliedStatus = ap.copy(startTime = range.first, endTime = range.second))
 }
 
+/** 该日是否为「有时间段」的正常班（非休息/调休且起止时间非空）；是则返回其开始分钟，否则 null。 */
+private fun normalShiftStart(shift: Shift?): Int? =
+    if (shift != null && !isRestShift(shift) &&
+        shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()
+    ) CalcUtils.timeToMin(shift.startTime) else null
+
+/**
+ * 下班卡截止时刻（相对目标日 D 0 点的绝对分钟）。
+ *
+ * 规则（2026-08-29 最终版）：
+ * - D+1 有正常班（有时间段）→ D+1 上班前 5h（1440 + start − 300）
+ * - D+1 为休息/调休（无时间段班次）：
+ *   · 有附加状态且附加状态设置了开始时间 → 附加状态开始时间 − 5h（1440 + statusStart − 300）
+ *   · 否则（无附加状态时间）：
+ *     - 目标班次跨午夜（夜班）→ D+1 24:00（2880）
+ *     - 目标班次不跨午夜（白班）→ D+1 12:00（2160）
+ *       「白班漏打卡不占用整个休息日：中午 12:00 后即让位给休息日/下个班次」
+ *
+ * @param crossesMidnight 目标日 D 的班次是否跨午夜（normE > 1440）
+ */
+private fun computeOutCutoff(
+    nextDayRecord: ScheduleRecord?,
+    nextShift: Shift?,
+    crossesMidnight: Boolean
+): Int {
+    val nextStart = normalShiftStart(nextShift)
+    if (nextStart != null) return 1440 + nextStart - 300
+    val statusStart = nextDayRecord?.appliedStatus?.startTime
+    if (!statusStart.isNullOrEmpty()) return 1440 + CalcUtils.timeToMin(statusStart) - 300
+    return if (crossesMidnight) 2880 else 1440 + 720   // 24:00 / 12:00
+}
+
+/**
+ * 统一时间窗（2026-08-29 修订）：计算目标日 D 某班次的上/下班卡是否显示。
+ *
+ * @param nowAbs    当前时刻相对 D 日 0 点的绝对分钟（已跨到次日则 = 次日时刻 + 1440）
+ * @param ss        班次开始（D 日内 0~1439）
+ * @param normE     班次结束（已跨午夜归一，跨午夜则 >1440）
+ * @param outCutoff 下班卡截止（相对 D 日 0 点的绝对分钟，见 [computeOutCutoff]）
+ *
+ * 规则：
+ * - 上班卡：上班前 5h 起显示；未打卡则持续显示到下班时间，届时自动变为下班卡。
+ * - 下班卡：打完上班卡后立即显示；持续到 [outCutoff]。
+ */
+private fun computeShiftClockButtons(
+    nowAbs: Int,
+    ss: Int,
+    normE: Int,
+    clockIn: String,
+    clockOut: String,
+    outCutoff: Int
+): Pair<Boolean, Boolean> {
+    val showIn = clockIn.isEmpty() && nowAbs >= ss - 300 && nowAbs <= normE
+    val showOut = clockOut.isEmpty() &&
+        (clockIn.isNotEmpty() || nowAbs > normE) &&
+        nowAbs <= outCutoff
+    return showIn to showOut
+}
+
 /** 回源数据库计算 2x1 打卡组件数据（S1–S5 场景 + 时间窗规则，需求 §3）。 */
 private fun computeClockInWidgetData(
     shifts: List<Shift>,
@@ -203,9 +262,6 @@ private fun computeClockInWidgetData(
 
     val tomorrowRecord = schedules[tomorrowStr]
     val tomorrowShift = tomorrowRecord?.shiftId?.let { id -> shifts.find { it.id == id } }
-    val tomorrowRest = isRestShift(tomorrowShift)
-    val tomorrowNormalStart = if (!tomorrowRest && tomorrowShift != null && tomorrowShift.startTime.isNotEmpty())
-        tomorrowShift.startTime else null
 
     var targetDate = today
     var targetDateStr = todayStr
@@ -216,17 +272,17 @@ private fun computeClockInWidgetData(
     var restMessage = ""
 
     // ── 场景 A：昨天遗留的 S3 跨天加班下班卡 ──
-    // 下班卡截止：今天有正常班 → 今天班次开始 − 5h；今天休息（含带状态）→ 今天 24:00；不顺延
+    // 截止沿用统一规则（以今天为「次日」）：今天有正常班 → 今天上班 − 5h；
+    // 今天休息/调休 + 附加状态有开始时间 → 该开始时间；否则 → 今天 24:00
     val yRec = schedules[yesterdayStr]
     val yShift = yRec?.shiftId?.let { id -> shifts.find { it.id == id } }
     if (isRestShift(yShift) && yRec?.appliedStatus != null) {
         val ySt = yRec.appliedStatus.startTime
         val yEt = yRec.appliedStatus.endTime
         if (!ySt.isNullOrEmpty() && yEt.isNullOrEmpty()) {
-            val cutoffMin = if (!todayRest && todayShift?.startTime?.isNotEmpty() == true)
-                CalcUtils.timeToMin(todayShift.startTime) - 300
-            else 1440
-            if (nowMin <= cutoffMin) {
+            // 站在昨天视角：当前已是次日，故 nowAbs = 今天时刻 + 1440
+            // 本场景为跨天加班（附加状态跨天），按夜班口径 → 截止可到今天 24:00
+            if (nowMin + 1440 <= computeOutCutoff(todayRecord, todayShift, crossesMidnight = true)) {
                 targetDate = today.minusDays(1)
                 targetDateStr = yesterdayStr
                 targetRecord = yRec
@@ -236,36 +292,37 @@ private fun computeClockInWidgetData(
         }
     }
 
-    // ── 场景 A+：跨午夜夜班下班卡（优先于今天任何场景）──
-    // 昨天是正常班（含跨午夜），且昨天尚未打下班卡：只要当前仍处于其下班窗口
-    // [end−2h, end+5h]（跨零点后归属次日 nowMin 已是 0~，需把 yesterday 下班时刻归一为次日），
-    // 就优先显示「昨天夜班」的下班卡，并阻断今天（含今天休息/调休+附加状态）的上班卡。
-    // 这样可避免「当前班次未结束却提前显示下个班次上班卡」的错误（见 #23 夜班 20:30-8:30 案例）。
+    // ── 场景 A+：跨午夜夜班（优先于今天任何场景）──
+    // 昨天是正常班（含跨午夜）：按统一时间窗计算昨天班次的上/下班卡。
+    // 只要仍应显示昨天的任一打卡按钮，就优先显示昨天的卡，并阻断今天（含今天休息/调休+附加状态）的上班卡，
+    // 避免「当前班次未结束却提前显示下个班次上班卡」（见 #23 夜班 20:30-8:30 案例）。
     var overriddenByNightShift = false
     run {
-        val yNShift = yShift
-        if (yNShift != null && !isRestShift(yNShift) &&
-            yNShift.startTime.isNotEmpty() && yNShift.endTime.isNotEmpty()
+        if (yShift != null && !isRestShift(yShift) &&
+            yShift.startTime.isNotEmpty() && yShift.endTime.isNotEmpty()
         ) {
-            val yClockOut = yRec?.actualEndTime ?: ""
-            if (yClockOut.isEmpty()) {
-                // 昨天班次开始/结束（小时制），跨午夜则结束归入次日（+1440）
-                val yss = CalcUtils.timeToMin(yNShift.startTime)
-                val (_, yNormE) = CalcUtils.normRange(yss, CalcUtils.timeToMin(yNShift.endTime))
-                // 跨午夜后，昨天的结束时刻在「今天（次日）」的取值 = yNormE − 1440
-                val endNextDayMin = yNormE - 1440
-                // 下班窗口：end−2h 到 end+5h（按今天 nowMin 对齐）
-                val winStart = endNextDayMin - 120
-                val winEnd = endNextDayMin + 300
-                val inWindow = nowMin >= winStart && nowMin <= winEnd
-                if (inWindow) {
-                    targetDate = today.minusDays(1)
-                    targetDateStr = yesterdayStr
-                    targetRecord = yRec
-                    targetShift = yNShift
-                    showClockOut = true
-                    overriddenByNightShift = true
-                }
+            val yss = CalcUtils.timeToMin(yShift.startTime)
+            val (_, yNormE) = CalcUtils.normRange(yss, CalcUtils.timeToMin(yShift.endTime))
+            // 站在昨天视角：当前已是次日，故 nowAbs = 今天时刻 + 1440
+            val nowAbs = nowMin + 1440
+            // S4（昨天正常班 + 内置附加状态）以附加状态时间段作为打卡判据
+            val yIsS4 = yRec?.appliedStatus?.let { isBuiltInStatus(it.statusId) } == true
+            val effIn  = if (yIsS4) yRec?.appliedStatus?.startTime ?: "" else yRec?.actualStartTime ?: ""
+            val effOut = if (yIsS4) yRec?.appliedStatus?.endTime ?: "" else yRec?.actualEndTime ?: ""
+            // 次日 = 今天；昨天班次跨午夜则按夜班口径
+            val (inBtn, outBtn) = computeShiftClockButtons(
+                nowAbs = nowAbs, ss = yss, normE = yNormE,
+                clockIn = effIn, clockOut = effOut,
+                outCutoff = computeOutCutoff(todayRecord, todayShift, crossesMidnight = yNormE > 1440)
+            )
+            if (inBtn || outBtn) {
+                targetDate = today.minusDays(1)
+                targetDateStr = yesterdayStr
+                targetRecord = yRec
+                targetShift = yShift
+                showClockIn = inBtn
+                showClockOut = outBtn
+                overriddenByNightShift = true
             }
         }
     }
@@ -276,19 +333,18 @@ private fun computeClockInWidgetData(
     ) {
         val ss = CalcUtils.timeToMin(todayShift.startTime)
         val (_, normE) = CalcUtils.normRange(ss, CalcUtils.timeToMin(todayShift.endTime))
-        val clockIn = todayRecord?.actualStartTime ?: ""
-        val clockOut = todayRecord?.actualEndTime ?: ""
         val isS4 = todayHasStatus && todayStatusIsLeaveSwap
-
-        if (isS4) {
-            // S4：上班卡 [start−5h, end]；下班卡 [点击上班卡后, end+5h]；未打上班卡且已过下班时间 → 全隐藏
-            showClockIn = clockIn.isEmpty() && nowMin >= ss - 300 && nowMin <= normE
-            showClockOut = clockIn.isNotEmpty() && clockOut.isEmpty() && nowMin >= ss - 300 && nowMin <= normE + 300
-        } else {
-            // S2 / S5（按 S2）：上班卡 [start−5h, start+2h]；下班卡 [end−2h, end+5h]
-            showClockIn = clockIn.isEmpty() && nowMin >= ss - 300 && nowMin <= ss + 120
-            showClockOut = clockOut.isEmpty() && nowMin >= normE - 120 && nowMin <= normE + 300
-        }
+        // S4（正常班 + 内置附加状态）以附加状态时间段作为打卡判据；其余用实际打卡时间
+        val effIn  = if (isS4) todayStatus?.startTime ?: "" else todayRecord?.actualStartTime ?: ""
+        val effOut = if (isS4) todayStatus?.endTime ?: "" else todayRecord?.actualEndTime ?: ""
+        // 次日 = 明天；今天班次跨午夜则按夜班口径
+        val (inBtn, outBtn) = computeShiftClockButtons(
+            nowAbs = nowMin, ss = ss, normE = normE,
+            clockIn = effIn, clockOut = effOut,
+            outCutoff = computeOutCutoff(tomorrowRecord, tomorrowShift, crossesMidnight = normE > 1440)
+        )
+        showClockIn = inBtn
+        showClockOut = outBtn
     }
 
     // ── 场景 C：今天休息/调休（S1 / S3）──
@@ -304,11 +360,8 @@ private fun computeClockInWidgetData(
             when {
                 st.isEmpty() -> showClockIn = true
                 et.isEmpty() -> {
-                    // 下班卡截止：明天正常班 → 明天班次开始 − 5h；明天休息（含带状态）→ 明天 24:00
-                    val cutoffMin = if (tomorrowNormalStart != null)
-                        1440 + CalcUtils.timeToMin(tomorrowNormalStart) - 300
-                    else 1440
-                    showClockOut = nowMin <= cutoffMin
+                    // 截止沿用统一规则（以明天为「次日」）；附加状态跨天按夜班口径
+                    showClockOut = nowMin <= computeOutCutoff(tomorrowRecord, tomorrowShift, crossesMidnight = true)
                 }
                 else -> { /* 上下班均已打卡 */ }
             }
