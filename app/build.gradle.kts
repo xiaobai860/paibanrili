@@ -68,6 +68,7 @@ android {
             excludes += "/META-INF/*.version"
             excludes += "/META-INF/INDEX.LIST"
             excludes += "/META-INF/NOTICE.md"
+            excludes += "/META-INF/**/LICENSE.txt"
             excludes += "/META-INF/com/android/build/gradle/app-metadata.properties"
             excludes += "/META-INF/version-control-info.textproto"
         }
