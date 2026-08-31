@@ -187,6 +187,16 @@ private fun normalShiftStart(shift: Shift?): Int? =
     ) CalcUtils.timeToMin(shift.startTime) else null
 
 /**
+ * 是否为「夜班」：今天开始、明天结束（跨午夜，归一后结束 > 1440）。
+ * 白班 = 当天上下班同一天；休息/调休（无时间段）非夜班。
+ */
+private fun isNightCrossShift(shift: Shift?): Boolean {
+    val ss = normalShiftStart(shift) ?: return false
+    val (_, normE) = CalcUtils.normRange(ss, CalcUtils.timeToMin(shift!!.endTime))
+    return normE > 1440
+}
+
+/**
  * 下班卡截止时刻（相对目标日 D 0 点的绝对分钟）。
  *
  * 规则（2026-08-29 最终版）：
@@ -385,6 +395,26 @@ private fun computeClockInWidgetData(
     // 明天班次的附加状态（需求：明天信息同时显示附加状态）
     val tomorrowStatusName = tomorrowRecord?.appliedStatus?.let { statusMap[it.statusId]?.name } ?: ""
 
+    // ── 2x1 第三行：跨天班次提醒文案（2026-08-31 简化版）──
+    // 大类三种：白班（上下班同一天）/ 夜班（今天开始明天结束，跨午夜）/ 休息（无时间段）。
+    // - 今天夜班未开始                     → 「今天晚上：xx」（含跨零点后：昨夜班进行中但今天的夜班未开始）
+    // - 今天夜班进行中 + 明天也是夜班       → 「明天晚上：xx」
+    // - 今天夜班进行中 + 明天不是夜班       → 「明天：xx」
+    // - 今天白班 / 休息 / 无班             → 「明天：xx」原格式；明天无班则不显示
+    val tNight = isNightCrossShift(todayShift)
+    val tmNight = isNightCrossShift(tomorrowShift)
+    val tSs = if (tNight) CalcUtils.timeToMin(todayShift!!.startTime) else 0
+    val todayShiftName = todayShift?.name ?: ""
+    val tomorrowShiftName2 = tomorrowShift?.name ?: ""
+    val nextShiftFooter = when {
+        tNight && nowMin < tSs -> "今天晚上：$todayShiftName"
+        tNight && tmNight      -> "明天晚上：$tomorrowShiftName2"
+        tomorrowShiftName2.isNotEmpty() ->
+            if (tomorrowStatusName.isNotEmpty()) "明天：$tomorrowShiftName2 · $tomorrowStatusName"
+            else "明天：$tomorrowShiftName2"
+        else -> ""
+    }
+
     return ClockInWidgetData(
         shiftName = targetShift?.name ?: "",
         startTime = targetShift?.startTime ?: "",
@@ -408,7 +438,8 @@ private fun computeClockInWidgetData(
         clockInDate = targetDateStr,
         widgetClockInTime = actualStart,
         widgetClockOutTime = actualEnd,
-        restMessage = restMessage
+        restMessage = restMessage,
+        nextShiftFooter = nextShiftFooter
     )
 }
 

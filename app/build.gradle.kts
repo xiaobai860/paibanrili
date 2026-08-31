@@ -24,8 +24,8 @@ android {
         applicationId = "com.schedulecalendar.app"
         minSdk        = 34
         targetSdk     = 36
-        versionCode   = 2026082904
-        versionName   = "2026082904"
+        versionCode   = 2026083103
+        versionName   = "2026083103"
     }
 
     signingConfigs {
@@ -58,7 +58,19 @@ android {
     // Kotlin 2.0+ 使用独立 Compose Compiler 插件，不再需要 composeOptions.kotlinCompilerExtensionVersion
 
     packaging {
-        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // 清理运行时无用元数据（约省 50KB+）：
+            // - DebugProbesKt.bin：kotlinx-coroutines 协程调试探针，仅 kotlinx.coroutines.debug 开启时使用
+            // - *.version / INDEX.LIST / NOTICE.md：库版本指纹与许可索引，纯信息
+            // - app-metadata.properties / version-control-info.textproto：AGP 构建元数据 / VCS 信息
+            excludes += "DebugProbesKt.bin"
+            excludes += "/META-INF/*.version"
+            excludes += "/META-INF/INDEX.LIST"
+            excludes += "/META-INF/NOTICE.md"
+            excludes += "/META-INF/com/android/build/gradle/app-metadata.properties"
+            excludes += "/META-INF/version-control-info.textproto"
+        }
         // useLegacyPackaging = true — 控制 .so 打包方式，对 strip 警告无抑制效果
         jniLibs { useLegacyPackaging = true }
     }

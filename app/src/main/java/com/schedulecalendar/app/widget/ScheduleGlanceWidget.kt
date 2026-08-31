@@ -100,7 +100,9 @@ data class ClockInWidgetData(
     val widgetClockInTime: String = "",
     val widgetClockOutTime: String = "",
     /** S1：休息/调休且无附加状态时第二行显示的文案 */
-    val restMessage: String = ""
+    val restMessage: String = "",
+    /** 2x1 第三行：跨天班次提醒文案（夜班提醒规则，含「明天：xx」兜底格式）；空 = 不显示 */
+    val nextShiftFooter: String = ""
 )
 
 // ── 存储键 ──────────────────────────────────────────────────
@@ -591,14 +593,18 @@ private fun ClockInWidgetContent() {
                 }
             }
 
-            // 第三行：明天班次（含附加状态）/ 节假日倒计时（字号 12sp）
+            // 第三行：明天班次（含附加状态）/ 跨天夜班提醒 / 节假日倒计时（字号 12sp）
+            // nextShiftFooter 由 WidgetSync 按夜班提醒规则生成（「明天晚上/今天晚上/明天晚班/今天晚班/明天：xx」）；
+            // 为空时回退旧格式（兼容旧缓存 JSON 缺字段的情况）
             val footerText = when (displayMode) {
                 DISPLAY_MODE_SHIFT_HOLIDAY -> getHolidayCountdownText()
-                else -> if (data.tomorrowShiftName.isNotEmpty()) {
-                    if (data.tomorrowStatusName.isNotEmpty())
-                        "明天：${data.tomorrowShiftName} · ${data.tomorrowStatusName}"
-                    else "明天：${data.tomorrowShiftName}"
-                } else ""
+                else -> data.nextShiftFooter.ifEmpty {
+                    if (data.tomorrowShiftName.isNotEmpty()) {
+                        if (data.tomorrowStatusName.isNotEmpty())
+                            "明天：${data.tomorrowShiftName} · ${data.tomorrowStatusName}"
+                        else "明天：${data.tomorrowShiftName}"
+                    } else ""
+                }
             }
             if (footerText.isNotEmpty()) {
                 Box(
