@@ -24,8 +24,12 @@ android {
         applicationId = "com.schedulecalendar.app"
         minSdk        = 34
         targetSdk     = 36
-        versionCode   = 2026083103
-        versionName   = "2026083103"
+        // versionName：展示用版本号 = 年月日 + 两位迭代版号（当天第一版 01，第二版 02……）
+        // versionCode：系统用的递增整数，每次发版 +1（不可回退，与 versionName 无关）
+        // 注：设为 162 = 仓库总提交数（干净解耦计数器）；因小于已装机 release 的 2026083103，
+        // 覆盖安装需先卸载旧版，或仅用于全新安装。
+        versionCode   = 162
+        versionName   = "2026091001"
     }
 
     signingConfigs {
