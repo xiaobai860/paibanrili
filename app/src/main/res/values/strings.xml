@@ -7,4 +7,66 @@
     <string name="calendar_widget_description">显示当月日期与班次信息</string>
     <string name="calendar_3x4_widget_label">排班日历（高）</string>
     <string name="calendar_3x4_widget_description">显示当月日期、班次与附加状态信息</string>
+
+    <!-- 通用 -->
+    <string name="common_confirm">确定</string>
+    <string name="common_cancel">取消</string>
+    <string name="common_ok">确认</string>
+    <string name="common_clear">清除</string>
+
+    <!-- 星期（周一 ~ 周日） -->
+    <string name="week_monday">周一</string>
+    <string name="week_tuesday">周二</string>
+    <string name="week_wednesday">周三</string>
+    <string name="week_thursday">周四</string>
+    <string name="week_friday">周五</string>
+    <string name="week_saturday">周六</string>
+    <string name="week_sunday">周日</string>
+
+    <!-- 排班编辑页 -->
+    <string name="detail_title">排班编辑</string>
+    <string name="detail_save">保存</string>
+    <string name="detail_shift">班次</string>
+    <string name="detail_shift_hint">点击选择班次</string>
+    <string name="detail_actual_time">实际打卡时间（可选）</string>
+    <string name="detail_actual_start">实际上班</string>
+    <string name="detail_actual_end">实际下班</string>
+    <string name="detail_clear_actual_start">清除实际上班</string>
+    <string name="detail_clear_actual_end">清除实际下班</string>
+    <string name="detail_status">附加状态</string>
+    <string name="detail_no_status">无附加状态</string>
+    <string name="detail_all_day">全天</string>
+    <string name="detail_pick_status">选择附加状态</string>
+    <string name="detail_extra">补贴 / 扣款</string>
+    <string name="detail_remark">备注（可选）</string>
+    <string name="detail_remark_hint">输入备注信息…</string>
+    <string name="detail_salary_mode">计薪方式</string>
+    <string name="detail_mode_normal">工作日</string>
+    <string name="detail_mode_weekend">周末</string>
+    <string name="detail_mode_holiday">节假日</string>
+    <string name="detail_auto_by_date">按日期判断</string>
+    <string name="detail_auto_calc">自动计算</string>
+    <string name="detail_hours_salary">工时与薪资明细</string>
+    <string name="detail_normal_hours">正常工时</string>
+    <string name="detail_overtime_hours">加班工时</string>
+    <string name="detail_normal_income">正班收入</string>
+    <string name="detail_overtime_income">加班收入</string>
+    <string name="detail_total_income">总收入</string>
+
+    <!-- 补贴/扣款类型标记 -->
+    <string name="detail_extra_allowance">补</string>
+    <string name="detail_extra_deduction">扣</string>
+
+    <!-- 附加状态时间段对话框 -->
+    <string name="detail_status_time_title">设置状态时间段</string>
+    <string name="detail_start">开始</string>
+    <string name="detail_end">结束</string>
+    <string name="detail_status_time_overflow">不能超过班次时间段</string>
+    <string name="detail_clear_time">清除时间</string>
+    <string name="detail_start_time">开始时间</string>
+    <string name="detail_end_time">结束时间</string>
+    <string name="detail_no_status_option">无（取消附加状态）</string>
+    <string name="detail_shift_picker_title">选择班次</string>
+    <string name="common_builtin">内置</string>
+    <string name="common_selected">已选择</string>
 </resources>

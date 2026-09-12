@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -225,7 +226,9 @@ class CalendarViewModel @Inject constructor(
                     ).associateBy { it.date }
                     val allDetails = curDetails + prevDetails + nextDetails
                     val todos      = buildTodos(s.year, s.month, schedules, allShifts, attendConf, allShiftStatuses)
-                    _state.update { it.copy(
+                    // 切月竞态防护：若本次收集协程已被取消，则不回写状态，
+                    // 避免被取消的旧月份计算完成后覆盖新月份的结果。
+                    if (isActive) _state.update { it.copy(
                         shifts         = shifts,
                         allShifts      = allShifts,
                         schedules      = schedules,

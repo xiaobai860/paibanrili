@@ -27,6 +27,9 @@ import com.schedulecalendar.app.domain.model.DayScheduleDetail
 import com.schedulecalendar.app.domain.model.SalarySummary
 import com.schedulecalendar.app.domain.model.ScheduleType
 import com.schedulecalendar.app.domain.model.BUILTIN_SHIFTS
+import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_LEAVE
+import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_SWAP
+import com.schedulecalendar.app.domain.model.ShiftStatus
 import com.schedulecalendar.app.ui.component.MonthNavigator
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import com.schedulecalendar.app.ui.detail.safeColor
@@ -163,7 +166,7 @@ fun SalaryContent(
                 }
             } else {
                 items(workDays, key = { it.date }) { d ->
-                    SalaryDailyRow(d)
+                    SalaryDailyRow(d, state.shiftStatuses)
                 }
             }
             }
@@ -421,7 +424,7 @@ private fun SalaryTrendBar(trend: List<MonthlySalaryTrend>) {
 }
 
 @Composable
-private fun SalaryDailyRow(d: DayScheduleDetail) {
+private fun SalaryDailyRow(d: DayScheduleDetail, shiftStatuses: List<ShiftStatus>) {
     Surface(
         Modifier.padding(horizontal = 12.dp, vertical = 3.dp).fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -455,6 +458,13 @@ private fun SalaryDailyRow(d: DayScheduleDetail) {
                         SalaryBadge("休息", c.copy(alpha = 0.15f), c)
                     }
                     else -> {}
+                }
+                // 附加状态标签（内置请假/调休已由上方类型徽章展示，此处跳过避免重复）
+                val appliedSt = d.record?.appliedStatus
+                    ?.let { ap -> shiftStatuses.find { s -> s.id == ap.statusId } }
+                if (appliedSt != null && appliedSt.id != BUILTIN_STATUS_LEAVE && appliedSt.id != BUILTIN_STATUS_SWAP) {
+                    val c = safeColor(appliedSt.color)
+                    SalaryBadge(appliedSt.name, c.copy(alpha = 0.15f), c)
                 }
                 if (d.extras.isNotEmpty()) {
                     d.extras.forEach { extra ->

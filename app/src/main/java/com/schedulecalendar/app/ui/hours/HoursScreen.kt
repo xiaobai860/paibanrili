@@ -30,6 +30,9 @@ import androidx.navigation.NavController
 import com.schedulecalendar.app.domain.model.DayScheduleDetail
 import com.schedulecalendar.app.domain.model.HoursSummary
 import com.schedulecalendar.app.domain.model.BUILTIN_SHIFTS
+import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_LEAVE
+import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_SWAP
+import com.schedulecalendar.app.domain.model.ShiftStatus
 import com.schedulecalendar.app.domain.model.ScheduleType
 import com.schedulecalendar.app.ui.component.MonthNavigator
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
@@ -188,7 +191,7 @@ fun HoursContent(
                     }
                 } else {
                     items(workDays, key = { it.date }) { d ->
-                        HoursDailyRow(d)
+                        HoursDailyRow(d, state.shiftStatuses)
                     }
                 }
             }
@@ -579,7 +582,7 @@ private fun MonthlyHoursBar(trend: List<MonthlyHoursTrend>) {
 }
 
 @Composable
-private fun HoursDailyRow(d: DayScheduleDetail) {
+private fun HoursDailyRow(d: DayScheduleDetail, shiftStatuses: List<ShiftStatus>) {
     // 注意：overtimeHours 已包含 weekend + holiday，不可重复相加
     val totalH = d.normalHours + d.overtimeHours
     Surface(
@@ -610,6 +613,13 @@ private fun HoursDailyRow(d: DayScheduleDetail) {
                         com.schedulecalendar.app.domain.model.ScheduleType.REST  ->
                             ShiftTypeBadge("休息", MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant)
                         else -> {}
+                    }
+                    // 附加状态标签（内置请假/调休已由上方类型徽章展示，此处跳过避免重复）
+                    val appliedSt = d.record?.appliedStatus
+                        ?.let { ap -> shiftStatuses.find { s -> s.id == ap.statusId } }
+                    if (appliedSt != null && appliedSt.id != BUILTIN_STATUS_LEAVE && appliedSt.id != BUILTIN_STATUS_SWAP) {
+                        val c = runCatching { Color(appliedSt.color.toColorInt()) }.getOrElse { MaterialTheme.colorScheme.primary }
+                        ShiftTypeBadge(appliedSt.name, c.copy(alpha = 0.15f), c)
                     }
                 }
                 Column(horizontalAlignment = Alignment.End) {

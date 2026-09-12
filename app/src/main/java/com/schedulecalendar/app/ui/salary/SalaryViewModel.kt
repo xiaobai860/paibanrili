@@ -8,6 +8,7 @@ import com.schedulecalendar.app.data.repository.ExtraItemRepository
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftBreakRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
+import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,8 @@ data class SalaryUiState(
     val fullEstimate: SalarySummary            = SalarySummary(),
     /** 每日明细 */
     val details: List<DayScheduleDetail>       = emptyList(),
+    /** 附加状态完整列表（含内置，用于每日明细解析附加状态名称与颜色） */
+    val shiftStatuses: List<ShiftStatus>       = emptyList(),
     /** 近8个月薪资趋势 */
     val trend: List<MonthlySalaryTrend>        = emptyList(),
     val loading: Boolean                       = true
@@ -53,6 +56,7 @@ class SalaryViewModel @Inject constructor(
     private val shiftRepo: ShiftRepository,
     private val scheduleRepo: ScheduleRepository,
     private val breakRepo: ShiftBreakRepository,
+    private val statusRepo: ShiftStatusRepository,
     private val extraItemRepo: ExtraItemRepository,
     private val prefs: AppPreferences
 ) : ViewModel() {
@@ -86,6 +90,7 @@ class SalaryViewModel @Inject constructor(
             runCatching {
                 val shifts       = shiftRepo.getAllWithBuiltin()
                 val breaks       = breakRepo.getAll()
+                val statuses     = statusRepo.getAllWithBuiltin()
                 val extraItems   = extraItemRepo.getAll()
                 val salaryConf   = prefs.salaryConfigFlow.first()
                 val attendConf   = prefs.attendConfigFlow.first()
@@ -156,6 +161,7 @@ class SalaryViewModel @Inject constructor(
                     fullEstimate = fullEstimate,
                     details      = details,
                     trend        = trend,
+                    shiftStatuses = statuses,
                     loading      = false
                 )}
             }.onFailure {

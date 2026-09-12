@@ -1,6 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/ui/calendar/CalendarScreen.kt
 package com.schedulecalendar.app.ui.calendar
 import android.util.Log
+import com.schedulecalendar.app.BuildConfig
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
@@ -235,7 +236,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
     var editMenuExpanded by remember { mutableStateOf(false) }
     // 批量排班面板展开状态（提升到本层：返回键需要「第一次收起面板、第二次退出模式」）
     var batchExpanded by remember { mutableStateOf(false) }
-    Log.e("WBD", "calendar: composed mode=[b=" + state.batchMode + ",c=" + state.copyMode + ",d=" + state.deleteMode + "] expanded=" + batchExpanded)
+    if (BuildConfig.DEBUG) Log.e("WBD", "calendar: composed mode=[b=" + state.batchMode + ",c=" + state.copyMode + ",d=" + state.deleteMode + "] expanded=" + batchExpanded)
 
     // 处理快捷方式Intent
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -263,7 +264,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
     val activity = context as? MainActivity
     val pendingDate = activity?.pendingNavigateDate
     LaunchedEffect(pendingDate) {
-        Log.e("WBD", "calendar: pendingDate effect, pending=" + (pendingDate ?: "null"))
+        if (BuildConfig.DEBUG) Log.e("WBD", "calendar: pendingDate effect, pending=" + (pendingDate ?: "null"))
         val date = activity?.consumeNavigateDate() ?: return@LaunchedEffect
         val parts = date.split("-")
         if (parts.size == 3) {
@@ -374,7 +375,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                     actions = {
                         // 编辑菜单按钮（位于导航栏右侧）
                         Box {
-                            IconButton(onClick = { Log.e("WBD", "calendar: edit btn"); editMenuExpanded = true }) {
+                            IconButton(onClick = { if (BuildConfig.DEBUG) Log.e("WBD", "calendar: edit btn"); editMenuExpanded = true }) {
                                 Icon(
                                     Icons.Default.EditCalendar,
                                     contentDescription = "编辑",
@@ -387,14 +388,14 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             ) {
                                 DropdownMenuItem(
                                     text = { Text("显示方案") },
-                                    onClick = { Log.e("WBD", "calendar: menu 显示方案"); editMenuExpanded = false; navController.navigate(RouteDisplaySchemes) },
+                                    onClick = { if (BuildConfig.DEBUG) Log.e("WBD", "calendar: menu 显示方案"); editMenuExpanded = false; navController.navigate(RouteDisplaySchemes) },
                                     leadingIcon = { Icon(Icons.Default.ViewModule, null) }
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("批量排班") },
                                     onClick = {
-                                        Log.e("WBD", "calendar: menu 批量排班")
+                                        if (BuildConfig.DEBUG) Log.e("WBD", "calendar: menu 批量排班")
                                         editMenuExpanded = false
                                         batchExpanded = false
                                         vm.enterBatchMode()
@@ -404,7 +405,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 DropdownMenuItem(
                                     text = { Text("复制排班") },
                                     onClick = {
-                                        Log.e("WBD", "calendar: menu 复制排班")
+                                        if (BuildConfig.DEBUG) Log.e("WBD", "calendar: menu 复制排班")
                                         editMenuExpanded = false
                                         vm.enterCopyMode()
                                     },
@@ -413,7 +414,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 DropdownMenuItem(
                                     text = { Text("删除排班", color = MaterialTheme.colorScheme.error) },
                                     onClick = {
-                                        Log.e("WBD", "calendar: menu 删除排班")
+                                        if (BuildConfig.DEBUG) Log.e("WBD", "calendar: menu 删除排班")
                                         editMenuExpanded = false
                                         vm.enterDeleteMode()
                                     },

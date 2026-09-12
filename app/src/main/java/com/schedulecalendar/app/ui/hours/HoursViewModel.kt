@@ -48,6 +48,8 @@ data class HoursUiState(
     val trend: List<MonthlyHoursTrend>             = emptyList(),
     /** 考勤配置（用于迟到阈值提示） */
     val attendConfig: AttendConfig                 = AttendConfig(),
+    /** 附加状态完整列表（含内置，用于每日明细解析附加状态名称与颜色） */
+    val shiftStatuses: List<ShiftStatus>           = emptyList(),
     val loading: Boolean                           = true
 )
 
@@ -147,6 +149,7 @@ class HoursViewModel @Inject constructor(
                     recentDetails = recentDetails,
                     trend       = trend,
                     attendConfig = attendConf,
+                    shiftStatuses = statuses,
                     loading     = false
                 )}
             }.onFailure {

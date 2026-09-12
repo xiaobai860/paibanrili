@@ -101,8 +101,6 @@ object CalcUtils {
         shiftEnd: String,
         ignoreEarlyArrival: Boolean,
         ignoreLateLeave: Boolean,
-        confirmEarlyOT: Boolean,
-        confirmLateOT: Boolean,
         cfg: AttendConfig
     ): Pair<String, String> {
         // 考勤粒度不允许为 0（防止配置异常时除零崩溃），最小按 1 分钟计
@@ -123,11 +121,12 @@ object CalcUtils {
             if (sS0 > sE0 && aS <= sE0) aS += 1440
             val diff = sS0 - aS  // 正=早到 负=迟到
             if (diff > 0) {
-                if (!ignoreEarlyArrival && confirmEarlyOT) {
+                if (!ignoreEarlyArrival) {
                     val earlyOtMin = min((floor(diff.toDouble() / grain) * grain).toInt(), shiftDur)
                     effectiveStart = if (earlyOtMin > 0) minutesToTime(sS0 - earlyOtMin) else shiftStart
                 }
-                // ignoreEarlyArrival=true 或 未确认早到加班 → effectiveStart 保持 shiftStart
+                // ignoreEarlyArrival=true（用户显式忽略早到）→ effectiveStart 保持 shiftStart；
+                // 否则按实际早到时间向前延展（实际打卡时间始终计入有效工时区间）
             } else {
                 val lateMin = -diff
                 effectiveStart = if (lateMin <= lateTol) shiftStart else actualStart
@@ -142,11 +141,12 @@ object CalcUtils {
             val (_, normAE) = normRange(sS, aE)
             val diff        = normAE - normSE  // 正=加班 负=早退
             if (diff > 0) {
-                if (!ignoreLateLeave && confirmLateOT) {
+                if (!ignoreLateLeave) {
                     val otMin = (floor(diff.toDouble() / grain) * grain).toInt()
                     effectiveEnd = if (otMin > 0) minutesToTime(normSE + otMin) else shiftEnd
                 }
-                // ignoreLateLeave=true 或 未确认晚退加班 → effectiveEnd 保持 shiftEnd
+                // ignoreLateLeave=true（用户显式忽略晚退）→ effectiveEnd 保持 shiftEnd；
+                // 否则按实际晚退时间向后延展（实际打卡时间始终计入有效工时区间）
             } else {
                 val earlyMin = -diff
                 effectiveEnd = if (earlyMin <= earlyTol) shiftEnd else actualEnd
@@ -240,8 +240,6 @@ object CalcUtils {
             shiftEnd           = shift.endTime,
             ignoreEarlyArrival = record.ignoreEarlyArrival,
             ignoreLateLeave    = record.ignoreLateLeave,
-            confirmEarlyOT     = record.confirmEarlyOT,
-            confirmLateOT      = record.confirmLateOT,
             cfg                = attendConfig
         )
 

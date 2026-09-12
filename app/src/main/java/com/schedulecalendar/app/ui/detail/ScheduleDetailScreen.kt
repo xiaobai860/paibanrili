@@ -1,6 +1,9 @@
 // app/src/main/java/com/schedulecalendar/app/ui/detail/ScheduleDetailScreen.kt
 package com.schedulecalendar.app.ui.detail
 import android.util.Log
+import androidx.compose.ui.res.stringResource
+import com.schedulecalendar.app.BuildConfig
+import com.schedulecalendar.app.R
 
 import androidx.core.graphics.toColorInt
 import androidx.activity.compose.BackHandler
@@ -46,7 +49,7 @@ fun ScheduleDetailScreen(
     vm: ScheduleDetailViewModel = hiltViewModel()
 ) {
     val state       by vm.state.collectAsStateWithLifecycle()
-    Log.e("WBD", "detail: composed date=" + state.date)
+    if (BuildConfig.DEBUG) Log.e("WBD", "detail: composed date=" + state.date)
     val snackbar     = remember { SnackbarHostState() }
     val scrollState  = rememberScrollState()
 
@@ -78,7 +81,7 @@ fun ScheduleDetailScreen(
     BackHandler(
         enabled = showShiftPicker || showStatusPicker || showStatusEditor != null || timeDialogConfig != null
     ) {
-        Log.e("WBD", "detail: back -> close overlays")
+        if (BuildConfig.DEBUG) Log.e("WBD", "detail: back -> close overlays")
         showShiftPicker  = false
         showStatusPicker = false
         showStatusEditor = null
@@ -95,7 +98,12 @@ fun ScheduleDetailScreen(
     val holidayName = HolidayData.getHolidayName(date)
     val weekLabel = if (y > 0) {
         val dow = LocalDate.of(y, m, d).dayOfWeek
-        val labels = arrayOf("周一","周二","周三","周四","周五","周六","周日")
+        val labels = arrayOf(
+            stringResource(R.string.week_monday), stringResource(R.string.week_tuesday),
+            stringResource(R.string.week_wednesday), stringResource(R.string.week_thursday),
+            stringResource(R.string.week_friday), stringResource(R.string.week_saturday),
+            stringResource(R.string.week_sunday)
+        )
         labels[dow.value - 1]   // DayOfWeek.MONDAY=1 … SUNDAY=7
     } else ""
     val selectedShift = record?.shiftId?.let { id -> state.shifts.find { it.id == id } }
@@ -113,18 +121,18 @@ fun ScheduleDetailScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             ScheduleTopBar(
-                title   = "排班编辑",
-                onBack  = { Log.e("WBD", "detail: topbar back"); navController.popBackStack() },
+                title   = stringResource(R.string.detail_title),
+                onBack  = { if (BuildConfig.DEBUG) Log.e("WBD", "detail: topbar back"); navController.popBackStack() },
                 actions = {
                     // 清除按钮（左侧）
                     if (record?.shiftId != null) {
                         TextButton(onClick = vm::deleteRecord) {
-                            Text("清除", color = MaterialTheme.colorScheme.error)
+                            Text(stringResource(R.string.common_clear), color = MaterialTheme.colorScheme.error)
                         }
                     }
                     // 保存按钮（右侧）
                     TextButton(onClick = vm::save) {
-                        Text("保存", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.detail_save), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -183,11 +191,11 @@ fun ScheduleDetailScreen(
             }
 
             // ── 班次选择 ──────────────────────────────────────────────
-            SectionLabel("班次")
+            SectionLabel(stringResource(R.string.detail_shift))
             Row(
                 Modifier.fillMaxWidth()
                     .clip(MaterialTheme.shapes.medium)
-                    .clickable { Log.e("WBD", "detail: click shift row"); showShiftPicker = true }
+                    .clickable { if (BuildConfig.DEBUG) Log.e("WBD", "detail: click shift row"); showShiftPicker = true }
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     // 与附加状态行高一致（min 52dp）
                     .heightIn(min = 52.dp)
@@ -206,7 +214,7 @@ fun ScheduleDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
-                    Text("点击选择班次", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Text(stringResource(R.string.detail_shift_hint), color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f))
                 }
                 Icon(Icons.Default.ChevronRight, contentDescription = null,
@@ -215,18 +223,22 @@ fun ScheduleDetailScreen(
 
             // ── 实际打卡时间（非休息/调休班次才显示） ────────────────────────
             if (selectedShift != null && !isRestOrSwap) {
-                SectionLabel("实际打卡时间（可选）")
+                SectionLabel(stringResource(R.string.detail_actual_time))
+                // stringResource 只能在 @Composable 上下文中调用，而 onRequestDialog 是普通回调，
+                // 故先提升为局部变量，供 TimePickerField 与其回调复用。
+                val actualStartLabel = stringResource(R.string.detail_actual_start)
+                val actualEndLabel   = stringResource(R.string.detail_actual_end)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     // 实际上班 + 清除按钮
                     Row(Modifier.weight(1f).height(IntrinsicSize.Min)) {
                         TimePickerField(
                             time         = record.actualStartTime ?: "",
                             onTimeChange = vm::setActualStart,
-                            label        = "实际上班",
+                            label        = actualStartLabel,
                             defaultTime  = selectedShift.startTime,
                             onRequestDialog = {
                                 timeDialogConfig = TimeDialogConfig(
-                                    label = "实际上班",
+                                    label = actualStartLabel,
                                     currentTime = record.actualStartTime ?: "",
                                     defaultTime = selectedShift.startTime,
                                     onConfirm = vm::setActualStart
@@ -243,7 +255,7 @@ fun ScheduleDetailScreen(
                                     .clickable { vm.setActualStart("") },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Close, "清除实际上班", modifier = Modifier.size(20.dp),
+                                Icon(Icons.Default.Close, stringResource(R.string.detail_clear_actual_start), modifier = Modifier.size(20.dp),
                                     tint = MaterialTheme.colorScheme.error)
                             }
                         }
@@ -253,11 +265,11 @@ fun ScheduleDetailScreen(
                         TimePickerField(
                             time         = record.actualEndTime ?: "",
                             onTimeChange = vm::setActualEnd,
-                            label        = "实际下班",
+                            label        = actualEndLabel,
                             defaultTime  = selectedShift.endTime,
                             onRequestDialog = {
                                 timeDialogConfig = TimeDialogConfig(
-                                    label = "实际下班",
+                                    label = actualEndLabel,
                                     currentTime = record.actualEndTime ?: "",
                                     defaultTime = selectedShift.endTime,
                                     onConfirm = vm::setActualEnd
@@ -274,7 +286,7 @@ fun ScheduleDetailScreen(
                                     .clickable { vm.setActualEnd("") },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Close, "清除实际下班", modifier = Modifier.size(20.dp),
+                                Icon(Icons.Default.Close, stringResource(R.string.detail_clear_actual_end), modifier = Modifier.size(20.dp),
                                     tint = MaterialTheme.colorScheme.error)
                             }
                         }
@@ -284,7 +296,7 @@ fun ScheduleDetailScreen(
 
             // ── 附加状态（与班次一致：单行选择器） ──────────────────────
             if (visibleStatuses.isNotEmpty() && selectedShift != null) {
-                SectionLabel("附加状态")
+                SectionLabel(stringResource(R.string.detail_status))
                 val appliedSt = record.appliedStatus
                 val appliedStatus = appliedSt?.let { st -> visibleStatuses.find { it.id == st.statusId } }
                 Surface(
@@ -295,7 +307,7 @@ fun ScheduleDetailScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
                         // 点击行主体 / > 图标 → 弹出附加状态选择页（与选择班次一致）
-                        .clickable { Log.e("WBD", "detail: click status row"); showStatusPicker = true }
+                        .clickable { if (BuildConfig.DEBUG) Log.e("WBD", "detail: click status row"); showStatusPicker = true }
                 ) {
                     Row(
                         // heightIn 保证「无附加状态」与已选状态行高一致
@@ -311,7 +323,7 @@ fun ScheduleDetailScreen(
                             Text(appliedStatus.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                         } else {
                             Text(
-                                "无附加状态",
+                                stringResource(R.string.detail_no_status),
                                 Modifier.weight(1f),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodyMedium
@@ -323,7 +335,7 @@ fun ScheduleDetailScreen(
                                     "${appliedSt.startTime}–${appliedSt.endTime}"
                                 appliedSt.startTime != null -> "${appliedSt.startTime}–"
                                 appliedSt.endTime != null -> "–${appliedSt.endTime}"
-                                else -> "全天"
+                                else -> stringResource(R.string.detail_all_day)
                             }
                             // 时间按钮（> 左侧）：点击弹时间段设置；行其余位置 → 状态选择页
                             TextButton(
@@ -334,7 +346,7 @@ fun ScheduleDetailScreen(
                             }
                         }
                         Spacer(Modifier.width(2.dp))
-                        Icon(Icons.Default.ChevronRight, contentDescription = "选择附加状态",
+                        Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.detail_pick_status),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -342,7 +354,7 @@ fun ScheduleDetailScreen(
 
             // ── 补贴/扣款 ─────────────────────────────────────────────
             if (state.extraItems.isNotEmpty()) {
-                SectionLabel("补贴 / 扣款")
+                SectionLabel(stringResource(R.string.detail_extra))
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     state.extraItems.forEach { item ->
                         val checked = record?.extraItemIds?.contains(item.id) == true
@@ -352,11 +364,11 @@ fun ScheduleDetailScreen(
             }
 
             // ── 备注 ──────────────────────────────────────────────────
-            SectionLabel("备注（可选）")
+            SectionLabel(stringResource(R.string.detail_remark))
             ImeAdaptiveOutlinedTextField(
                 value         = record?.remark ?: "",
                 onValueChange = vm::setRemark,
-                placeholder   = { Text("输入备注信息…") },
+                placeholder   = { Text(stringResource(R.string.detail_remark_hint)) },
                 modifier      = Modifier.fillMaxWidth(),
                 maxLines      = Int.MAX_VALUE,
                 minLines      = 2,
@@ -365,9 +377,12 @@ fun ScheduleDetailScreen(
 
             // ── 计薪方式 ──────────────────────────────────────────────
             if (selectedShift != null && (!isRestOrSwap || hasAppliedStatus)) {
-                SectionLabel("计薪方式")
-                val modes = listOf(SalaryMode.NORMAL to "工作日",
-                    SalaryMode.WEEKEND to "周末", SalaryMode.HOLIDAY to "节假日")
+                SectionLabel(stringResource(R.string.detail_salary_mode))
+                val modes = listOf(
+                    SalaryMode.NORMAL  to stringResource(R.string.detail_mode_normal),
+                    SalaryMode.WEEKEND to stringResource(R.string.detail_mode_weekend),
+                    SalaryMode.HOLIDAY to stringResource(R.string.detail_mode_holiday)
+                )
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement   = Arrangement.spacedBy(8.dp)
@@ -380,7 +395,8 @@ fun ScheduleDetailScreen(
                         onClick  = { vm.setSalaryMode(null) },
                         label    = {
                             Text(
-                                if (isAuto) "自动-${state.autoModeLabel.ifEmpty { "按日期判断" }}" else "自动计算",
+                                if (isAuto) "自动-${state.autoModeLabel.ifEmpty { stringResource(R.string.detail_auto_by_date) }}"
+                                else stringResource(R.string.detail_auto_calc),
                                 style = MaterialTheme.typography.labelMedium
                             )
                         }
@@ -398,7 +414,7 @@ fun ScheduleDetailScreen(
 
             // ── 工时与薪资明细 ──────────────────────────────────────────
             if (selectedShift != null && state.previewHours > 0) {
-                SectionLabel("工时与薪资明细")
+                SectionLabel(stringResource(R.string.detail_hours_salary))
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -410,14 +426,14 @@ fun ScheduleDetailScreen(
                     ) {
                         // 工时行
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("正常工时", style = MaterialTheme.typography.bodyMedium)
+                            Text(stringResource(R.string.detail_normal_hours), style = MaterialTheme.typography.bodyMedium)
                             Text("${CalcUtils.fmtHours(state.detailNormalHours)}h",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium)
                         }
                         if (state.detailOvertimeHours > 0) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("加班工时", style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(R.string.detail_overtime_hours), style = MaterialTheme.typography.bodyMedium)
                                 Text("${CalcUtils.fmtHours(state.detailOvertimeHours)}h",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium)
@@ -427,7 +443,7 @@ fun ScheduleDetailScreen(
                         // 薪资行
                         if (state.detailNormalSalary > 0) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("正班收入", style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(R.string.detail_normal_income), style = MaterialTheme.typography.bodyMedium)
                                 Text("¥${String.format(java.util.Locale.getDefault(), "%.0f", state.detailNormalSalary)}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium)
@@ -435,7 +451,7 @@ fun ScheduleDetailScreen(
                         }
                         if (state.detailOvertimeSalary > 0) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("加班收入", style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(R.string.detail_overtime_income), style = MaterialTheme.typography.bodyMedium)
                                 Text("¥${String.format(java.util.Locale.getDefault(), "%.0f", state.detailOvertimeSalary)}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium)
@@ -444,7 +460,7 @@ fun ScheduleDetailScreen(
                         if (state.detailTotalSalary > 0) {
                             HorizontalDivider()
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("总收入", style = MaterialTheme.typography.bodyMedium,
+                                Text(stringResource(R.string.detail_total_income), style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold)
                                 Text("¥${String.format(java.util.Locale.getDefault(), "%.0f", state.detailTotalSalary)}",
                                     style = MaterialTheme.typography.titleSmall,
@@ -463,7 +479,7 @@ fun ScheduleDetailScreen(
         ShiftPickerSheet(
             shifts   = state.shifts,
             onSelect = { id -> vm.setShift(id); showShiftPicker = false },
-            onDismiss = { Log.e("WBD", "detail: shift sheet dismiss"); showShiftPicker = false }
+            onDismiss = { if (BuildConfig.DEBUG) Log.e("WBD", "detail: shift sheet dismiss"); showShiftPicker = false }
         )
     }
 
@@ -481,7 +497,7 @@ fun ScheduleDetailScreen(
                 }
                 showStatusPicker = false
             },
-            onDismiss = { Log.e("WBD", "detail: status sheet dismiss"); showStatusPicker = false }
+            onDismiss = { if (BuildConfig.DEBUG) Log.e("WBD", "detail: status sheet dismiss"); showStatusPicker = false }
         )
     }
 
@@ -524,10 +540,10 @@ fun ScheduleDetailScreen(
                     val mm = pickerState.minute.toString().padStart(2, '0')
                     config.onConfirm("$hh:$mm")
                     timeDialogConfig = null
-                }) { Text("确定") }
+                }) { Text(stringResource(R.string.common_confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { timeDialogConfig = null }) { Text("取消") }
+                TextButton(onClick = { timeDialogConfig = null }) { Text(stringResource(R.string.common_cancel)) }
             }
         )
     }
@@ -573,7 +589,8 @@ private fun ExtraItemRow(item: ExtraItem, checked: Boolean, onToggle: () -> Unit
         val typeColor = if (item.type == "allowance") AllowanceGreen else DeductionRed
         Surface(shape = RoundedCornerShape(4.dp), color = typeColor.copy(alpha = 0.12f)) {
             Text(
-                text     = if (item.type == "allowance") "补" else "扣",
+                text     = if (item.type == "allowance") stringResource(R.string.detail_extra_allowance)
+                           else stringResource(R.string.detail_extra_deduction),
                 style    = MaterialTheme.typography.labelSmall,
                 color    = typeColor,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -638,14 +655,14 @@ private fun StatusTimeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title   = { Text("设置状态时间段") },
+        title   = { Text(stringResource(R.string.detail_status_time_title)) },
         text    = {
             Column {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TimePickerField(
                         time         = s,
                         onTimeChange = { s = it },
-                        label        = "开始",
+                        label        = stringResource(R.string.detail_start),
                         defaultTime  = defaultStartTime,
                         onRequestDialog = { editingField = "start" },
                         modifier     = Modifier.weight(1f)
@@ -653,7 +670,7 @@ private fun StatusTimeDialog(
                     TimePickerField(
                         time         = e,
                         onTimeChange = { e = it },
-                        label        = "结束",
+                        label        = stringResource(R.string.detail_end),
                         defaultTime  = defaultEndTime,
                         onRequestDialog = { editingField = "end" },
                         modifier     = Modifier.weight(1f)
@@ -662,7 +679,7 @@ private fun StatusTimeDialog(
                 if (timeWarning) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "不能超过班次时间段",
+                        text = stringResource(R.string.detail_status_time_overflow),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -673,18 +690,18 @@ private fun StatusTimeDialog(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 if (s.isNotEmpty() || e.isNotEmpty()) {
                     TextButton(onClick = { onConfirm("", "") }) {
-                        Text("清除时间", color = MaterialTheme.colorScheme.error)
+                        Text(stringResource(R.string.detail_clear_time), color = MaterialTheme.colorScheme.error)
                     }
                 } else {
                     Spacer(Modifier.width(1.dp))
                 }
                 Row {
-                    TextButton(onClick = onDismiss) { Text("取消") }
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
                     TextButton(onClick = {
                         s = clampAndSet(s, true)
                         e = clampAndSet(e, false)
                         onConfirm(s, e)
-                    }) { Text("确认") }
+                    }) { Text(stringResource(R.string.common_ok)) }
                 }
             }
         },
@@ -705,7 +722,8 @@ private fun StatusTimeDialog(
         )
         AlertDialog(
             onDismissRequest = { editingField = null },
-            title = { Text(if (isStart) "开始时间" else "结束时间", style = MaterialTheme.typography.titleMedium) },
+            title = { Text(if (isStart) stringResource(R.string.detail_start_time) else stringResource(R.string.detail_end_time),
+                style = MaterialTheme.typography.titleMedium) },
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -721,10 +739,10 @@ private fun StatusTimeDialog(
                     val newTime = clampAndSet("$hh:$mm", isStart)
                     if (isStart) s = newTime else e = newTime
                     editingField = null
-                }) { Text("确定") }
+                }) { Text(stringResource(R.string.common_confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { editingField = null }) { Text("取消") }
+                TextButton(onClick = { editingField = null }) { Text(stringResource(R.string.common_cancel)) }
             }
         )
     }
@@ -740,7 +758,7 @@ private fun StatusPickerSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(bottom = 32.dp)) {
-            Text("选择附加状态", style = MaterialTheme.typography.titleMedium,
+            Text(stringResource(R.string.detail_pick_status), style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
             HorizontalDivider()
             // 取消附加状态（当前已选状态时显示）
@@ -751,7 +769,7 @@ private fun StatusPickerSheet(
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("无（取消附加状态）", style = MaterialTheme.typography.bodyLarge,
+                    Text(stringResource(R.string.detail_no_status_option), style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.error)
                 }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
@@ -772,14 +790,14 @@ private fun StatusPickerSheet(
                             Spacer(Modifier.width(8.dp))
                             Surface(shape = RoundedCornerShape(4.dp),
                                 color = MaterialTheme.colorScheme.secondaryContainer) {
-                                Text("内置", style = MaterialTheme.typography.labelSmall,
+                                Text(stringResource(R.string.common_builtin), style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                             }
                         }
                     }
                     if (selected) {
-                        Icon(Icons.Filled.Check, contentDescription = "已选择",
+                        Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.common_selected),
                             tint = MaterialTheme.colorScheme.primary)
                     }
                 }
@@ -798,7 +816,7 @@ private fun ShiftPickerSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(bottom = 32.dp)) {
-            Text("选择班次", style = MaterialTheme.typography.titleMedium,
+            Text(stringResource(R.string.detail_shift_picker_title), style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
             HorizontalDivider()
             shifts.forEach { shift ->
@@ -818,7 +836,7 @@ private fun ShiftPickerSheet(
                                 Spacer(Modifier.width(8.dp))
                                 Surface(shape = RoundedCornerShape(4.dp),
                                     color = MaterialTheme.colorScheme.secondaryContainer) {
-                                    Text("内置", style = MaterialTheme.typography.labelSmall,
+                                    Text(stringResource(R.string.common_builtin), style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                                 }

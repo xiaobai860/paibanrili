@@ -1,6 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/ui/navigation/AppNavHost.kt
 package com.schedulecalendar.app.ui.navigation
 import android.util.Log
+import com.schedulecalendar.app.BuildConfig
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
@@ -60,7 +61,7 @@ fun AppNavHost() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
-    Log.e("WBD", "navhost: dest=" + (navBackStackEntry?.destination?.route ?: "null"))
+    if (BuildConfig.DEBUG) Log.e("WBD", "navhost: dest=" + (navBackStackEntry?.destination?.route ?: "null"))
     val currentDest = navBackStackEntry?.destination
     val tabRouteNames = tabs.map { (it.route::class).qualifiedName }
     val showBottomBar = currentDest?.route in tabRouteNames
@@ -167,7 +168,7 @@ fun AppNavHost() {
         // BackHandler 放在 NavHost 之后组合（后注册 → 优先级高于 NavHost 的返回处理），
         // 确保在任意 Tab 页按返回一次直接退出，而不会被 NavHost 先 popBackStack 回退到上一级。
         BackHandler(enabled = showBottomBar && !calendarSubModeActive) {
-            Log.e("WBD", "navhost: BACK pressed (finish) dest=" + (currentDest?.route ?: "null"))
+            if (BuildConfig.DEBUG) Log.e("WBD", "navhost: BACK pressed (finish) dest=" + (currentDest?.route ?: "null"))
             val act = context as? Activity
             if (act != null && !act.isFinishing) {
                 act.finishAndRemoveTask()

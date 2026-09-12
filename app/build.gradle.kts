@@ -58,7 +58,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    buildFeatures { compose = true }
+    // buildConfig=true：生成 BuildConfig.DEBUG，供仅 DEBUG 生效的调试日志使用；
+    // release 下常量为 false，R8 会折叠并剔除分支，生产包不会打印任何调试日志。
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     // Kotlin 2.0+ 使用独立 Compose Compiler 插件，不再需要 composeOptions.kotlinCompilerExtensionVersion
 
     packaging {
