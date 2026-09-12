@@ -19,7 +19,6 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import com.schedulecalendar.app.data.calendar.CalendarAccountInfo
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import java.util.Calendar
 

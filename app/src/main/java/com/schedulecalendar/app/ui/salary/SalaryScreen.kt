@@ -33,7 +33,6 @@ import com.schedulecalendar.app.domain.model.ShiftStatus
 import com.schedulecalendar.app.ui.component.MonthNavigator
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import com.schedulecalendar.app.ui.detail.safeColor
-import kotlin.math.max
 
 private fun fmtY(v: Double): String = "%.2f".format(v)
 

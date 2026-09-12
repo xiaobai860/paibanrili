@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.schedulecalendar.app.ui.navigation.AppNavHost
-import com.schedulecalendar.app.ui.settings.WidgetSettingsViewModel
 import com.schedulecalendar.app.ui.theme.ScheduleCalendarTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject

@@ -4,12 +4,12 @@ import android.util.Log
 import androidx.compose.ui.res.stringResource
 import com.schedulecalendar.app.BuildConfig
 import com.schedulecalendar.app.R
+import com.schedulecalendar.app.ui.util.currentLocale
 
 import androidx.core.graphics.toColorInt
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
@@ -444,7 +444,7 @@ fun ScheduleDetailScreen(
                         if (state.detailNormalSalary > 0) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(stringResource(R.string.detail_normal_income), style = MaterialTheme.typography.bodyMedium)
-                                Text("¥${String.format(java.util.Locale.getDefault(), "%.0f", state.detailNormalSalary)}",
+                                Text("¥${String.format(currentLocale(), "%.0f", state.detailNormalSalary)}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium)
                             }
@@ -452,7 +452,7 @@ fun ScheduleDetailScreen(
                         if (state.detailOvertimeSalary > 0) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(stringResource(R.string.detail_overtime_income), style = MaterialTheme.typography.bodyMedium)
-                                Text("¥${String.format(java.util.Locale.getDefault(), "%.0f", state.detailOvertimeSalary)}",
+                                Text("¥${String.format(currentLocale(), "%.0f", state.detailOvertimeSalary)}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium)
                             }
@@ -462,7 +462,7 @@ fun ScheduleDetailScreen(
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(stringResource(R.string.detail_total_income), style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold)
-                                Text("¥${String.format(java.util.Locale.getDefault(), "%.0f", state.detailTotalSalary)}",
+                                Text("¥${String.format(currentLocale(), "%.0f", state.detailTotalSalary)}",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary)
@@ -561,19 +561,6 @@ private fun SectionLabel(text: String) {
     )
 }
 
-@Composable
-private fun SwitchRow(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(horizontal = 14.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        Switch(checked = checked, onCheckedChange = onChecked)
-    }
-}
 @Composable
 private fun ExtraItemRow(item: ExtraItem, checked: Boolean, onToggle: () -> Unit) {
     Row(

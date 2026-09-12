@@ -1,7 +1,6 @@
 // app/src/main/java/com/schedulecalendar/app/ui/hours/HoursScreen.kt
 package com.schedulecalendar.app.ui.hours
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,14 +28,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.schedulecalendar.app.domain.model.DayScheduleDetail
 import com.schedulecalendar.app.domain.model.HoursSummary
-import com.schedulecalendar.app.domain.model.BUILTIN_SHIFTS
 import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_LEAVE
 import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_SWAP
 import com.schedulecalendar.app.domain.model.ShiftStatus
 import com.schedulecalendar.app.domain.model.ScheduleType
 import com.schedulecalendar.app.ui.component.MonthNavigator
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
-import com.schedulecalendar.app.ui.detail.safeColor
 import com.schedulecalendar.app.ui.navigation.*
 import java.time.LocalDate
 import kotlin.math.max

@@ -22,11 +22,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.graphics.toColorInt
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.schedulecalendar.app.data.calendar.CalendarAccountInfo
 import com.schedulecalendar.app.ui.component.ImeAdaptiveOutlinedTextField
 import java.util.Calendar
-import java.util.Locale
+import com.schedulecalendar.app.ui.util.currentLocale
 
 // ── 重复规则选项 ────────────────────────────────────────────────────────
 
@@ -176,7 +175,7 @@ fun EventTimeCards(
             Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                 Text("开始时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    String.format(Locale.getDefault(), "%02d:%02d", startHour, startMinute),
+                    String.format(currentLocale(), "%02d:%02d", startHour, startMinute),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
@@ -190,7 +189,7 @@ fun EventTimeCards(
             Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                 Text("结束时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    String.format(Locale.getDefault(), "%02d:%02d", endHour, endMinute),
+                    String.format(currentLocale(), "%02d:%02d", endHour, endMinute),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )

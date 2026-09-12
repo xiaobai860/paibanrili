@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import com.schedulecalendar.app.ui.component.stableLabelColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

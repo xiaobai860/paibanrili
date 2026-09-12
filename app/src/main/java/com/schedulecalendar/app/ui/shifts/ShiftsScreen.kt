@@ -2,7 +2,6 @@
 package com.schedulecalendar.app.ui.shifts
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
@@ -29,13 +28,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import com.schedulecalendar.app.domain.model.CalcUtils
 import com.schedulecalendar.app.domain.model.ExtraItem
 import com.schedulecalendar.app.domain.model.ShiftBreak
 import com.schedulecalendar.app.domain.model.ShiftStatus
@@ -688,12 +685,6 @@ private fun ExtraItemsTab(
             dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } }
         )
     }
-}
-
-@Composable
-private fun ExtraSectionLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(vertical = 4.dp))
 }
 
 @Composable

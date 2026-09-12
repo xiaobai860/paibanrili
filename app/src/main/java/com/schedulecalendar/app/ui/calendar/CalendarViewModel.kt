@@ -13,15 +13,8 @@ import com.schedulecalendar.app.data.repository.ShiftBreakRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
-import com.schedulecalendar.app.widget.CalendarGlanceWidget
-import com.schedulecalendar.app.widget.Calendar3x4GlanceWidget
-import com.schedulecalendar.app.widget.CalendarWidgetDay
-import com.schedulecalendar.app.widget.CalendarWidgetInfo
-import com.schedulecalendar.app.widget.ClockInWidgetData
-import com.schedulecalendar.app.widget.ScheduleGlanceWidget
 import com.schedulecalendar.app.widget.applyS4StatusRange
 import com.schedulecalendar.app.widget.isBuiltInStatus
-import java.time.LocalTime
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -30,8 +23,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth

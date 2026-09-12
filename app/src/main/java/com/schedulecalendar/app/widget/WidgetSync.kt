@@ -4,22 +4,18 @@ package com.schedulecalendar.app.widget
 import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
-import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
 import dagger.hilt.android.EntryPointAccessors
-import dagger.hilt.components.SingletonComponent
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -39,7 +35,7 @@ private fun isRestShift(shift: Shift?): Boolean =
 
 private fun fmtDate(d: LocalDate): String = "%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)
 
-private suspend fun getRepos(context: Context): Triple<ScheduleRepository, ShiftRepository, ShiftStatusRepository> {
+private fun getRepos(context: Context): Triple<ScheduleRepository, ShiftRepository, ShiftStatusRepository> {
     val ep = EntryPointAccessors.fromApplication(context.applicationContext, WidgetClockEntryPoint::class.java)
     return Triple(ep.scheduleRepository(), ep.shiftRepository(), ep.shiftStatusRepository())
 }
@@ -59,11 +55,6 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
     Log.d("WIDGET_SYNC", "syncAllWidgets start")
     return@withLock try {
         val (scheduleRepo, shiftRepo, statusRepo) = getRepos(context)
-        val granularityMin = runCatching {
-            EntryPointAccessors.fromApplication(context.applicationContext, WidgetClockEntryPoint::class.java)
-                .appPreferences().attendConfigFlow.first().overtimeGranMin
-        }.getOrDefault(30)
-
         val shifts = shiftRepo.getAllWithBuiltin()
         val statuses = statusRepo.getAllWithBuiltin()
         val statusMap = statuses.associateBy { it.id }
@@ -82,7 +73,7 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
         // S4（正常班+请假/调休）未打卡时，默认附加状态时间段 = 覆盖当天班次时间段（§3.5）
         repairS4DefaultStatus(scheduleRepo, shifts, fmtDate(today))
 
-        val widgetData = computeClockInWidgetData(shifts, schedules, statusMap, granularityMin)
+        val widgetData = computeClockInWidgetData(shifts, schedules, statusMap)
         Log.d("WIDGET_SYNC", "syncAllWidgets 2x1 shift=${widgetData.shiftName} showIn=${widgetData.showClockIn} showOut=${widgetData.showClockOut} rest=${widgetData.restMessage}")
         ScheduleGlanceWidget.updateWidgetData(context, widgetData)
 
@@ -165,7 +156,7 @@ private fun fmtMin(min: Int): String {
  * S4（正常班 + 请假/调休）打卡后：按 §3.5 重算并写回附加状态时间段。
  * 全勤 → 清除状态时间段；未打卡（理论上由 UI 保证不会发生）→ 全天。
  */
-internal suspend fun applyS4StatusRange(
+internal fun applyS4StatusRange(
     record: ScheduleRecord,
     shift: Shift,
     granularityMin: Int
@@ -253,8 +244,7 @@ private fun computeShiftClockButtons(
 private fun computeClockInWidgetData(
     shifts: List<Shift>,
     schedules: Map<String, ScheduleRecord>,
-    statusMap: Map<String, ShiftStatus>,
-    granularityMin: Int
+    statusMap: Map<String, ShiftStatus>
 ): ClockInWidgetData {
     val today = LocalDate.now()
     val todayStr = fmtDate(today)
@@ -382,7 +372,6 @@ private fun computeClockInWidgetData(
     val targetStatus = targetRecord?.appliedStatus
     val hasAppliedStatus = targetStatus != null
     val hasBuiltInStatus = hasAppliedStatus && isBuiltInStatus(targetStatus.statusId)
-    val hasCustomStatus = hasAppliedStatus && !hasBuiltInStatus
 
     val statusStart = targetStatus?.startTime ?: ""
     val statusEnd = targetStatus?.endTime ?: ""

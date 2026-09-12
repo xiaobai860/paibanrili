@@ -1,6 +1,5 @@
 package com.schedulecalendar.app.data.calendar
 
-import android.accounts.Account
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder

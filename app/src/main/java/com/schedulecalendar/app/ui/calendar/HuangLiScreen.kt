@@ -1,7 +1,6 @@
 // app/src/main/java/com/schedulecalendar/app/ui/calendar/HuangLiScreen.kt
 package com.schedulecalendar.app.ui.calendar
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape

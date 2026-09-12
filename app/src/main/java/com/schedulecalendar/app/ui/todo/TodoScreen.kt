@@ -8,16 +8,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
@@ -41,7 +37,6 @@ import androidx.navigation.NavController
 import com.schedulecalendar.app.ui.calendar.CalendarViewModel
 import com.schedulecalendar.app.ui.calendar.TodoItem
 import com.schedulecalendar.app.ui.calendar.TodoType
-import com.schedulecalendar.app.ui.component.TimePickerField
 import com.schedulecalendar.app.domain.model.HolidayData
 import com.schedulecalendar.app.ui.navigation.RouteAddAnniversary
 import com.schedulecalendar.app.ui.navigation.RouteAddCalendarEvent
@@ -55,19 +50,16 @@ import com.schedulecalendar.app.ui.theme.CategoryGreen
 import com.schedulecalendar.app.ui.theme.CategoryOrange
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import java.util.Date
-import java.util.Locale
+import com.schedulecalendar.app.ui.util.currentLocale
 
 // ── 数据类 ────────────────────────────────────────────────────────────────
 
@@ -214,17 +206,6 @@ fun TodoScreen(
             },
             onDismiss = { showOvertimeActionDialog = null }
         )
-    }
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// 占位标签页
-// ════════════════════════════════════════════════════════════════════════════
-
-@Composable
-private fun PlaceholderTab(title: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("功能开发中", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -1003,10 +984,11 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
         }
         else -> {
             // 缓存分组结果，避免每次重组重复计算（性能优化）
-            val grouped = remember(eventState.events) {
+            val locale = currentLocale()
+            val grouped = remember(eventState.events, locale) {
                 eventState.events.groupBy { event ->
                     try {
-                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                        val sdf = SimpleDateFormat("yyyy-MM-dd", locale)
                         sdf.format(Date(event.dtStart))
                     } catch (_: Exception) { "未知日期" }
                 }
@@ -1199,7 +1181,8 @@ private fun CalendarEventRow(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null
 ) {
-    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val locale = currentLocale()
+    val timeFormat = remember(locale) { SimpleDateFormat("HH:mm", locale) }
     val startStr = remember(event.dtStart) { timeFormat.format(Date(event.dtStart)) }
     val endStr = remember(event.dtEnd) { timeFormat.format(Date(event.dtEnd)) }
 
@@ -1357,8 +1340,9 @@ private fun AnniversaryRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val locale = currentLocale()
     val dateText = try {
-        val sdf = SimpleDateFormat("MM月dd日", Locale.getDefault())
+        val sdf = SimpleDateFormat("MM月dd日", locale)
         sdf.format(Date(event.dtStart))
     } catch (_: Exception) { "未知日期" }
     val displayName = event.title.removePrefix("纪念日: ")
@@ -1420,7 +1404,8 @@ private fun CalendarEventDetailDialog(
     onNavigateToAccountSettings: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val timeFormat = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+    val locale = currentLocale()
+    val timeFormat = remember(locale) { java.text.SimpleDateFormat("HH:mm", locale) }
     val startStr = remember(event.dtStart) { timeFormat.format(java.util.Date(event.dtStart)) }
     val endStr = remember(event.dtEnd) { timeFormat.format(java.util.Date(event.dtEnd)) }
     val dateStr = remember(event.dtStart) {

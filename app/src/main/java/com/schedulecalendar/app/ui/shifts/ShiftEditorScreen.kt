@@ -4,12 +4,8 @@ package com.schedulecalendar.app.ui.shifts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +26,7 @@ import com.schedulecalendar.app.ui.component.TimePickerField
 import com.schedulecalendar.app.ui.component.stableLabelColors
 import com.schedulecalendar.app.ui.detail.safeColor
 import com.schedulecalendar.app.ui.navigation.RouteShiftEditor
+import com.schedulecalendar.app.ui.util.currentLocale
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -126,10 +123,10 @@ fun ShiftEditorScreen(navController: NavController, vm: ShiftEditorViewModel = h
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DurationInfoRow("总时长", "${String.format(java.util.Locale.getDefault(), "%.1f", totalHours)} 小时")
-                        DurationInfoRow("休息/用餐时间", "${String.format(java.util.Locale.getDefault(), "%.1f", breakHours)} 小时")
+                        DurationInfoRow("总时长", "${String.format(currentLocale(), "%.1f", totalHours)} 小时")
+                        DurationInfoRow("休息/用餐时间", "${String.format(currentLocale(), "%.1f", breakHours)} 小时")
                         HorizontalDivider()
-                        DurationInfoRow("实际工时", "${String.format(java.util.Locale.getDefault(), "%.1f", actualHours)} 小时",
+                        DurationInfoRow("实际工时", "${String.format(currentLocale(), "%.1f", actualHours)} 小时",
                             valueColor = MaterialTheme.colorScheme.primary)
                     }
                 }
