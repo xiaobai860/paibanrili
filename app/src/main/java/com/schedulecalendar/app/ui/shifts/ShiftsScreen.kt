@@ -339,7 +339,7 @@ private fun ShiftsTab(
     }
 }
 
-// ── Tab 2: 全局不计时段 ────────────────────────────────────────────────────────
+// ── Tab 4: 休息时段（全局不计时段） ─────────────────────────────────────────────
 
 @Composable
 private fun GlobalBreaksTab(
@@ -461,7 +461,7 @@ private fun BreakEditorDialog(
     )
 }
 
-// ── Tab 3: 附加状态 ────────────────────────────────────────────────────────────
+// ── Tab 2: 附加状态 ────────────────────────────────────────────────────────────
 
 @Composable
 private fun StatusTypesTab(
@@ -502,7 +502,7 @@ private fun StatusTypesTab(
                             }
                         }
                         if (status.reportType != null) {
-                            val label = when (status.reportType) { "leave" -> "计入请假"; "swap" -> "计入调休"; else -> status.reportType }
+                            val label = when (status.reportType) { "leave" -> "计入请假"; "swap" -> "计入调休"; "overtime" -> "计入加班"; else -> status.reportType }
                             Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -625,7 +625,7 @@ private fun EmptyHint(text: String) {
     }
 }
 
-// ── Tab 4: 补贴/扣款 ────────────────────────────────────────────────────────────
+// ── Tab 3: 补贴/扣款 ────────────────────────────────────────────────────────────
 
 @Composable
 private fun ExtraItemsTab(

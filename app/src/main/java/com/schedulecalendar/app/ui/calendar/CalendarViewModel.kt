@@ -47,7 +47,7 @@ data class TodoItem(
     val clockTime: String = "",
     val overtimeMinutes: Int = 0,
     val actualTime: String = "",
-    /** 内置附加状态名称（如"请假"、"调休"），空=普通班次 */
+    /** 内置附加状态名称（如"请假"、"调休"、"加班"），空=普通班次 */
     val statusLabel: String = ""
 )
 
@@ -279,7 +279,7 @@ class CalendarViewModel @Inject constructor(
             val sn = shift.name
             val applied = record.appliedStatus
             val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
-            // 解析附加状态名称（内置请假/调休 + 自定义状态），供待办项显示
+            // 解析附加状态名称（内置请假/调休/加班 + 自定义状态），供待办项显示
             val stLabel = when {
                 applied == null -> ""
                 applied.statusId == BUILTIN_STATUS_LEAVE -> "请假"
@@ -563,10 +563,16 @@ class CalendarViewModel @Inject constructor(
     fun fillMissedClock(date: String, startTime: String?, endTime: String?) = viewModelScope.launch {
         val rec = scheduleRepo.getByDate(date) ?: ScheduleRecord(date)
         val applied = rec.appliedStatus
-        val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
-        val updated = if (isBuiltIn) {
+        val shift = rec.shiftId?.let { id -> shiftRepo.getById(id) }
+        val isRestSwap = shift?.builtIn == true && (shift.builtInType == "rest" || shift.builtInType == "swap")
+        // 填充附加状态时间段的限定条件：
+        //  - 内置请假/调休：按状态判定（原逻辑）
+        //  - 加班：仅当班次为休息/调休（无具体时间段）时才填充，普通班次不进入此分支
+        val isBuiltInStatus = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
+        val isOvertimeOnRestSwap = applied?.statusId == BUILTIN_STATUS_OVERTIME && isRestSwap
+        val fillStatusTime = isBuiltInStatus || isOvertimeOnRestSwap
+        val updated = if (fillStatusTime) {
             // 获取班次时间段作为约束边界
-            val shift = rec.shiftId?.let { id -> shiftRepo.getById(id) }
             val shiftStart = shift?.startTime?.takeIf { it.isNotEmpty() }
             val shiftEnd   = shift?.endTime?.takeIf { it.isNotEmpty() }
             fun clampTime(t: String, boundary: String?, isStart: Boolean): String {
@@ -591,7 +597,6 @@ class CalendarViewModel @Inject constructor(
             var targetDate     = date
 
             if (endTime != null && endTime.isNotBlank()) {
-                val shift = rec.shiftId?.let { id -> shiftRepo.getById(id) }
                 if (shift != null && shift.endTime.isNotEmpty()) {
                     val timeMin = CalcUtils.timeToMin(endTime)
                     val endMin  = CalcUtils.timeToMin(shift.endTime)
@@ -646,12 +651,17 @@ class CalendarViewModel @Inject constructor(
 
     // ── 撤销操作 ────────────────────────────────────────────────────
 
-    /** 撤销上班补录：内置状态清除 appliedStatus.startTime，普通清除 actualStartTime */
+    /** 撤销上班补录：内置请假/调休状态、或休息/调休上的加班 → 清除 appliedStatus.startTime；普通班次清除 actualStartTime */
     fun unfillMissedClockIn(date: String) = viewModelScope.launch {
         val rec = scheduleRepo.getByDate(date) ?: return@launch
         val applied = rec.appliedStatus
-        val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
-        if (isBuiltIn) {
+        val shift = rec.shiftId?.let { id -> shiftRepo.getById(id) }
+        val isRestSwap = shift?.builtIn == true && (shift.builtInType == "rest" || shift.builtInType == "swap")
+        val fillStatusTime = applied != null && (
+            applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP ||
+            (applied.statusId == BUILTIN_STATUS_OVERTIME && isRestSwap)
+        )
+        if (fillStatusTime) {
             scheduleRepo.save(rec.copy(appliedStatus = applied!!.copy(startTime = null)))
         } else {
             scheduleRepo.save(rec.copy(actualStartTime = null))
@@ -659,12 +669,17 @@ class CalendarViewModel @Inject constructor(
         _uiEvent.send(CalendarUiEvent.ShowMessage("已撤销 $date 上班打卡"))
     }
 
-    /** 撤销下班补录：内置状态清除 appliedStatus.endTime，普通清除 actualEndTime */
+    /** 撤销下班补录：内置请假/调休状态、或休息/调休上的加班 → 清除 appliedStatus.endTime；普通班次清除 actualEndTime */
     fun unfillMissedClockOut(date: String) = viewModelScope.launch {
         val rec = scheduleRepo.getByDate(date) ?: return@launch
         val applied = rec.appliedStatus
-        val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
-        if (isBuiltIn) {
+        val shift = rec.shiftId?.let { id -> shiftRepo.getById(id) }
+        val isRestSwap = shift?.builtIn == true && (shift.builtInType == "rest" || shift.builtInType == "swap")
+        val fillStatusTime = applied != null && (
+            applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP ||
+            (applied.statusId == BUILTIN_STATUS_OVERTIME && isRestSwap)
+        )
+        if (fillStatusTime) {
             scheduleRepo.save(rec.copy(appliedStatus = applied!!.copy(endTime = null)))
         } else {
             scheduleRepo.save(rec.copy(actualEndTime = null))

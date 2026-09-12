@@ -210,6 +210,8 @@ object CalcUtils {
             val grainH = if (attendConfig.overtimeGranMin > 0) attendConfig.overtimeGranMin / 60.0 else 0.0
             fun floorGrain(h: Double) =
                 if (grainH > 0) roundD2(floor(h / grainH) * grainH) else roundD2(h)
+            // 加班附加状态：整段时长直接计入加班工时（休息/调休班次不另计正常工时）
+            if (ast.statusId == BUILTIN_STATUS_OVERTIME) return zero.copy(overtime = floorGrain(worked))
             val mode = record.salaryMode ?: autoSalaryMode(dateStr)
             return when (mode) {
                 SalaryMode.HOLIDAY -> zero.copy(holiday = floorGrain(worked))
@@ -241,10 +243,12 @@ object CalcUtils {
         // 已应用状态时间段扣减
         record.appliedStatus?.let { ast ->
             val isBuiltinLeaveSwap = ast.statusId == BUILTIN_STATUS_LEAVE || ast.statusId == BUILTIN_STATUS_SWAP
+            val isOvertimeStatus = ast.statusId == BUILTIN_STATUS_OVERTIME
             if (isBuiltinLeaveSwap && ast.startTime == null && ast.endTime == null) {
                 // 内置请假/调休全天（无时间段）：工时直接为0
                 worked = 0.0
-            } else if (ast.startTime != null && ast.endTime != null) {
+            } else if (!isOvertimeStatus && ast.startTime != null && ast.endTime != null) {
+                // 加班附加状态属于额外工时，不扣减正常班工时
                 worked = max(0.0, worked - calcHourDiff(ast.startTime, ast.endTime))
             }
         }

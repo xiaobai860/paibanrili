@@ -7,6 +7,7 @@ const val BUILTIN_SHIFT_SWAP  = "__builtin_swap__"
 const val BUILTIN_SHIFT_LEAVE = "__builtin_leave__"
 const val BUILTIN_STATUS_LEAVE = "__builtin_status_leave__"
 const val BUILTIN_STATUS_SWAP  = "__builtin_status_swap__"
+const val BUILTIN_STATUS_OVERTIME = "__builtin_status_overtime__"
 const val BUILTIN_SCHEME_ID   = "__builtin_scheme_work__"
 const val NO_SCHEME_ID        = "__no_scheme__"
 
@@ -19,14 +20,14 @@ data class ShiftBreak(
     val archivedAt: String? = null  // null=有效, 非null=已归档
 )
 
-/** 班次状态类型（请假、外出、培训等用户自定义） */
+/** 班次状态类型（如请假/调休/加班等内置状态，或用户自定义的外出/培训等） */
 data class ShiftStatus(
     val id: String,
     val name: String,
     val color: String,
     val builtIn: Boolean     = false,
-    /** 映射到报表类型：leave=请假工时, swap=调休工时 */
-    val reportType: String?  = null,   // "leave" | "swap" | null
+    /** 映射到报表类型：leave=请假工时, swap=调休工时, overtime=加班工时 */
+    val reportType: String?  = null,   // "leave" | "swap" | "overtime" | null
     /** 可选：开始时间（HH:mm），为空则不限制 */
     val startTime: String    = "",
     /** 可选：结束时间（HH:mm），为空则不限制 */
@@ -76,6 +77,7 @@ val BUILTIN_SHIFTS = listOf(
 val BUILTIN_STATUSES = listOf(
     ShiftStatus(id = BUILTIN_STATUS_LEAVE, name = "请假", color = "#F43F5E", builtIn = true, reportType = "leave"),
     ShiftStatus(id = BUILTIN_STATUS_SWAP,  name = "调休", color = "#78716C", builtIn = true, reportType = "swap"),
+    ShiftStatus(id = BUILTIN_STATUS_OVERTIME, name = "加班", color = "#F59E0B", builtIn = true, reportType = "overtime"),
 )
 
 /** 每日排班记录 */
@@ -150,7 +152,7 @@ enum class DisplayItemType(val label: String, val desc: String, val defaultColor
     NORMAL_INCOME("正班收入", "正常工时薪资"),
     OVERTIME_INCOME("加班收入", "加班工时薪资"),
     SHIFT("班次", "当前日期的班次名称", "#3b82f6"),
-    STATUS("附加状态", "附加状态名称（如请假、调休）", "#F97316")
+    STATUS("附加状态", "附加状态名称（如请假、调休、加班）", "#F97316")
 }
 
 /** 该类型是否具有预设标签颜色（选择后自动锁定颜色，禁用颜色选择器） */
