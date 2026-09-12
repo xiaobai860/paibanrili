@@ -46,7 +46,7 @@ fun SettingsScreen(navController: NavController, vm: SettingsViewModel = hiltVie
             CenterAlignedTopAppBar(
                 title = { Text("设置") },
                 windowInsets = WindowInsets(0, 0, 0, 0),
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )

@@ -65,7 +65,7 @@ fun HuangLiScreen(navController: NavController) {
                 },
                 // 与其他 Tab 页（事项/统计/班次）保持一致：顶格显示，不带状态栏空白
                 windowInsets = WindowInsets(0, 0, 0, 0),
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )

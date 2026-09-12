@@ -428,7 +428,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             }
                         }
                     },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
                 )

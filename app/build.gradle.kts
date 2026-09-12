@@ -28,8 +28,8 @@ android {
         // versionCode：系统用的递增整数，每次发版 +1（不可回退，与 versionName 无关）
         // 注意：Android 仅比较 versionCode 决定是否允许覆盖安装。请确认已发布版本的 versionCode 高于下方值，
         // 否则覆盖安装会被系统拒绝（需先卸载旧版）。切勿将 versionCode 回退到已发布版本之下。
-        versionCode   = 163
-        versionName   = "2026091201"
+        versionCode   = 164
+        versionName   = "2026091202"
     }
 
     signingConfigs {

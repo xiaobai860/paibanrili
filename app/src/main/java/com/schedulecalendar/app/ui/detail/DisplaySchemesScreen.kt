@@ -369,7 +369,7 @@ private fun DataRowEditor(
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = leftExpanded) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = true),
+                            .menuAnchor(type = ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true),
                         textStyle = MaterialTheme.typography.bodySmall.copy(
                             fontSize = 12.sp,
                             lineHeight = 16.sp
@@ -433,7 +433,7 @@ private fun DataRowEditor(
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = rightExpanded) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor(type = MenuAnchorType.PrimaryNotEditable, enabled = true),
+                            .menuAnchor(type = ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true),
                         textStyle = MaterialTheme.typography.bodySmall.copy(
                             fontSize = 12.sp,
                             lineHeight = 16.sp

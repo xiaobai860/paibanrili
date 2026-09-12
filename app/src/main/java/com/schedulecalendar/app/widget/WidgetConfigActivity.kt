@@ -133,7 +133,7 @@ private fun WidgetConfigScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("小组件样式配置", fontWeight = FontWeight.SemiBold) },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
