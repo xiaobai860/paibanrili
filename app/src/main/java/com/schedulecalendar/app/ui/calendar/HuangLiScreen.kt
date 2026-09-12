@@ -24,7 +24,6 @@ import com.schedulecalendar.app.domain.model.LunarCalendar
 import com.schedulecalendar.app.domain.model.LunarCalendar.ShiChen
 import com.schedulecalendar.app.ui.navigation.RouteHuangLi
 import com.schedulecalendar.app.ui.theme.Green700
-import java.time.DayOfWeek
 import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,15 +41,8 @@ fun HuangLiScreen(navController: NavController) {
 
     val huangLi = remember(date) { LunarCalendar.getFullHuangLi(year, month, day) }
 
-    val weekDay = remember(date) {
-        val dow = LocalDate.of(year, month, day).dayOfWeek
-        when (dow) {
-            DayOfWeek.MONDAY -> "周一"; DayOfWeek.TUESDAY -> "周二"
-            DayOfWeek.WEDNESDAY -> "周三"; DayOfWeek.THURSDAY -> "周四"
-            DayOfWeek.FRIDAY -> "周五"; DayOfWeek.SATURDAY -> "周六"
-            DayOfWeek.SUNDAY -> "周日"
-        }
-    }
+    // 星期与农历/干支同源，取自 tyme4j
+    val weekDay = remember(date) { LunarCalendar.getWeekDayText(year, month, day) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -211,6 +203,28 @@ fun HuangLiScreen(navController: NavController) {
                         InfoLabel("五行", Modifier.width(48.dp))
                         Text(huangLi.naYinWuXing, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.weight(1f))
+                    }
+
+                    // ── 节气类延伸：七十二候 / 数九·三伏 / 梅雨（有值才显示）──
+                    val phenologyText = huangLi.phenology?.let {
+                        listOfNotNull(huangLi.threePhenology, it).joinToString("·")
+                    }
+                    // 数九（冬）与三伏（夏）时间上互斥，共用同一格，标签随季节切换
+                    val season = huangLi.nineDay?.let { "数九" to it }
+                        ?: huangLi.dogDay?.let { "三伏" to it }
+                    if (phenologyText != null || season != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.Top) {
+                            InfoLabel("七十二候", Modifier.width(68.dp))
+                            Text(phenologyText ?: "—", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f))
+                            InfoLabel(season?.first ?: "数九", Modifier.width(48.dp))
+                            Text(season?.second ?: "—", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f))
+                        }
+                    }
+                    if (huangLi.plumRain != null) {
+                        InfoRow("梅雨", huangLi.plumRain)
                     }
                 }
             }

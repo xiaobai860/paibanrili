@@ -578,6 +578,14 @@ object CalcUtils {
 
     /**
      * 根据日期自动推断计薪方式（供 UI 和 calcDayHours 共用）
+     *
+     * 判定依据是 `HolidayData` 内置的法定节假日/调休数据表。
+     *
+     * ⚠️ 兜底行为：当 [dateStr] 的年份超出 `HolidayData.MAX_COVERED_YEAR`（当前 2030）时，
+     * `isLegalHoliday` / `isMakeupDay` 恒为 false，本函数会**退化为「仅按周末判断」**：
+     * 不会把普通工作日误判为节假日（偏保守），但也识别不出调休补班（周末上班会被按周末计薪）。
+     * 可用 `HolidayData.isWithinCoverage(date)` 判断是否处于该退化路径。
+     *
      * @param dateStr 格式 "YYYY-MM-DD"
      */
     fun autoSalaryMode(dateStr: String): SalaryMode {

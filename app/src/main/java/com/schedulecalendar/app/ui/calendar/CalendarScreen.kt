@@ -41,7 +41,6 @@ import com.schedulecalendar.app.ui.navigation.*
 import com.schedulecalendar.app.ui.theme.Green700
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import com.schedulecalendar.app.ui.theme.ScheduleCalendarTheme
-import com.tyme.solar.SolarDay
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -1134,21 +1133,8 @@ private fun DateDetailSection(
                 )
             }
 
-            // 梅雨天提示
-            val plumRainText = try {
-                val plumRainDay = SolarDay.fromYmd(year, month, day).getPlumRainDay()
-                if (plumRainDay != null) {
-                    val plumRain = plumRainDay.getPlumRain()
-                    if (plumRain.getIndex() == 0) {
-                        // 入梅期间：toString() 返回 "入梅第N天"
-                        val s = plumRainDay.toString()
-                        if (s.startsWith("入梅第1天")) "今日入梅" else "梅雨天（$s）"
-                    } else {
-                        // 出梅
-                        "今日出梅"
-                    }
-                } else null
-            } catch (_: Exception) { null }
+            // 梅雨天提示（与黄历页共用 LunarCalendar.getPlumRainText）
+            val plumRainText = LunarCalendar.getPlumRainText(year, month, day)
             if (plumRainText != null) {
                 Text(
                     text = plumRainText,

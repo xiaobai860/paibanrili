@@ -13,8 +13,9 @@ core-ktx             = "1.19.0"
 appcompat            = "1.8.0"
 coroutines           = "1.11.0"
 gson                 = "2.14.0"
-glance               = "1.1.1"
+glance               = "1.2.0"
 workmanager          = "2.11.2"
+junit                = "4.13.2"
 
 # 农历计算库（tyme4j 是 lunar 的升级版）
 tyme4j               = "1.5.1"
@@ -79,6 +80,9 @@ workmanager-runtime     = { group = "androidx.work",               name = "work-
 tyme4j                  = { group = "cn.6tail",                    name = "tyme4j",                       version.ref = "tyme4j" }
 wheel-picker-compose    = { group = "com.github.commandiron",       name = "WheelPickerCompose",           version.ref = "wheel-picker-compose" }
 documentfile            = { group = "androidx.documentfile",        name = "documentfile",                 version.ref = "documentfile" }
+
+# 单元测试（HolidayData 数据覆盖与一致性守护）
+junit                   = { group = "junit",                       name = "junit",                        version.ref = "junit" }
 
 [plugins]
 android-application     = { id = "com.android.application",        version.ref = "agp" }
