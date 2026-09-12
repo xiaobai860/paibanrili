@@ -17,7 +17,7 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineScope
+import com.schedulecalendar.app.ScheduleApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -50,7 +50,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
         // 延长广播生命周期至协程完成，避免系统过早杀进程或主线程阻塞
         val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
+        (context.applicationContext as ScheduleApp).appScope.launch(Dispatchers.IO) {
             try {
                 // 总开关关闭时不弹通知；开启总开关后通知栏提醒强制开启（以总开关为唯一真相源）
                 if (!prefs.getReminderEnabled()) return@launch

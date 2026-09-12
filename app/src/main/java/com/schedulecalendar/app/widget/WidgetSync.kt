@@ -73,17 +73,17 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
         val yesterday = today.minusDays(1)
         val tomorrow = today.plusDays(1)
         val dates = listOf(today, yesterday, tomorrow)
-        val schedules = dates.associate { d ->
+        val schedules = mutableMapOf<String, ScheduleRecord>()
+        for (d in dates) {
             val key = "%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)
-            key to scheduleRepo.getByDate(key)
-        }.filterValues { it != null }.mapValues { it.value!! }
+            scheduleRepo.getByDate(key)?.let { schedules[key] = it }
+        }
 
         // S4（正常班+请假/调休）未打卡时，默认附加状态时间段 = 覆盖当天班次时间段（§3.5）
         repairS4DefaultStatus(scheduleRepo, shifts, fmtDate(today))
 
         val widgetData = computeClockInWidgetData(shifts, schedules, statusMap, granularityMin)
         Log.d("WIDGET_SYNC", "syncAllWidgets 2x1 shift=${widgetData.shiftName} showIn=${widgetData.showClockIn} showOut=${widgetData.showClockOut} rest=${widgetData.restMessage}")
-        Log.d("WIDGET_DBG", "widgetData: start=${widgetData.startTime} end=${widgetData.endTime} builtIn=${widgetData.isBuiltInShift} statusId=${widgetData.appliedStatusId} st=${widgetData.statusStartTime} et=${widgetData.statusEndTime} isBuiltInStatus=${widgetData.isBuiltInStatus}")
         ScheduleGlanceWidget.updateWidgetData(context, widgetData)
 
         // 日历组件：按已存储的显示月份重新计算

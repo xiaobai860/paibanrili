@@ -290,7 +290,7 @@ class CalendarViewModel @Inject constructor(
             // S1/S3：休息/调休班次（无时间段）
             if (shift.builtInType == "rest" || shift.builtInType == "swap") {
                 if (applied == null) continue   // S1：无附加状态 → 无待办
-                // S3：附加状态时间段即打卡记录；"已打上班卡但未打下班卡"且已过截止（次日 24:00 / 次日班次−5h）→ 漏打卡
+                // S3：附加状态时间段即打卡记录；"已打上班卡但未打下班卡"且日期早于昨天（已过期超过一天）→ 漏打卡待补录
                 val stFilled = !applied.startTime.isNullOrEmpty()
                 val etFilled = !applied.endTime.isNullOrEmpty()
                 val pastCutoff = LocalDate.parse(dateStr).isBefore(today.minusDays(1))

@@ -47,7 +47,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val json = runCatching {
-            context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
+            context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
         }.getOrNull() ?: return@rememberLauncherForActivityResult
         vm.importFromJson(json)
     }

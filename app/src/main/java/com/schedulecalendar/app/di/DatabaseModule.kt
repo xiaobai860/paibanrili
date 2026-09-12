@@ -24,7 +24,9 @@ object DatabaseModule {
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, "schedule_calendar.db")
-            .fallbackToDestructiveMigration(dropAllTables = true)   // Room 2.7+ 新签名：v1→v2 破坏性迁移
+            // 不使用破坏性迁移：升级若未提供 Migration，Room 会直接抛异常（fail-fast）而非静默清空全部数据。
+            // 以后每次提升 @Database(version=...) 都必须在下方 addMigrations(...) 提供对应迁移。
+            .addMigrations()
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                     super.onOpen(db)

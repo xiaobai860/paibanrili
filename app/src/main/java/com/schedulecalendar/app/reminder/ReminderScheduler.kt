@@ -130,14 +130,6 @@ class ReminderScheduler @Inject constructor(
     }
 
     /**
-     * 根据用户设置和排班记录，设置上下班提醒（闹钟 / 日历两种固定方式）。
-     * 详见 [scheduleActiveReminders]。
-     */
-    suspend fun scheduleUpcomingReminders() {
-        scheduleFixedReminders()
-    }
-
-    /**
      * 闹钟 / 日历模式的具体实现。
      */
     private suspend fun scheduleFixedReminders() {
@@ -176,13 +168,13 @@ class ReminderScheduler @Inject constructor(
                 val record = getShiftForDate(date.toString()) ?: continue
                 val shiftTimes = getShiftTimes(record.shiftId) ?: continue
 
-                // Bug 2: 内置请假/调休调整提醒时间
+                // 内置请假/调休调整提醒时间
                 val effectiveTimes = computeEffectiveReminderTimes(
                     shiftTimes.first, shiftTimes.second, record.appliedStatus
                 ) ?: continue
                 val (clockInTime, clockOutTime) = effectiveTimes
 
-                // Bug 1: 跨午夜班次下班提醒推后一天
+                // 跨午夜班次下班提醒推后一天
                 val isCrossMidnight = CalcUtils.timeToMin(clockOutTime) < CalcUtils.timeToMin(clockInTime)
                 val clockOutDate = if (isCrossMidnight) date.plusDays(1) else date
 
@@ -216,13 +208,13 @@ class ReminderScheduler @Inject constructor(
                 val record = getShiftForDate(date.toString()) ?: continue
                 val shiftTimes = getShiftTimes(record.shiftId) ?: continue
 
-                // Bug 2: 内置请假/调休调整提醒时间
+                // 内置请假/调休调整提醒时间
                 val effectiveTimes = computeEffectiveReminderTimes(
                     shiftTimes.first, shiftTimes.second, record.appliedStatus
                 ) ?: continue
                 val (clockInTime, clockOutTime) = effectiveTimes
 
-                // Bug 1: 跨午夜班次下班提醒推后一天
+                // 跨午夜班次下班提醒推后一天
                 val isCrossMidnight = CalcUtils.timeToMin(clockOutTime) < CalcUtils.timeToMin(clockInTime)
                 val clockOutDate = if (isCrossMidnight) date.plusDays(1) else date
 

@@ -846,14 +846,14 @@ private fun DayCell(
         DisplayItemType.TOTAL_HOURS -> "${CalcUtils.fmtHours((detail?.normalHours ?: 0.0) + (detail?.overtimeHours ?: 0.0))}h"
         DisplayItemType.WORK_HOURS -> "${CalcUtils.fmtHours(detail?.normalHours ?: 0.0)}h"
         DisplayItemType.OVERTIME_HOURS -> "${CalcUtils.fmtHours(detail?.overtimeHours ?: 0.0)}h"
-        DisplayItemType.DAILY_INCOME -> { val s = detail?.salary ?: 0.0; if (s > 0) "\u00a5${CalcUtils.fmtHours(s)}" else "\u00a50" }
+        DisplayItemType.DAILY_INCOME -> { val s = detail?.salary ?: 0.0; if (s > 0) "\u00a5${CalcUtils.fmtMoney(s)}" else "\u00a50" }
         DisplayItemType.NORMAL_INCOME -> {
             val ns = detail?.normalSalary ?: 0.0
-            if (ns > 0) "\u00a5${CalcUtils.fmtHours(ns)}" else "\u00a50"
+            if (ns > 0) "\u00a5${CalcUtils.fmtMoney(ns)}" else "\u00a50"
         }
         DisplayItemType.OVERTIME_INCOME -> {
             val os = detail?.overtimeSalary ?: 0.0
-            if (os > 0) "\u00a5${CalcUtils.fmtHours(os)}" else "\u00a50"
+            if (os > 0) "\u00a5${CalcUtils.fmtMoney(os)}" else "\u00a50"
         }
         DisplayItemType.SHIFT -> shift?.name ?: ""
         DisplayItemType.STATUS -> appliedSt?.name ?: ""

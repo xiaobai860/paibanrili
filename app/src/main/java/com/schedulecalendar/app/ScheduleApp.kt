@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
 @OptIn(FlowPreview::class)
 class ScheduleApp : Application() {
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    internal val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /** 前台 Activity 计数：归零表示应用已完全退到后台（桌面可见） */
     private var foregroundCount = 0

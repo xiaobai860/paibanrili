@@ -7,7 +7,7 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineScope
+import com.schedulecalendar.app.ScheduleApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -37,7 +37,7 @@ class TimeChangeReceiver : BroadcastReceiver() {
             .reminderScheduler()
 
         val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
+        (context.applicationContext as ScheduleApp).appScope.launch(Dispatchers.IO) {
             try {
                 // 按当前方式统一重排（基于绝对毫秒，时区变更后需重建）
                 scheduler.scheduleActiveReminders()

@@ -26,10 +26,10 @@ android {
         targetSdk     = 36
         // versionName：展示用版本号 = 年月日 + 两位迭代版号（当天第一版 01，第二版 02……）
         // versionCode：系统用的递增整数，每次发版 +1（不可回退，与 versionName 无关）
-        // 注：设为 162 = 仓库总提交数（干净解耦计数器）；因小于已装机 release 的 2026083103，
-        // 覆盖安装需先卸载旧版，或仅用于全新安装。
-        versionCode   = 162
-        versionName   = "2026091001"
+        // 注意：Android 仅比较 versionCode 决定是否允许覆盖安装。请确认已发布版本的 versionCode 高于下方值，
+        // 否则覆盖安装会被系统拒绝（需先卸载旧版）。切勿将 versionCode 回退到已发布版本之下。
+        versionCode   = 163
+        versionName   = "2026091201"
     }
 
     signingConfigs {

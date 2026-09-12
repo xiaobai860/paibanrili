@@ -7,7 +7,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineScope
+import com.schedulecalendar.app.ScheduleApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -41,7 +41,7 @@ class BootReceiver : BroadcastReceiver() {
         // 使用 goAsync() 将广播生命周期延长至协程真正完成，避免系统因 onReceive 过早返回而杀进程；
         // 限定作用域仅在进程存活期有效，进程退出即停止，不会泄漏到进程外线程。
         val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
+        (context.applicationContext as ScheduleApp).appScope.launch(Dispatchers.IO) {
             try {
                 if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
                     // 应用更新安装后系统会清除所有 AlarmManager 闹钟，需全量重调度

@@ -468,7 +468,6 @@ class CalendarEventRepository @Inject constructor(
                 if (added) {
                     android.content.ContentResolver.setIsSyncable(account, CalendarContract.AUTHORITY, 1)
                     android.content.ContentResolver.setSyncAutomatically(account, CalendarContract.AUTHORITY, true)
-                    android.content.ContentResolver.setMasterSyncAutomatically(true)
                 } else {
                     return null
                 }
@@ -797,17 +796,6 @@ class CalendarEventRepository @Inject constructor(
     )
 
     /**
-     * 获取指定日期的所有事件（含年度重复纪念日）
-     * @param dateStr 日期字符串，格式 "yyyy-MM-dd"
-     * @return 当天所有的事件列表（纪念日 + 日程）
-     */
-    /**
-     * 获取指定日期区间内的事件（在 ContentProvider 端用 DTSTART/DTEND 过滤，避免全量拉取）。
-     * 用于按日期/按月高效查询，替代 [getAllEvents] 的全量扫描。
-     * @param rangeStartMs 区间起始毫秒（含）
-     * @param rangeEndMs 区间结束毫秒（不含）
-     */
-    /**
      * 获取指定日期区间内的事件（在 ContentProvider 端用 DTSTART/DTEND 过滤，避免全量拉取）。
      * 用于按日期/按月高效查询，替代 [getAllEvents] 的全量扫描。
      * @param rangeStartMs 区间起始毫秒（含）
@@ -861,7 +849,7 @@ class CalendarEventRepository @Inject constructor(
 
     /**
      * 获取指定日期的所有事件（含年度重复纪念日）
-     * 优化：使用 [queryEventsInRange] 在 ContentProvider 端按区间过滤，
+     * 实现：基于 [getAllEventsInRange] 在 ContentProvider 端按区间过滤，
      * 仅把当天相关事件拉入 JVM，避免每次点选日期都全量扫描所有日历事件。
      * @param dateStr 日期字符串，格式 "yyyy-MM-dd"
      * @return 当天所有的事件列表（纪念日 + 日程）

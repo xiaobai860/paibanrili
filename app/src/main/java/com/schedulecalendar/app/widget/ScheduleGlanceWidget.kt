@@ -151,10 +151,8 @@ class WidgetClockInAction : ActionCallback {
             .getString(KEY_WIDGET_JSON, "") ?: ""
         val data = runCatching { Gson().fromJson(prefsJson, ClockInWidgetData::class.java) }
             .getOrElse { ClockInWidgetData() }
-        android.util.Log.d("WIDGET_DBG", "clockIn start date=${data.clockInDate} jsonLen=${prefsJson.length}")
 
         if (data.clockInDate.isBlank()) {
-            android.util.Log.d("WIDGET_DBG", "clockIn fallback path")
             fallbackClock(context, glanceId, true)
             return
         }
@@ -193,15 +191,13 @@ class WidgetClockInAction : ActionCallback {
             }
 
             scheduleRepo.save(record)
-            android.util.Log.d("WIDGET_DBG", "clockIn saved target=$targetDate time=$currentTime")
         } catch (e: Exception) {
-            android.util.Log.e("WIDGET_DBG", "clockIn save failed", e)
+            android.util.Log.e("WIDGET", "clockIn save failed", e)
         }
 
         // 刷新小组件：数据落库后由 ScheduleApp 全局变更信号自动触发同步（避免动作内多次 update 被桌面丢弃）
-        android.util.Log.d("WIDGET_DBG", "clockIn posting toast")
         Handler(Looper.getMainLooper()).postDelayed({
-            Toast.makeText(context.applicationContext, "已打上班卡 $currentTime", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "已打上班卡 $currentTime", Toast.LENGTH_SHORT).show()
         }, 500)
         // 兜底：信号同步可能落在桌面「交互窗口期」被丢弃，延迟补一次单路更新
         widgetFallbackScope.launch {
@@ -288,15 +284,13 @@ class WidgetClockOutAction : ActionCallback {
             }
 
             scheduleRepo.save(record)
-            android.util.Log.d("WIDGET_DBG", "clockOut saved target=$targetDate time=$currentTime")
         } catch (e: Exception) {
-            android.util.Log.e("WIDGET_DBG", "clockOut save failed", e)
+            android.util.Log.e("WIDGET", "clockOut save failed", e)
         }
 
         // 刷新小组件：数据落库后由 ScheduleApp 全局变更信号自动触发同步
-        android.util.Log.d("WIDGET_DBG", "clockOut posting toast")
         Handler(Looper.getMainLooper()).postDelayed({
-            Toast.makeText(context.applicationContext, "已打下班卡 $currentTime", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "已打下班卡 $currentTime", Toast.LENGTH_SHORT).show()
         }, 500)
         // 兜底：信号同步可能落在桌面「交互窗口期」被丢弃，延迟补一次单路更新
         widgetFallbackScope.launch {

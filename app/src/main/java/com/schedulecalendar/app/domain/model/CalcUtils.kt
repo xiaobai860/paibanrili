@@ -101,26 +101,33 @@ object CalcUtils {
         shiftEnd: String,
         ignoreEarlyArrival: Boolean,
         ignoreLateLeave: Boolean,
+        confirmEarlyOT: Boolean,
+        confirmLateOT: Boolean,
         cfg: AttendConfig
     ): Pair<String, String> {
         // 考勤粒度不允许为 0（防止配置异常时除零崩溃），最小按 1 分钟计
         val grain    = cfg.overtimeGranMin.coerceAtLeast(1)
         val lateTol  = cfg.lateToleranceMin
         val earlyTol = cfg.earlyLeaveToleranceMin
+        val sS0      = timeToMin(shiftStart)
+        val sE0      = timeToMin(shiftEnd)
+        // 班次时长（分钟），用于封顶早到加班，防御异常打卡（如夜班凌晨误打卡被误判巨额早到）
+        val shiftDur = if (sE0 >= sS0) sE0 - sS0 else sE0 + 1440 - sS0
 
         var effectiveStart = shiftStart
         var effectiveEnd   = shiftEnd
 
         if (actualStart != null) {
-            val aS   = timeToMin(actualStart)
-            val sS   = timeToMin(shiftStart)
-            val diff = sS - aS  // 正=早到 负=迟到
+            var aS = timeToMin(actualStart)
+            // 跨午夜班次：若打卡时间落在凌晨窗口（≤ 下班时间），视为班次开始日的次日，避免误判为巨额早到
+            if (sS0 > sE0 && aS <= sE0) aS += 1440
+            val diff = sS0 - aS  // 正=早到 负=迟到
             if (diff > 0) {
-                if (!ignoreEarlyArrival) {
-                    val earlyOtMin = (floor(diff.toDouble() / grain) * grain).toInt()
-                    effectiveStart = if (earlyOtMin > 0) minutesToTime(sS - earlyOtMin) else shiftStart
+                if (!ignoreEarlyArrival && confirmEarlyOT) {
+                    val earlyOtMin = min((floor(diff.toDouble() / grain) * grain).toInt(), shiftDur)
+                    effectiveStart = if (earlyOtMin > 0) minutesToTime(sS0 - earlyOtMin) else shiftStart
                 }
-                // ignoreEarlyArrival=true → effectiveStart 保持 shiftStart
+                // ignoreEarlyArrival=true 或 未确认早到加班 → effectiveStart 保持 shiftStart
             } else {
                 val lateMin = -diff
                 effectiveStart = if (lateMin <= lateTol) shiftStart else actualStart
@@ -135,11 +142,11 @@ object CalcUtils {
             val (_, normAE) = normRange(sS, aE)
             val diff        = normAE - normSE  // 正=加班 负=早退
             if (diff > 0) {
-                if (!ignoreLateLeave) {
+                if (!ignoreLateLeave && confirmLateOT) {
                     val otMin = (floor(diff.toDouble() / grain) * grain).toInt()
                     effectiveEnd = if (otMin > 0) minutesToTime(normSE + otMin) else shiftEnd
                 }
-                // ignoreLateLeave=true → effectiveEnd 保持 shiftEnd
+                // ignoreLateLeave=true 或 未确认晚退加班 → effectiveEnd 保持 shiftEnd
             } else {
                 val earlyMin = -diff
                 effectiveEnd = if (earlyMin <= earlyTol) shiftEnd else actualEnd
@@ -233,6 +240,8 @@ object CalcUtils {
             shiftEnd           = shift.endTime,
             ignoreEarlyArrival = record.ignoreEarlyArrival,
             ignoreLateLeave    = record.ignoreLateLeave,
+            confirmEarlyOT     = record.confirmEarlyOT,
+            confirmLateOT      = record.confirmLateOT,
             cfg                = attendConfig
         )
 
@@ -366,7 +375,7 @@ object CalcUtils {
                     } else {
                         val rawH   = calcHourDiff(ast.startTime, ast.endTime)
                         val breakH = calcGlobalBreakHours(ast.startTime, ast.endTime, breaks)
-                        h = roundD2(max(0.0, rawH - breakH) * 60 / 60.0)
+                        h = roundD2(max(0.0, rawH - breakH))
                     }
                 }
                 when {
@@ -524,7 +533,7 @@ object CalcUtils {
                 date          = dateStr,
                 record        = record,
                 shift         = shift,
-                // 日历格子显示：周末/节假日工时统一归类为加班工时
+                // 日历格子显示：周末/节假日工时统一归类为加班工时（故 overtimeHours 已含 weekend+holiday，调用方勿再四字段求和）
                 normalHours   = hours.normal,
                 overtimeHours = hours.overtime + hours.weekend + hours.holiday,
                 weekendHours  = hours.weekend,
@@ -599,24 +608,6 @@ object CalcUtils {
         return dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY
     }
 
-    /**
-     * 批量计算整月每日计薪方式（复用同一日期解析，避免月统计中对每天重复 split + LocalDate 构造）。
-     * 返回下标 1..days 的 SalaryMode 数组，供 [calcMonthHours]/[calcMonthSalary]/[getMonthScheduleDetails] 复用。
-     */
-    fun computeMonthSalaryModes(year: Int, month: Int): Array<SalaryMode> {
-        val days = daysInMonth(year, month)
-        val result = Array(days + 1) { SalaryMode.NORMAL }
-        for (d in 1..days) {
-            val dateStr = "%04d-%02d-%02d".format(year, month, d)
-            result[d] = when {
-                HolidayData.isLegalHoliday(dateStr) -> SalaryMode.HOLIDAY
-                isWeekend(year, month - 1, d)        -> SalaryMode.WEEKEND
-                else                                 -> SalaryMode.NORMAL
-            }
-        }
-        return result
-    }
-
     // ── 工具方法 ──────────────────────────────────────────────────────
 
     /** 保留2位小数 */
@@ -627,5 +618,8 @@ object CalcUtils {
         val r = (h * 10).roundToInt() / 10.0
         return if (r == r.toLong().toDouble()) r.toLong().toString() else "%.1f".format(r)
     }
+
+    /** 格式化金额（固定2位小数，避免薪资显示丢分位精度） */
+    fun fmtMoney(v: Double): String = "%.2f".format(v)
 }
 
