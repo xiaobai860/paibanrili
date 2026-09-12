@@ -33,7 +33,7 @@ import javax.inject.Singleton
  * 电池优化、省电模式下也能准时触发。
  *
  * 工作流程：
- * 1. 从 [ScheduleRepository] 获取未来 7 天的排班记录
+ * 1. 从 [ScheduleRepository] 获取过去 3 天 ~ 未来 5 天（共 9 天）窗口内的排班记录
  * 2. 通过 [ShiftRepository] 查找班次的上下班时间
  * 3. 根据用户设置的提前时间计算触发时刻
  * 4. 使用 [AlarmManager] 注册精确闹钟
@@ -41,7 +41,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class ReminderScheduler @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val prefs: AppPreferences,
     private val scheduleRepo: ScheduleRepository,
     private val shiftRepo: ShiftRepository,

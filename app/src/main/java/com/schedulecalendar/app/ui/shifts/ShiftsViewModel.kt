@@ -185,7 +185,7 @@ class ShiftsViewModel @Inject constructor(
         val isEdit = existing != null
         val newItem = if (isEdit) item.copy(id = UUID.randomUUID().toString()) else item
         if (isEdit) {
-            breakRepo.archive(existing!!.id)
+            breakRepo.archive(existing.id)
         }
         breakRepo.save(newItem)
         // 新增项目时置顶
@@ -209,7 +209,7 @@ class ShiftsViewModel @Inject constructor(
         val isEdit = existing != null && !existing.builtIn
         val newItem = if (isEdit) item.copy(id = UUID.randomUUID().toString()) else item
         if (isEdit) {
-            statusRepo.archive(existing!!.id)
+            statusRepo.archive(existing.id)
         }
         statusRepo.save(newItem)
         // 新增项目时置顶

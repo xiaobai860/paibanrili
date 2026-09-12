@@ -894,7 +894,7 @@ private fun DayCell(
             .pointerInput(onClick, onLongClick) {
                 detectTapGestures(
                     onTap = { onClick() },
-                    onLongPress = { onLongClick?.invoke() }
+                    onLongPress = { onLongClick() }
                 )
             }
             .semantics { contentDescription = accessibilityDescription }
@@ -996,7 +996,7 @@ private fun DayCell(
                                     val w = if (hasStatus) Modifier.weight(1f) else Modifier.fillMaxWidth()
                                     Surface(shape = RoundedCornerShape(2.dp), color = shiftBg, modifier = w) {
                                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            Text(shift!!.name, fontSize = rowTextSize, lineHeight = rowTextSize,
+                                            Text(shift.name, fontSize = rowTextSize, lineHeight = rowTextSize,
                                                 style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
                                                 maxLines = 1, overflow = TextOverflow.Clip, fontWeight = FontWeight.Medium,
                                                 color = textColorForBg(shiftColor),
@@ -1006,13 +1006,12 @@ private fun DayCell(
                                     }
                                 }
                                 if (hasStatus) {
-                                    val statusColor = appliedSt?.color?.let { safeColor(it) }
-                                    val statusBg = statusColor?.copy(alpha = 0.2f)
-                                        ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    val statusColor = appliedSt.color.let { safeColor(it) }
+                                    val statusBg = statusColor.copy(alpha = 0.2f)
                                     val w = if (hasShift) Modifier.weight(1f) else Modifier.fillMaxWidth()
                                     Surface(shape = RoundedCornerShape(2.dp), color = statusBg, modifier = w) {
                                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            Text(appliedSt!!.name, fontSize = rowTextSize, lineHeight = rowTextSize,
+                                            Text(appliedSt.name, fontSize = rowTextSize, lineHeight = rowTextSize,
                                                 style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
                                                 maxLines = 1, overflow = TextOverflow.Clip, fontWeight = FontWeight.Medium,
                                                 color = textColorForBg(statusColor),
@@ -1077,11 +1076,7 @@ private fun DayCell(
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Clip,
                                                     fontWeight = FontWeight.Medium,
-                                                    color = rowTextColor ?: when {
-                                                        selected -> HolidayRed
-                                                        isToday -> Green700
-                                                        else -> MaterialTheme.colorScheme.onSurface
-                                                    },
+                                                    color = rowTextColor,
                                                     textAlign = TextAlign.Center,
                                                     modifier = Modifier.wrapContentHeight(Alignment.CenterVertically)
                                                 )

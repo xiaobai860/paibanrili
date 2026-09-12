@@ -45,7 +45,7 @@ data class CalendarEventInfo(
  */
 @Singleton
 class CalendarEventRepository @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     companion object {
         /** 自定义账户类型，与应用包名一致，对应 authenticator.xml 中的 accountType */

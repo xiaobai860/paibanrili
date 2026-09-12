@@ -87,17 +87,15 @@ fun ShiftsScreen(navController: NavController, vm: ShiftsViewModel = hiltViewMod
 
     Scaffold(
         topBar = {
-            TabRow(
+            PrimaryTabRow(
                 selectedTabIndex = currentPage,
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.primary,
-                indicator = { tabPositions ->
-                    if (currentPage < tabPositions.size) {
-                        SecondaryIndicator(
-                            Modifier.tabIndicatorOffset(tabPositions[currentPage]),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                indicator = {
+                    SecondaryIndicator(
+                        Modifier.tabIndicatorOffset(currentPage),
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             ) {
                 tabTitles.forEachIndexed { i, title ->
@@ -548,7 +546,7 @@ private fun StatusEditorDialog(
     val defaultColor = if (!isEdit) {
         ShiftPresetColors[statusColorIndex % ShiftPresetColors.size]
     } else {
-        initial?.color ?: "#6366f1"
+        initial.color
     }
     var name      by remember { mutableStateOf(initial?.name ?: "") }
     var color     by remember { mutableStateOf(defaultColor) }
@@ -604,7 +602,7 @@ private fun StatusEditorDialog(
             TextButton(onClick = {
                 val trimmed = name.trim()
                 if (trimmed.isBlank()) { nameError = "名称不能为空"; return@TextButton }
-                val dup = existingNames.any { it.equals(trimmed, ignoreCase = true) && (!isEdit || !it.equals(initial?.name, ignoreCase = true)) }
+                val dup = existingNames.any { it.equals(trimmed, ignoreCase = true) && (!isEdit || !it.equals(initial.name, ignoreCase = true)) }
                 if (dup) { nameError = "名称已存在，请修改后保存"; return@TextButton }
                 onConfirm((initial ?: ShiftStatus(id = UUID.randomUUID().toString(), name = "", color = color)).copy(name = trimmed, color = color))
             }) { Text("保存") }

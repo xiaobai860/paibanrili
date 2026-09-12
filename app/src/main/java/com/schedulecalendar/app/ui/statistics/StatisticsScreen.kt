@@ -47,17 +47,15 @@ fun StatisticsScreen(navController: NavController) {
         topBar = {
             Column {
                 // M3 TabRow — 与 HorizontalPager 双向同步（顶部）
-                TabRow(
+                PrimaryTabRow(
                     selectedTabIndex = currentPage,
                     containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.primary,
-                    indicator = { tabPositions ->
-                        if (currentPage < tabPositions.size) {
-                            SecondaryIndicator(
-                                Modifier.tabIndicatorOffset(tabPositions[currentPage]),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
+                    indicator = {
+                        SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(currentPage),
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 ) {
                     tabTitles.forEachIndexed { i, title ->

@@ -44,7 +44,7 @@ data class CalendarEventState(
  */
 @HiltViewModel
 class CalendarEventViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val calendarRepo: CalendarEventRepository,
     val prefs: AppPreferences
 ) : ViewModel() {

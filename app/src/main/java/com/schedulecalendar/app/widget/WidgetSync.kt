@@ -142,7 +142,7 @@ internal fun computeStatusRange(
     val early = clockOutMin != null && normAdjust(ss, clockOutMin) < normE
     return when {
         late -> shiftStart to fmtMin(ceilGran(clockInMin, granularityMin))
-        !late && early -> fmtMin(floorGran(clockOutMin!!, granularityMin)) to shiftEnd
+        !late && early -> fmtMin(floorGran(clockOutMin, granularityMin)) to shiftEnd
         else -> null
     }
 }
@@ -316,9 +316,9 @@ private fun computeClockInWidgetData(
             // 站在昨天视角：当前已是次日，故 nowAbs = 今天时刻 + 1440
             val nowAbs = nowMin + 1440
             // S4（昨天正常班 + 内置附加状态）以附加状态时间段作为打卡判据
-            val yIsS4 = yRec?.appliedStatus?.let { isBuiltInStatus(it.statusId) } == true
-            val effIn  = if (yIsS4) yRec?.appliedStatus?.startTime ?: "" else yRec?.actualStartTime ?: ""
-            val effOut = if (yIsS4) yRec?.appliedStatus?.endTime ?: "" else yRec?.actualEndTime ?: ""
+            val yIsS4 = yRec.appliedStatus?.let { isBuiltInStatus(it.statusId) } == true
+            val effIn  = if (yIsS4) yRec.appliedStatus.startTime ?: "" else yRec.actualStartTime ?: ""
+            val effOut = if (yIsS4) yRec.appliedStatus.endTime ?: "" else yRec.actualEndTime ?: ""
             // 次日 = 今天；昨天班次跨午夜则按夜班口径
             val (inBtn, outBtn) = computeShiftClockButtons(
                 nowAbs = nowAbs, ss = yss, normE = yNormE,
@@ -345,8 +345,8 @@ private fun computeClockInWidgetData(
         val (_, normE) = CalcUtils.normRange(ss, CalcUtils.timeToMin(todayShift.endTime))
         val isS4 = todayHasStatus && todayStatusIsLeaveSwap
         // S4（正常班 + 内置附加状态）以附加状态时间段作为打卡判据；其余用实际打卡时间
-        val effIn  = if (isS4) todayStatus?.startTime ?: "" else todayRecord?.actualStartTime ?: ""
-        val effOut = if (isS4) todayStatus?.endTime ?: "" else todayRecord?.actualEndTime ?: ""
+        val effIn  = if (isS4) todayStatus.startTime ?: "" else todayRecord.actualStartTime ?: ""
+        val effOut = if (isS4) todayStatus.endTime ?: "" else todayRecord.actualEndTime ?: ""
         // 次日 = 明天；今天班次跨午夜则按夜班口径
         val (inBtn, outBtn) = computeShiftClockButtons(
             nowAbs = nowMin, ss = ss, normE = normE,
@@ -365,8 +365,8 @@ private fun computeClockInWidgetData(
             restMessage = "好好休息一下哦！"
         } else {
             // S3：上班卡全天可见；下班卡自点击上班卡后持续至次日截止
-            val st = todayStatus?.startTime ?: ""
-            val et = todayStatus?.endTime ?: ""
+            val st = todayStatus.startTime ?: ""
+            val et = todayStatus.endTime ?: ""
             when {
                 st.isEmpty() -> showClockIn = true
                 et.isEmpty() -> {
@@ -381,7 +381,7 @@ private fun computeClockInWidgetData(
     val isBuiltInShift = isRestShift(targetShift)
     val targetStatus = targetRecord?.appliedStatus
     val hasAppliedStatus = targetStatus != null
-    val hasBuiltInStatus = hasAppliedStatus && isBuiltInStatus(targetStatus!!.statusId)
+    val hasBuiltInStatus = hasAppliedStatus && isBuiltInStatus(targetStatus.statusId)
     val hasCustomStatus = hasAppliedStatus && !hasBuiltInStatus
 
     val statusStart = targetStatus?.startTime ?: ""

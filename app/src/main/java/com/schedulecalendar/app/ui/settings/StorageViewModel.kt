@@ -74,7 +74,7 @@ sealed class StorageUiEvent {
 
 @HiltViewModel
 class StorageViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val backupManager: BackupManager,
     private val scheduleRepo: ScheduleRepository,
     private val shiftRepo:    ShiftRepository,

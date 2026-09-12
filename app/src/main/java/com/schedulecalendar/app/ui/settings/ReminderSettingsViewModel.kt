@@ -22,7 +22,7 @@ import javax.inject.Inject
  */
 data class ReminderSettingsState(
     val enabled: Boolean = false,
-    val method: String = "alarm",            // "alarm" 或 "calendar"
+    val method: String = "notify",           // "alarm" / "calendar" / "notify" 之一
     val reminderClockIn: Boolean = true,     // 提醒上班
     val reminderClockOut: Boolean = false,   // 提醒下班
     val clockInAdvanceMinutes: Int = 15,     // 上班提前分钟
@@ -41,7 +41,7 @@ val ADVANCE_TIME_OPTIONS = listOf(15, 30, 60, -1)
  */
 @HiltViewModel
 class ReminderSettingsViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val prefs: AppPreferences,
     private val scheduler: ReminderScheduler
 ) : ViewModel() {

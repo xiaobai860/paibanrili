@@ -115,7 +115,7 @@ data class CalendarUiState(
 
 @HiltViewModel
 class CalendarViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val shiftRepo: ShiftRepository,
     private val scheduleRepo: ScheduleRepository,
     private val breakRepo: ShiftBreakRepository,
@@ -138,7 +138,7 @@ class CalendarViewModel @Inject constructor(
     init {
         loadCurrentMonth()
         // 延迟执行非关键初始化，必须放到 Dispatchers.IO，
-        // 否则 backupManager.autoBackupAppData() 内的 12 月 Room 查询 + Gson + file.writeText
+        // 否则 backupManager.autoBackupAppData() 内的全量 Room 查询 + Gson + file.writeText
         // 以及 calendarEventRepo.getOrCreateLocalCalendarId() 内的 AccountManager/ContentResolver 同步 Binder
         // 都会阻塞主线程造成卡顿（已在 OPPO UISlowBinder 与 GC freed 59MB 中证实）。
         viewModelScope.launch(Dispatchers.IO) {
@@ -297,7 +297,7 @@ class CalendarViewModel @Inject constructor(
                 if (stFilled && !etFilled && pastCutoff) {
                     todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_OUT, "下班漏打卡", shiftName = sn, statusLabel = stLabel))
                 } else if (stFilled && etFilled) {
-                    todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_OUT, "下班已补录", shiftName = sn, clockTime = applied.endTime ?: "", statusLabel = stLabel))
+                    todos.add(TodoItem(dateStr, TodoType.FILLED_CLOCK_OUT, "下班已补录", shiftName = sn, clockTime = applied.endTime, statusLabel = stLabel))
                 }
                 continue
             }
@@ -306,10 +306,10 @@ class CalendarViewModel @Inject constructor(
             val stStart = shift.startTime
             val stEnd = shift.endTime
             // 内置状态：检查 appliedStatus 时间；普通：检查 actualStartTime/actualEndTime（空字符串也视为未填写）
-            val startFilled = if (isBuiltIn) !applied?.startTime.isNullOrEmpty() else !record.actualStartTime.isNullOrEmpty()
-            val endFilled   = if (isBuiltIn) !applied?.endTime.isNullOrEmpty() else !record.actualEndTime.isNullOrEmpty()
-            val startVal    = if (isBuiltIn) applied?.startTime else record.actualStartTime
-            val endVal      = if (isBuiltIn) applied?.endTime else record.actualEndTime
+            val startFilled = if (isBuiltIn) !applied.startTime.isNullOrEmpty() else !record.actualStartTime.isNullOrEmpty()
+            val endFilled   = if (isBuiltIn) !applied.endTime.isNullOrEmpty() else !record.actualEndTime.isNullOrEmpty()
+            val startVal    = if (isBuiltIn) applied.startTime else record.actualStartTime
+            val endVal      = if (isBuiltIn) applied.endTime else record.actualEndTime
             // 漏打卡检测：有班次但缺少打卡记录，上班/下班分别独立判断
             if (!startFilled) {
                 todos.add(TodoItem(dateStr, TodoType.MISSED_CLOCK_IN, "上班漏打卡", shiftName = sn, shiftTime = stStart, statusLabel = stLabel))
@@ -662,7 +662,7 @@ class CalendarViewModel @Inject constructor(
             (applied.statusId == BUILTIN_STATUS_OVERTIME && isRestSwap)
         )
         if (fillStatusTime) {
-            scheduleRepo.save(rec.copy(appliedStatus = applied!!.copy(startTime = null)))
+            scheduleRepo.save(rec.copy(appliedStatus = applied.copy(startTime = null)))
         } else {
             scheduleRepo.save(rec.copy(actualStartTime = null))
         }
@@ -680,7 +680,7 @@ class CalendarViewModel @Inject constructor(
             (applied.statusId == BUILTIN_STATUS_OVERTIME && isRestSwap)
         )
         if (fillStatusTime) {
-            scheduleRepo.save(rec.copy(appliedStatus = applied!!.copy(endTime = null)))
+            scheduleRepo.save(rec.copy(appliedStatus = applied.copy(endTime = null)))
         } else {
             scheduleRepo.save(rec.copy(actualEndTime = null))
         }

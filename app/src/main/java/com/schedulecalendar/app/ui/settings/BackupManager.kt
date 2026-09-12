@@ -23,13 +23,13 @@ import javax.inject.Singleton
 
 /**
  * 备份管理器（单例）
- * - 应用数据：每天只保留最新一条，keepCount=0 时禁用
+ * - 应用数据：每天只保留最新一条，keepDays=0 时禁用（keepDays 表示保留天数）
  * - 班次配置：每次保存后生成新备份，keepCount=0 时禁用
  * - 自定义路径：若设置了外部路径则写入外部，恢复始终从私有目录
  */
 @Singleton
 class BackupManager @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val scheduleRepo: ScheduleRepository,
     private val shiftRepo:    ShiftRepository,
     private val breakRepo:    ShiftBreakRepository,

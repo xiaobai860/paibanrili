@@ -103,7 +103,7 @@ fun ScheduleDetailScreen(
     val isSwapShift   = selectedShift?.builtInType == "swap"
     val isRestOrSwap  = isRestShift || isSwapShift
     // 休息/调休班次选择了任意附加状态（不论是否带时间段）时显示计薪方式
-    val hasAppliedStatus = isRestOrSwap && record?.appliedStatus != null
+    val hasAppliedStatus = isRestOrSwap && record.appliedStatus != null
 
     val visibleStatuses = if (isRestOrSwap) {
         state.shiftStatuses.filter { s -> s.id != BUILTIN_STATUS_SWAP && s.id != BUILTIN_STATUS_LEAVE }
@@ -220,21 +220,21 @@ fun ScheduleDetailScreen(
                     // 实际上班 + 清除按钮
                     Row(Modifier.weight(1f).height(IntrinsicSize.Min)) {
                         TimePickerField(
-                            time         = record?.actualStartTime ?: "",
+                            time         = record.actualStartTime ?: "",
                             onTimeChange = vm::setActualStart,
                             label        = "实际上班",
                             defaultTime  = selectedShift.startTime,
                             onRequestDialog = {
                                 timeDialogConfig = TimeDialogConfig(
                                     label = "实际上班",
-                                    currentTime = record?.actualStartTime ?: "",
+                                    currentTime = record.actualStartTime ?: "",
                                     defaultTime = selectedShift.startTime,
                                     onConfirm = vm::setActualStart
                                 )
                             },
                             modifier     = Modifier.weight(1f)
                         )
-                        if (record?.actualStartTime != null) {
+                        if (record.actualStartTime != null) {
                             Box(
                                 modifier = Modifier
                                     .height(54.dp)
@@ -251,21 +251,21 @@ fun ScheduleDetailScreen(
                     // 实际下班 + 清除按钮
                     Row(Modifier.weight(1f).height(IntrinsicSize.Min)) {
                         TimePickerField(
-                            time         = record?.actualEndTime ?: "",
+                            time         = record.actualEndTime ?: "",
                             onTimeChange = vm::setActualEnd,
                             label        = "实际下班",
                             defaultTime  = selectedShift.endTime,
                             onRequestDialog = {
                                 timeDialogConfig = TimeDialogConfig(
                                     label = "实际下班",
-                                    currentTime = record?.actualEndTime ?: "",
+                                    currentTime = record.actualEndTime ?: "",
                                     defaultTime = selectedShift.endTime,
                                     onConfirm = vm::setActualEnd
                                 )
                             },
                             modifier     = Modifier.weight(1f)
                         )
-                        if (record?.actualEndTime != null) {
+                        if (record.actualEndTime != null) {
                             Box(
                                 modifier = Modifier
                                     .height(54.dp)
@@ -285,7 +285,7 @@ fun ScheduleDetailScreen(
             // ── 附加状态（与班次一致：单行选择器） ──────────────────────
             if (visibleStatuses.isNotEmpty() && selectedShift != null) {
                 SectionLabel("附加状态")
-                val appliedSt = record?.appliedStatus
+                val appliedSt = record.appliedStatus
                 val appliedStatus = appliedSt?.let { st -> visibleStatuses.find { it.id == st.statusId } }
                 Surface(
                     shape = RoundedCornerShape(10.dp),
@@ -374,7 +374,7 @@ fun ScheduleDetailScreen(
                 ) {
                     // 自动模式按钮（常驻）：选中时显示「自动-工作日/周末/节假日」随当天规则动态变化；
                     // 选择其它模式后文案变为「自动计算」，提示点击可恢复自动
-                    val isAuto = record?.salaryMode == null
+                    val isAuto = record.salaryMode == null
                     FilterChip(
                         selected = isAuto,
                         onClick  = { vm.setSalaryMode(null) },
@@ -386,7 +386,7 @@ fun ScheduleDetailScreen(
                         }
                     )
                     modes.forEach { (mode, label) ->
-                        val selected = record?.salaryMode == mode
+                        val selected = record.salaryMode == mode
                         FilterChip(
                             selected = selected,
                             onClick  = { vm.setSalaryMode(mode) },
@@ -487,7 +487,7 @@ fun ScheduleDetailScreen(
 
     // ── 状态时间段编辑弹窗 ────────────────────────────────────────────
     showStatusEditor?.let { sid ->
-        val appliedSt = if (record?.appliedStatus?.statusId == sid) record?.appliedStatus else null
+        val appliedSt = if (record?.appliedStatus?.statusId == sid) record.appliedStatus else null
         StatusTimeDialog(
             startTime = appliedSt?.startTime ?: "",
             endTime   = appliedSt?.endTime   ?: "",

@@ -24,7 +24,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore("a
 
 @Singleton
 class AppPreferences @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     /** 使用 InstanceCreator 确保 Gson 反序列化时保留 Kotlin data class 默认值 */
     private val gson = GsonBuilder()
@@ -256,7 +256,7 @@ class AppPreferences @Inject constructor(
         it[KEY_REMINDER_METHOD] = method
     }
     val reminderMethodFlow: Flow<String> = context.dataStore.data.map {
-        it[KEY_REMINDER_METHOD] ?: "alarm"
+        it[KEY_REMINDER_METHOD] ?: "notify"
     }
 
     /** 提醒内容："both" / "clock_in" / "clock_out" */

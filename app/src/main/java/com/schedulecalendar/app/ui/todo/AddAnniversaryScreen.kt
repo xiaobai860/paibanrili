@@ -323,7 +323,7 @@ fun AddAnniversaryScreen(
                             )
                             // 显示对应农历
                             if (currentLunar != null) {
-                                val l = currentLunar!!
+                                val l = currentLunar
                                 Text(
                                     "农历${l.yearGanZhi}年 ${l.monthText}${l.dayText}",
                                     style = MaterialTheme.typography.bodySmall,
@@ -427,7 +427,7 @@ fun AddAnniversaryScreen(
                 if (isEditMode) {
                     OutlinedButton(
                         onClick = {
-                            eventId?.let { id ->
+                            eventId.let { id ->
                                 vm.deleteEvent(id)
                                 navController.popBackStack()
                             }
@@ -505,7 +505,7 @@ fun AddAnniversaryScreen(
                                 dtEnd = endTime,
                                 allDay = true,
                                 rrule = editRrule,
-                                calendarId = anniversaryCalId ?: existingEvent!!.calendarId
+                                calendarId = anniversaryCalId ?: existingEvent.calendarId
                             )
                             vm.updateEvent(updatedEvent)
                             navController.popBackStack()
