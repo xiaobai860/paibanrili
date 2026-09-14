@@ -9,6 +9,16 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.AUTHENTICATE_ACCOUNTS"/>
 
+    <!--
+      关闭系统「预测式返回」（Predictive Back）：
+
+      - Android 16 / targetSdk 36 起该特性默认开启，系统会在返回时给整个窗口套一层**缩放**动画；
+        它与应用内的导航转场叠加，导致"退出二级页时页面像被直接缩放"，且完全不受应用层控制。
+      - 关闭后：返回逻辑仍由 androidx.activity 的 BackHandler / OnBackPressedDispatcher 处理
+        （功能不受影响，根 Tab 页返回退出、日历子模式拦截等行为都不变），
+        而**转场动画完全交给应用** —— 即 AppNavHost 里配置的
+        enterTransition / exitTransition / popEnterTransition / popExitTransition。
+    -->
     <application
         android:name=".ScheduleApp"
         android:label="@string/app_name"
@@ -18,7 +28,8 @@
         android:theme="@style/Theme.ScheduleCalendar"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
-        android:dataExtractionRules="@xml/data_extraction_rules">
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="false">
 
         <activity
             android:name=".MainActivity"

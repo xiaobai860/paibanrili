@@ -82,7 +82,7 @@
 | 桌面组件 | Glance 1.2.0 + WorkManager 2.11.2 |
 | 序列化 | Gson（配置/组件数据 JSON）+ kotlinx-serialization（Navigation 路由） |
 | 农历/节气/黄历 | tyme4j 1.5.1（`cn.6tail:tyme4j`，依据紫金山天文台《农历的编算和颁行》） |
-| 单元测试 | JUnit 4（守护法定节假日表 + 历法数据对账） |
+| 单元测试 | JUnit 4（守护法定节假日表 + 历法数据对账 + 加班判定与三档计薪金额映射） |
 
 ## 构建环境与版本信息
 
@@ -94,9 +94,21 @@
 ### 版本号规则
 - `versionName`：展示用版本号 = `年月日 + 两位当天迭代号`，如 `2026091001`（设置页展示的就是它）
 - `versionCode`：系统用的递增整数，**每次发版 +1**，与 `versionName` 无关
-  - ⚠️ 注意：设备上曾装过**日期型**版本（`2026083103`），其值远大于小整数计数器，因此覆盖安装会报 `INSTALL_FAILED_VERSION_DOWNGRADE`。装包需用 `adb install -r -d`（`-d` 允许降级，**保留数据**），或先卸载旧版。
-  - 发版前核对设备真值：`adb shell dumpsys package com.schedulecalendar.app | findstr /C:versionCode`（不要只比对自家历史记录）
-- 当前值：`versionCode = 182`、`versionName = "2026091405"`
+- 唯一真值是 `app/build.gradle.kts` —— **文档不再抄录当前值**，省得每次发版都要同步两份
+- ⚠️ 覆盖安装陷阱（2026-09-14 实测，三条都踩过）：
+  - 设备上曾装过**日期型**版本（`2026083103`），远大于小整数计数器 → versionCode 一旦低于设备已装版本，
+    覆盖安装直接报 `INSTALL_FAILED_VERSION_DOWNGRADE`
+  - **`-d` 对 release 包无效**：`adb install -d` 的官方语义是 “allow version code downgrade
+    (**debuggable packages only**)”，别指望它
+  - **绝不能用 `pm uninstall -k`**：`-k` 会保留数据目录并把被卸载包的版本号记进系统，之后重装会报
+    `Downgrade detected on app uninstalled with DELETE_KEEP_DATA`，等于**把降级路径锁死**，比不卸载更糟
+  - ✅ 正确做法：**完整卸载（不带 `-k`）→ 安装**
+    ```bash
+    adb shell pm uninstall com.schedulecalendar.app
+    adb install -r app/build/outputs/apk/release/app-release.apk
+    ```
+- 发版前核对设备真值：`adb shell dumpsys package com.schedulecalendar.app | findstr /C:versionCode`
+  （**不要只比对自家历史记录** —— 曾因此误判成"不会回退"）
 - lint 已屏蔽：`HighAppVersionCode`、`IconLauncherShape`、`IconDuplicates`、`UnusedAttribute`、`NewerVersionAvailable`、`ReportShortcutUsage`
 
 ### 构建命令
@@ -107,9 +119,18 @@
 # 发布版（改过资源/混淆敏感代码后务必加参数关闭缓存）
 ./gradlew assembleRelease --rerun-tasks --no-build-cache
 
-# 单元测试（节假日数据守护 + 历法数据对账；改过 HolidayData / LunarCalendar 后必跑）
+# 单元测试（节假日/历法守护 + 计薪与加班判定；改过 HolidayData / LunarCalendar / CalcUtils 后必跑）
 ./gradlew testDebugUnitTest
 ```
+
+> **Windows / PowerShell 下**：必须先给 Gradle 指定 JDK17（否则可能用错 JDK），且要用**单条 `cmd /c "…"`** 串联，
+> 不要用 `;` 分隔多条命令（PowerShell 会解析报错）：
+>
+> ```cmd
+> cmd /c "set JAVA_HOME=<JDK17 路径>&& cd /d <项目绝对路径>&& gradlew.bat assembleRelease --rerun-tasks --no-build-cache --console=plain"
+> ```
+>
+> `adb` 路径不含空格时，PowerShell 里**直接写不带引号的全路径**即可（加引号会报 `UnexpectedToken`）。
 
 发布版签名配置存储在 `local.properties` 中（不纳入版本控制）：
 
@@ -147,7 +168,8 @@ app/src/main/java/com/schedulecalendar/app/
 │   └── calendar/            #   已按职责拆分：CalendarScreen / CalendarDialogs / CalendarCells
 └── widget/                  # Glance 小组件 + 数据同步 + 周期刷新 Worker
 
-app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest + TymeAlmanacTest）
+app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest + TymeAlmanacTest
+                                              #   + CalcUtilsOvertimeTest + CalcUtilsSalaryTierTest）
 ```
 
 ### 数据层（`data/`）
@@ -225,7 +247,7 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 
 ### 单元测试守护
 
-`app/src/test/java/com/schedulecalendar/app/domain/model/` 下有两个测试类：
+`app/src/test/java/com/schedulecalendar/app/domain/model/` 下有四个测试类（共 44 用例）：
 
 **`HolidayDataTest.kt`**（8 用例，守护自研节假日表）：
 
@@ -243,11 +265,26 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 - 七十二候 / 数九 / 三伏 / 梅雨取值范围；**三伏与数九严格互斥**（跨 21 年扫描）
 - 星期与 JDK 公历逐日交叉验证
 
+**`CalcUtilsOvertimeTest.kt`**（7 用例，守护「计为加班」判定）：
+
+- 勾选框 + 计薪方式 → 三档归类（工作日→加班工时、周末→周末工时、节假日→节假日工时）
+- 未勾选不算加班；加班状态的时间段**不**从正常工时里扣除
+- 内置「加班」附加状态**已下线**：不在 `BUILTIN_STATUSES` 里，且其固定 ID **不再**参与加班判定
+- JSON 向后兼容：无 `isOvertime` 字段的旧数据解析为非加班
+
+**`CalcUtilsSalaryTierTest.kt`**（12 用例，守护三档计薪的**金额**映射）：
+
+- 三档各自用**自己**的时薪（工作日→加班时薪、周末→周末时薪、节假日→节假日时薪），任何串档都会立即暴露
+- 自动档覆盖：普通工作日 / 周六周日 / 法定节假日（含**压在周末的节假日**）/ 调休补班日 / 超范围退化 /
+  非法日期不抛异常
+- **同源回归**：日历格子「加班收入」与「每日总收入」之和必须等于月汇总对应项
+  （历史 bug 曾导致同一天金额在日历页与薪资页对不上，这条专门锁死它）
+
 ```bash
 ./gradlew testDebugUnitTest
 ```
 
-> `assembleRelease` **不会**执行单元测试，改完节假日数据请手动跑一次。
+> `assembleRelease` **不会**执行单元测试；改完节假日数据、历法、计薪/加班逻辑后请手动跑一次。
 
 ### tyme4j 使用清单（2026-09-13 已完成历法迁移）
 
@@ -330,6 +367,80 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 > （`yyyyMMdd` + 是否上班位 + 节日索引 + 正负偏移 + 天数）。理论上可**追加**自备的未来年份数据，
 > 但修改库的静态字段属于非常规用法，采用前需评估。
 
+## 计薪规则与加班判定（2026-09-14 定稿）
+
+### 三档计薪 + 正班（金额映射）
+
+计薪**档位只有三档**，每档用**自己**的时薪；「正常时薪」只用于正班工时，**不是**计薪档位：
+
+| 计薪档位 | 判定（自动档见下） | 工时桶 | 时薪 |
+|---|---|---|---|
+| 工作日 | 非法定节假日、非周末、非调休补班日 | 加班工时 | **加班时薪** |
+| 周末 | 周六/周日，且非节假日、非补班日 | 周末工时 | **周末时薪** |
+| 节假日 | 法定节假日（优先于周末判定） | 节假日工时 | **节假日时薪** |
+| （正班） | 工作日档内不超过「正常班时长」的部分 | 正常工时 | 正常时薪 |
+
+⚠️ **唯一实现是 `CalcUtils.calcDaySalaryParts(hours, cfg): DaySalaryParts`**
+（`bonusTotal` = 三档合计、`total` = 当日工时薪资）。**所有**金额计算都必须经它：
+`calcMonthSalary`、`getMonthScheduleDetails`（日历格子「加班收入」/ 每日总收入）、
+`DetailViewModels`（详情页薪资行）。
+
+> 历史 bug：后三处曾各自实现，把周末/节假日工时**一律按加班时薪**计价，与月汇总不一致 →
+> 同一天的金额在日历页和薪资页显示不同。新增同源回归测试锁死。
+
+**「正常班小时」的口径**：`min(实际工时, 正常班时长阈值)`，阈值优先取班次自带的 `Shift.normalWorkHours`，
+未配置则用 `AttendConfig.normalWorkHoursPerDay`。**只有工作日档才产出正班小时** ——
+周末/节假日全天归该档，不拆分。
+
+### 自动档判定顺序（`CalcUtils.autoSalaryMode`）
+
+自上而下，先命中者胜出：
+
+1. **节假日** —— 命中 `HolidayData` 法定节假日表（**优先于周末**，国庆落在周六/周日仍算节假日档）
+2. **周末** —— 周六/周日，且非节假日、且**非调休补班日**
+3. **工作日** —— 其余全部（含调休补班日，以及无法判定时的兜底）
+
+非法日期（含 `2026-02-30` 这类不存在的日期）一律返回工作日**且不抛异常** ——
+否则一条脏数据会让 `isWeekend` 里的 `LocalDate.of` 抛出 `DateTimeException`，打断整月统计。
+
+### 加班判定：只认「计为加班」勾选框
+
+```kotlin
+val countsAsOvertime: Boolean get() = isOvertime
+```
+
+- 原**内置「加班」附加状态已下线**（已从 `BUILTIN_STATUSES` 移除，内置项现在只有请假、调休）：
+  任何自定义状态想当加班用，在排班编辑页勾「计为加班」即可 —— `AppliedStatus.isOvertime` 是唯一来源
+- 「计为加班」开关的显示条件（**三个同时满足**）：
+  已选附加状态 **且** 该状态不是内置请假/调休 **且** **班次是无时段班次**（内置休息/调休/请假）
+  —— 这类班次没有自己的上下班时间，工时完全由附加状态的时间段决定，加班只能靠这个开关体现
+- 勾选后，该状态的时间段按当天「计薪方式」归入加班/周末/节假日工时
+
+## 导航转场与返回行为
+
+### 转场约定（`ui/navigation/AppNavHost.kt`）
+
+| 场景 | 进场 | 出场 |
+|---|---|---|
+| 打开二级页 | 新页从右整屏推入 + 淡入（260ms） | 旧页向左平移 1/5 宽（**不淡出**） |
+| 返回上一级 | 上一级从左侧 1/5 视差滑回 + 淡入 | 当前页整屏滑出到右侧 |
+| 切换底部 Tab | 淡入（180ms） | 淡出（180ms） |
+
+- 缓动统一 `FastOutSlowInEasing`（`tween` 默认的线性曲线观感生硬）
+- 旧页**不做淡出**：淡到全透明会露出窗口底色，快速切换时看起来像"闪一下"
+- Tab 用淡入淡出而非横向滑动：底部导航切换语义上不是「进入下一级」，滑动会误导层级
+- 常量集中在文件顶部：`secondaryEnter/Exit`、`secondaryPopEnter/Exit`、`tabEnter/tabExit`
+
+### 已关闭系统「预测式返回」
+
+Manifest 中 `<application android:enableOnBackInvokedCallback="false">`。
+
+- **原因**：targetSdk 36 / Android 16 起该特性默认开启，系统会在返回时给窗口套一层**缩放**动画，
+  与应用内转场叠加，返回二级页时像"页面被直接缩放"，且完全不受应用层控制
+- **关闭后**：返回逻辑仍由 `BackHandler` / `OnBackPressedDispatcher` 处理
+  （根 Tab 返回退出、日历子模式拦截、二级页 popBackStack 等行为都不变），
+  转场则完全由上面那套 `AppNavHost` 转场决定
+
 ## 维护须知（踩坑记录）
 
 1. **改 res 资源后必须 `--rerun-tasks --no-build-cache`**，否则构建缓存复用旧产物，改动不进 APK
@@ -339,6 +450,14 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 5. **数据库升级必须新增 Migration**：`DatabaseModule` 已移除破坏性迁移，缺 Migration 会 fail-fast 抛异常（而非清库）
 6. 高频纯计算（农历/工时换算/月排班明细）已有 LRU 缓存，新增同类函数应照做
 7. 日历页查询事件必须用区间过滤，只有事项页允许全量 + TTL 缓存
+8. **降级/回退安装只能「完整卸载（不带 `-k`）→ 安装」**：`adb install -d` 对 release 包无效，
+   `pm uninstall -k` 反而会把降级路径锁死（详见「版本号规则」）
+9. **manifest 改动有没有真进 APK**：查 `app/build/intermediates/packaged_manifests/release/
+   processReleaseManifestForPackage/AndroidManifest.xml`；`merged_manifests/…` 只是中间产物，不是打包结果
+10. **设备数据无法通过 adb 备份**：adb shell 无 root，`/data/data/com.schedulecalendar.app` 连 `ls -ld` 都被拒，
+    应用 FileProvider 也是 `exported=false` → 需要卸载前先**让用户在 App 内「设置 → 数据管理」导出备份**
+11. **不为旧数据做兼容/迁移**（已确认）：内置「加班」附加状态下线后**未保留**历史 ID 兜底 ——
+    极少量引用它的旧记录会显示不出状态名、也不再按加班计（用户确认基本没用过该功能，可接受）
 
 ## 许可证
 
