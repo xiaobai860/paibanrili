@@ -139,7 +139,9 @@ fun ScheduleDetailScreen(
         }
     ) { pad ->
         Column(
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            // 6dp 只是「区块之间」的基础间距；标题自身再补 8dp 上边距，
+            // 于是 区块间隔 = 14dp、标题↔自己的内容 = 6+2 = 8dp（原来两者都是 20dp，看不出层级）
+            verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
                 .verticalScroll(scrollState)
                 .imePadding()
@@ -571,11 +573,16 @@ fun ScheduleDetailScreen(
 
 /**
  * 区块标题。可选 [trailing]：把控件紧贴标题行**最右侧**（如附加状态标题右边的「计为加班」开关）。
+ *
+ * 间距约定（与父级 `Arrangement.spacedBy(6.dp)` 配合）：
+ * 标题 ↔ 自己的内容 = 8dp（spacedBy 6 + 本组件 bottom 2）；
+ * 区块之间 = 8dp（本组件 top）+ 6dp = 14dp。
+ * 即「标题贴近内容、区块之间留白」，形成层级感。
  */
 @Composable
 private fun SectionLabel(text: String, trailing: (@Composable () -> Unit)? = null) {
     Row(
-        modifier          = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+        modifier          = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
