@@ -7,7 +7,7 @@ const val BUILTIN_SHIFT_SWAP  = "__builtin_swap__"
 const val BUILTIN_SHIFT_LEAVE = "__builtin_leave__"
 const val BUILTIN_STATUS_LEAVE = "__builtin_status_leave__"
 const val BUILTIN_STATUS_SWAP  = "__builtin_status_swap__"
-const val BUILTIN_STATUS_OVERTIME = "__builtin_status_overtime__"
+
 const val BUILTIN_SCHEME_ID   = "__builtin_scheme_work__"
 const val NO_SCHEME_ID        = "__no_scheme__"
 
@@ -39,8 +39,26 @@ data class ShiftStatus(
 data class AppliedStatus(
     val statusId: String,
     val startTime: String?   = null,  // HH:mm，可选
-    val endTime: String?     = null   // HH:mm，可选
-)
+    val endTime: String?     = null,  // HH:mm，可选
+    /**
+     * 该状态的时间段是否计为「加班」——**仅对当天生效**，不写回状态定义。
+     *
+     * 勾选后该时间段视为**额外工时**：不从正常班工时里扣减，
+     * 并按当天「计薪方式」归类（工作日→加班工时、周末→周末工时、节假日→节假日工时）。
+     *
+     * 这样任何自定义附加状态都能当加班用，无需依赖某个叫「加班」的状态。
+     */
+    val isOvertime: Boolean  = false
+) {
+    /**
+     * 是否计为「加班」工时：**只由记录上的「计为加班」勾选框决定**（[isOvertime]，仅当天生效）。
+     *
+     * 原内置「加班」附加状态已下线，不再按任何状态 ID 兜底 —— 想让某个附加状态算加班，
+     * 在编辑页勾上「计为加班」即可（任何自定义状态都行）。
+     */
+    val countsAsOvertime: Boolean
+        get() = isOvertime
+}
 
 /** 排班类型 */
 enum class ScheduleType { SHIFT, LEAVE, SWAP, REST }
@@ -73,11 +91,15 @@ val BUILTIN_SHIFTS = listOf(
         startTime = "", endTime = ""),
 )
 
-/** 内置状态类型列表 */
+/**
+ * 内置（不可删除、不可编辑）的附加状态列表：请假、调休。
+ *
+ * 注：原第三个内置状态「加班」已**下线** —— 改用排班编辑页的「计为加班」勾选框（[AppliedStatus.isOvertime]），
+ * 这样任何自定义状态都能当加班用，不必再迁就一个固定状态。
+ */
 val BUILTIN_STATUSES = listOf(
     ShiftStatus(id = BUILTIN_STATUS_LEAVE, name = "请假", color = "#F43F5E", builtIn = true, reportType = "leave"),
     ShiftStatus(id = BUILTIN_STATUS_SWAP,  name = "调休", color = "#78716C", builtIn = true, reportType = "swap"),
-    ShiftStatus(id = BUILTIN_STATUS_OVERTIME, name = "加班", color = "#F59E0B", builtIn = true, reportType = "overtime"),
 )
 
 /** 每日排班记录 */

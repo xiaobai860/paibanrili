@@ -179,12 +179,37 @@ object CalcUtils {
 
     // ── 核心工时计算 ──────────────────────────────────────────────────
 
+    /** 单日工时四桶，由 [calcDayHours] 产出（正班 + 三档计薪桶） */
     data class DayHours(
         val normal: Double   = 0.0,
         val overtime: Double = 0.0,
         val weekend: Double  = 0.0,
         val holiday: Double  = 0.0
     )
+
+    /**
+     * 单日薪资分档（**三档计薪**的唯一产物，由 [calcDaySalaryParts] 生成）。
+     *
+     * 计薪档位**只有三档**（与 [SalaryMode] 一一对应），每档用**自己**的时薪：
+     * - 工作日 → 加班工时 × **加班时薪** [SalaryConfig.overtimeRate]
+     * - 周末　 → 周末工时 × **周末时薪** [SalaryConfig.weekendRate]
+     * - 节假日 → 节假日工时 × **节假日时薪** [SalaryConfig.holidayRate]
+     *
+     * 另：[normal] 为正班工时（仅工作日档内不超过标准时长的部分）按 **正常时薪**
+     * [SalaryConfig.normalRate] 计，它**不属于计薪档位**，只构成「正班收入」。
+     */
+    data class DaySalaryParts(
+        val normal: Double   = 0.0,
+        val overtime: Double = 0.0,
+        val weekend: Double  = 0.0,
+        val holiday: Double  = 0.0
+    ) {
+        /** 三档合计（工作日加班 + 周末 + 节假日），即「非正班收入」 */
+        val bonusTotal: Double get() = overtime + weekend + holiday
+
+        /** 当日工时薪资合计（不含补贴/扣款） */
+        val total: Double get() = normal + bonusTotal
+    }
 
     /**
      * 计算某天的工时，按日期类型自动分类（周末/节假日/工作日）
@@ -217,8 +242,15 @@ object CalcUtils {
             val grainH = if (attendConfig.overtimeGranMin > 0) attendConfig.overtimeGranMin / 60.0 else 0.0
             fun floorGrain(h: Double) =
                 if (grainH > 0) roundD2(floor(h / grainH) * grainH) else roundD2(h)
-            // 加班附加状态：整段时长直接计入加班工时（休息/调休班次不另计正常工时）
-            if (ast.statusId == BUILTIN_STATUS_OVERTIME) return zero.copy(overtime = floorGrain(worked))
+            // 「计为加班」的附加状态整段时长是额外工时（休息/调休班次不另计正常工时），
+            // 并遵循当天计薪方式归类：工作日→加班工时、周末→周末工时、节假日→节假日工时
+            if (ast.countsAsOvertime) {
+                return when (record.salaryMode ?: autoSalaryMode(dateStr)) {
+                    SalaryMode.HOLIDAY -> zero.copy(holiday = floorGrain(worked))
+                    SalaryMode.WEEKEND -> zero.copy(weekend = floorGrain(worked))
+                    SalaryMode.NORMAL  -> zero.copy(overtime = floorGrain(worked))
+                }
+            }
             val mode = record.salaryMode ?: autoSalaryMode(dateStr)
             return when (mode) {
                 SalaryMode.HOLIDAY -> zero.copy(holiday = floorGrain(worked))
@@ -250,7 +282,7 @@ object CalcUtils {
         // 已应用状态时间段扣减
         record.appliedStatus?.let { ast ->
             val isBuiltinLeaveSwap = ast.statusId == BUILTIN_STATUS_LEAVE || ast.statusId == BUILTIN_STATUS_SWAP
-            val isOvertimeStatus = ast.statusId == BUILTIN_STATUS_OVERTIME
+            val isOvertimeStatus = ast.countsAsOvertime
             if (isBuiltinLeaveSwap && ast.startTime == null && ast.endTime == null) {
                 // 内置请假/调休全天（无时间段）：工时直接为0
                 worked = 0.0
@@ -267,6 +299,9 @@ object CalcUtils {
         // 按计薪方式分类
         val mode = record.salaryMode ?: autoSalaryMode(dateStr)
 
+        // 三档归类。⚠️ 有意为之（用户 2026-09-14 确认「保持现状」）：**只有工作日档才拆「正常班小时」**
+        // （= min(实际工时, 正常班时长阈值)，超出部分→加班小时），周末/节假日全天归该档、**不拆正常班小时**
+        // → 周末/节假日没有「正班收入」，全天按周末时薪/节假日时薪计。请勿"修"成先算正常班小时再补差价。
         return when (mode) {
             SalaryMode.HOLIDAY -> zero.copy(holiday = floorGrain(worked))
             SalaryMode.WEEKEND -> zero.copy(weekend = floorGrain(worked))
@@ -280,6 +315,31 @@ object CalcUtils {
             }
         }
     }
+
+    // ── 计薪档位（三档）────────────────────────────────────────────────
+
+    /**
+     * 单日工时 → 金额的**唯一实现**（三档计薪）。
+     *
+     * | 计薪档位 | 自动档判定（见 [autoSalaryMode]） | 工时桶 | 时薪 |
+     * |---|---|---|---|
+     * | 工作日 [SalaryMode.NORMAL]  | 非法定节假日、非周末、非调休补班日 | [DayHours.overtime] | [SalaryConfig.overtimeRate] **加班时薪** |
+     * | 周末　 [SalaryMode.WEEKEND] | 周六/周日，且非节假日、非补班日 | [DayHours.weekend] | [SalaryConfig.weekendRate] **周末时薪** |
+     * | 节假日 [SalaryMode.HOLIDAY] | 法定节假日（优先于周末判定） | [DayHours.holiday] | [SalaryConfig.holidayRate] **节假日时薪** |
+     *
+     * 正班工时 [DayHours.normal] 另按 [SalaryConfig.normalRate] 计（非计薪档位）。
+     *
+     * ⚠️ **所有**金额计算都必须经由此函数（日详情 / 日历格子 / 日明细 / 月汇总）。
+     * 历史 bug：日明细、日历格子、详情页曾各自实现，把周末/节假日工时**一律按加班时薪**计价，
+     * 与 [calcMonthSalary] 的「周末时薪/节假日时薪」不一致 → 同一天的金额在两个页面显示不同。
+     */
+    fun calcDaySalaryParts(hours: DayHours, salaryConfig: SalaryConfig): DaySalaryParts =
+        DaySalaryParts(
+            normal   = hours.normal   * salaryConfig.normalRate,
+            overtime = hours.overtime * salaryConfig.overtimeRate,
+            weekend  = hours.weekend  * salaryConfig.weekendRate,
+            holiday  = hours.holiday  * salaryConfig.holidayRate
+        )
 
     // ── 月工时统计 ────────────────────────────────────────────────────
 
@@ -440,11 +500,12 @@ object CalcUtils {
                 && effectiveType != ScheduleType.SWAP) continue
 
             val hours = calcDayHours(record, date, shifts, breaks, attendConfig)
+            val parts = calcDaySalaryParts(hours, salaryConfig)
 
-            normalSalary   += hours.normal   * salaryConfig.normalRate
-            overtimeSalary += hours.overtime * salaryConfig.overtimeRate
-            weekendSalary  += hours.weekend  * salaryConfig.weekendRate
-            holidaySalary  += hours.holiday  * salaryConfig.holidayRate
+            normalSalary   += parts.normal
+            overtimeSalary += parts.overtime
+            weekendSalary  += parts.weekend
+            holidaySalary  += parts.holiday
 
             for (id in record.extraItemIds) {
                 val item = extraItems.find { it.id == id } ?: continue
@@ -522,11 +583,12 @@ object CalcUtils {
             val shift   = record?.shiftId?.let { id -> shifts.find { it.id == id } }
             val hours   = if (record != null) calcDayHours(record, dateStr, shifts, breaks, attendConfig)
                           else DayHours()
-            val salary  = if (record != null) calcDaySalary(dateStr, record, salaryConfig, shifts, breaks, attendConfig) else 0.0
+            // 三档计薪唯一实现：工作日→加班时薪、周末→周末时薪、节假日→节假日时薪
+            val parts   = calcDaySalaryParts(hours, salaryConfig)
             val extras  = record?.extraItemIds?.mapNotNull { id -> extraItems.find { it.id == id } } ?: emptyList()
             // 当日补贴/扣款合计
             val extrasTotal = extras.sumOf { if (it.type == "allowance") it.amount else -it.amount }
-            val salaryWithExtras = roundD2(salary + extrasTotal)
+            val salaryWithExtras = roundD2(parts.total + extrasTotal)
             result.add(DayScheduleDetail(
                 date          = dateStr,
                 record        = record,
@@ -537,8 +599,10 @@ object CalcUtils {
                 weekendHours  = hours.weekend,
                 holidayHours  = hours.holiday,
                 salary        = salaryWithExtras,
-                normalSalary  = roundD2(hours.normal * salaryConfig.normalRate),
-                overtimeSalary = roundD2((hours.overtime + hours.weekend + hours.holiday) * salaryConfig.overtimeRate),
+                normalSalary  = roundD2(parts.normal),
+                // 「加班收入」= 非正班收入（工作日加班 + 周末 + 节假日），各档按**各自的时薪**计。
+                // 历史 bug：此处曾一律乘加班时薪，导致同一天金额与月汇总/详情页对不上。
+                overtimeSalary = roundD2(parts.bonusTotal),
                 extras        = extras
             ))
         }
@@ -548,43 +612,27 @@ object CalcUtils {
         return result
     }
 
-    private fun calcDaySalary(
-        dateStr: String, record: ScheduleRecord,
-        salaryConfig: SalaryConfig,
-        shifts: List<Shift>,
-        breaks: List<ShiftBreak>,
-        attendConfig: AttendConfig
-    ): Double {
-        // 与 calcMonthSalary 保持一致：通过 shiftId 推导 effectiveType，避免 record.type 字段不准确
-        val effectiveType = when (record.shiftId) {
-            BUILTIN_SHIFT_LEAVE -> ScheduleType.LEAVE
-            BUILTIN_SHIFT_SWAP  -> ScheduleType.SWAP
-            BUILTIN_SHIFT_REST  -> ScheduleType.REST
-            else                -> record.type
-        }
-        if (effectiveType != ScheduleType.SHIFT
-            && effectiveType != ScheduleType.REST
-            && effectiveType != ScheduleType.SWAP) return 0.0
-        val hours = calcDayHours(record, dateStr, shifts, breaks, attendConfig)
-        // 日历显示：周末/节假日工时统一按加班费率计算薪资
-        val displayOvertime = hours.overtime + hours.weekend + hours.holiday
-        return roundD2(
-            hours.normal * salaryConfig.normalRate +
-            displayOvertime * salaryConfig.overtimeRate
-        )
-    }
-
     // ── 周末判断 ──────────────────────────────────────────────────────
 
     /**
-     * 根据日期自动推断计薪方式（供 UI 和 calcDayHours 共用）
+     * **自动档**：根据日期推断当天属于三档计薪中的哪一档（供 UI 与 [calcDayHours] 共用）。
      *
-     * 判定依据是 `HolidayData` 内置的法定节假日/调休数据表。
+     * 判定顺序（自上而下，先命中者胜出）：
+     * 1. **节假日** [SalaryMode.HOLIDAY]：命中 `HolidayData` 法定节假日表。
+     *    节假日**优先于周末**，因此「国庆落在周六/周日」仍算节假日档。
+     * 2. **周末** [SalaryMode.WEEKEND]：周六/周日，且非法定节假日，且**非调休补班日**
+     *    （补班日虽在周末但按上班算，见 [isWeekend]）。
+     * 3. **工作日** [SalaryMode.NORMAL]：其余全部，含调休补班日与所有无法判定的日期兜底。
      *
-     * ⚠️ 兜底行为：当 [dateStr] 的年份超出 `HolidayData.MAX_COVERED_YEAR`（当前 2030）时，
-     * `isLegalHoliday` / `isMakeupDay` 恒为 false，本函数会**退化为「仅按周末判断」**：
+     * 三档与金额的对应关系见 [calcDaySalaryParts]：
+     * 工作日 → 加班时薪、周末 → 周末时薪、节假日 → 节假日时薪。
+     *
+     * ⚠️ 兜底 1（数据覆盖）：当 [dateStr] 的年份超出 `HolidayData.MAX_COVERED_YEAR`（当前 2030）时，
+     * `isLegalHoliday` / `isMakeupDay` 恒为 false，本函数**退化为「仅按周末判断」**：
      * 不会把普通工作日误判为节假日（偏保守），但也识别不出调休补班（周末上班会被按周末计薪）。
      * 可用 `HolidayData.isWithinCoverage(date)` 判断是否处于该退化路径。
+     * ⚠️ 兜底 2（非法入参）：日期格式非法或日期不存在（如 `2026-02-30`）时一律返回
+     * [SalaryMode.NORMAL]，不抛异常——避免一条脏数据打断整月统计。
      *
      * @param dateStr 格式 "YYYY-MM-DD"
      */
@@ -594,6 +642,8 @@ object CalcUtils {
         val y = parts.getOrNull(0)?.toIntOrNull() ?: 0
         val m = parts.getOrNull(1)?.toIntOrNull() ?: 0  // 1-based
         val d = parts.getOrNull(2)?.toIntOrNull() ?: 0
+        // 日期非法（格式错误 / 不存在的日期）→ 兜底工作日，避免 isWeekend 内 LocalDate.of 抛异常
+        if (runCatching { LocalDate.of(y, m, d) }.isFailure) return SalaryMode.NORMAL
         return when {
             HolidayData.isLegalHoliday(dateStr) -> SalaryMode.HOLIDAY
             isWeekend(y, m - 1, d)              -> SalaryMode.WEEKEND

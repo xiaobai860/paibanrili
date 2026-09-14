@@ -563,7 +563,7 @@ class CalendarViewModel @Inject constructor(
         //  - 内置请假/调休：按状态判定（原逻辑）
         //  - 加班：仅当班次为休息/调休（无具体时间段）时才填充，普通班次不进入此分支
         val isBuiltInStatus = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
-        val isOvertimeOnRestSwap = applied?.statusId == BUILTIN_STATUS_OVERTIME && isRestSwap
+        val isOvertimeOnRestSwap = applied?.countsAsOvertime == true && isRestSwap
         val fillStatusTime = isBuiltInStatus || isOvertimeOnRestSwap
         val updated = if (fillStatusTime) {
             // 获取班次时间段作为约束边界
@@ -653,7 +653,7 @@ class CalendarViewModel @Inject constructor(
         val isRestSwap = shift?.builtIn == true && (shift.builtInType == "rest" || shift.builtInType == "swap")
         val fillStatusTime = applied != null && (
             applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP ||
-            (applied.statusId == BUILTIN_STATUS_OVERTIME && isRestSwap)
+            (applied.countsAsOvertime && isRestSwap)
         )
         if (fillStatusTime) {
             scheduleRepo.save(rec.copy(appliedStatus = applied.copy(startTime = null)))
@@ -671,7 +671,7 @@ class CalendarViewModel @Inject constructor(
         val isRestSwap = shift?.builtIn == true && (shift.builtInType == "rest" || shift.builtInType == "swap")
         val fillStatusTime = applied != null && (
             applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP ||
-            (applied.statusId == BUILTIN_STATUS_OVERTIME && isRestSwap)
+            (applied.countsAsOvertime && isRestSwap)
         )
         if (fillStatusTime) {
             scheduleRepo.save(rec.copy(appliedStatus = applied.copy(endTime = null)))

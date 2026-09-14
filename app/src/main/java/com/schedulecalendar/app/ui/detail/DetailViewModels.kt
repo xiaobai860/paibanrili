@@ -121,8 +121,10 @@ class ScheduleDetailViewModel @Inject constructor(
             // 日历显示：周末/节假日工时统一归类为加班工时
             val displayOvertime = h.overtime + h.weekend + h.holiday
             val totalHours = CalcUtils.roundD2(h.normal + displayOvertime)
-            val normalSal = CalcUtils.roundD2(h.normal * salaryConf.normalRate)
-            val overtimeSal = CalcUtils.roundD2(displayOvertime * salaryConf.overtimeRate)
+            // 三档计薪唯一实现：工作日→加班时薪、周末→周末时薪、节假日→节假日时薪（与月汇总同源）
+            val parts = CalcUtils.calcDaySalaryParts(h, salaryConf)
+            val normalSal = CalcUtils.roundD2(parts.normal)
+            val overtimeSal = CalcUtils.roundD2(parts.bonusTotal)
             // 当日补贴/扣款合计
             val extrasTotal = rec.extraItemIds.sumOf { id ->
                 st.extraItems.find { it.id == id }?.let { if (it.type == "allowance") it.amount else -it.amount } ?: 0.0
@@ -192,6 +194,18 @@ class ScheduleDetailViewModel @Inject constructor(
             } else {
                 this
             }
+        }
+    }
+
+    /**
+     * 勾选/取消「计为加班」——**仅对当天生效**，不写回附加状态定义。
+     *
+     * 无附加状态时不产生任何效果（勾选框只在已选状态时展示）。
+     */
+    fun setOvertime(v: Boolean) {
+        updateRecord {
+            val existing = appliedStatus ?: return@updateRecord this
+            copy(appliedStatus = existing.copy(isOvertime = v))
         }
     }
 

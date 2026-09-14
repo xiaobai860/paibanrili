@@ -35,6 +35,7 @@
     <string name="detail_clear_actual_end">清除实际下班</string>
     <string name="detail_status">附加状态</string>
     <string name="detail_no_status">无附加状态</string>
+    <string name="detail_count_as_overtime">计为加班</string>
     <string name="detail_all_day">全天</string>
     <string name="detail_pick_status">选择附加状态</string>
     <string name="detail_extra">补贴 / 扣款</string>

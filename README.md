@@ -25,6 +25,7 @@
 
 ### 工时统计
 - 正常/加班/周末/节假日工时分类统计
+- 附加状态可勾选「计为加班」（**仅当天生效**），加班工时按当天「计薪方式」归类（工作日→加班、周末→周末、节假日→节假日）
 - 迟到/早退次数统计与超限提醒
 - 每日工时柱状图 & 月度趋势图
 - 备注与补贴/扣款记录
@@ -92,8 +93,10 @@
 
 ### 版本号规则
 - `versionName`：展示用版本号 = `年月日 + 两位当天迭代号`，如 `2026091001`（设置页展示的就是它）
-- `versionCode`：系统用独立递增整数，与 `versionName` 无关，**发版时必须保证不小于用户已装版本**，否则覆盖安装失败
-- 当前值：`versionCode = 176`、`versionName = "2026091311"`
+- `versionCode`：系统用的递增整数，**每次发版 +1**，与 `versionName` 无关
+  - ⚠️ 注意：设备上曾装过**日期型**版本（`2026083103`），其值远大于小整数计数器，因此覆盖安装会报 `INSTALL_FAILED_VERSION_DOWNGRADE`。装包需用 `adb install -r -d`（`-d` 允许降级，**保留数据**），或先卸载旧版。
+  - 发版前核对设备真值：`adb shell dumpsys package com.schedulecalendar.app | findstr /C:versionCode`（不要只比对自家历史记录）
+- 当前值：`versionCode = 179`、`versionName = "2026091402"`
 - lint 已屏蔽：`HighAppVersionCode`、`IconLauncherShape`、`IconDuplicates`、`UnusedAttribute`、`NewerVersionAvailable`、`ReportShortcutUsage`
 
 ### 构建命令

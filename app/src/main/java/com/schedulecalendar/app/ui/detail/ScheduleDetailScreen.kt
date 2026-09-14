@@ -296,9 +296,20 @@ fun ScheduleDetailScreen(
 
             // ── 附加状态（与班次一致：单行选择器） ──────────────────────
             if (visibleStatuses.isNotEmpty() && selectedShift != null) {
-                SectionLabel(stringResource(R.string.detail_status))
                 val appliedSt = record.appliedStatus
                 val appliedStatus = appliedSt?.let { st -> visibleStatuses.find { it.id == st.statusId } }
+                // 「计为加班」开关固定在标题行最右侧：仅已选附加状态时出现，
+                // 且请假/调休状态没有加班语义（它们本身就不产生加班工时），同样不显示
+                val st = appliedSt?.takeIf {
+                    it.statusId != BUILTIN_STATUS_LEAVE && it.statusId != BUILTIN_STATUS_SWAP
+                }
+                val overtimeToggle: (@Composable () -> Unit)? = if (st != null) {
+                    { OvertimeToggle(checked = st.isOvertime) { vm.setOvertime(it) } }
+                } else null
+                SectionLabel(
+                    text     = stringResource(R.string.detail_status),
+                    trailing = overtimeToggle
+                )
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = if (appliedStatus != null) MaterialTheme.colorScheme.secondaryContainer
@@ -551,14 +562,51 @@ fun ScheduleDetailScreen(
 
 // ── 辅助组件 ──────────────────────────────────────────────────────────────────
 
+/**
+ * 区块标题。可选 [trailing]：把控件紧贴标题行**最右侧**（如附加状态标题右边的「计为加班」开关）。
+ */
 @Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text     = text,
-        style    = MaterialTheme.typography.labelLarge,
-        color    = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 6.dp)
-    )
+private fun SectionLabel(text: String, trailing: (@Composable () -> Unit)? = null) {
+    Row(
+        modifier          = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text  = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (trailing != null) {
+            Spacer(Modifier.weight(1f))
+            trailing()
+        }
+    }
+}
+
+/**
+ * 标题行最右侧的「计为加班」开关（紧凑形态，整行可点）。
+ * 勾选后该附加状态的时间段按当天「计薪方式」归类（工作日→加班工时、周末→周末工时、节假日→节假日工时）。
+ */
+@Composable
+private fun OvertimeToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier          = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onCheckedChange(!checked) },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked         = checked,
+            onCheckedChange = onCheckedChange
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            stringResource(R.string.detail_count_as_overtime),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (checked) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 }
 
 @Composable

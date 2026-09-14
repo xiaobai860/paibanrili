@@ -62,7 +62,9 @@ fun ShiftStatus.toEntity()       = ShiftStatusEntity(id, name, color, builtIn, r
 private data class AppliedStatusJson(
     val statusId: String,
     val startTime: String?,
-    val endTime: String?
+    val endTime: String?,
+    /** 旧数据无此字段 → Gson 反序列化后为 false，天然向后兼容 */
+    val isOvertime: Boolean = false
 )
 
 /** 解析单个附加状态：兼容旧版数组格式（取第一个）和新版单对象格式 */
@@ -74,17 +76,17 @@ fun parseAppliedStatus(json: String): AppliedStatus? {
         val list: List<AppliedStatusJson> = gson.fromJson(
             trimmed, object : TypeToken<List<AppliedStatusJson>>() {}.type
         ) ?: emptyList()
-        return list.firstOrNull()?.let { AppliedStatus(it.statusId, it.startTime, it.endTime) }
+        return list.firstOrNull()?.let { AppliedStatus(it.statusId, it.startTime, it.endTime, it.isOvertime) }
     }
     // 新格式：单对象 {...}
     return try {
         val obj = gson.fromJson(trimmed, AppliedStatusJson::class.java)
-        AppliedStatus(obj.statusId, obj.startTime, obj.endTime)
+        AppliedStatus(obj.statusId, obj.startTime, obj.endTime, obj.isOvertime)
     } catch (_: Exception) { null }
 }
 
 fun AppliedStatus?.toJson(): String =
-    if (this != null) gson.toJson(AppliedStatusJson(statusId, startTime, endTime))
+    if (this != null) gson.toJson(AppliedStatusJson(statusId, startTime, endTime, isOvertime))
     else "null"
 
 // ── ScheduleRecord ────────────────────────────────────────────────────

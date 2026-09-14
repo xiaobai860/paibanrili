@@ -25,11 +25,14 @@ android {
         minSdk        = 34
         targetSdk     = 36
         // versionName：展示用版本号 = 年月日 + 两位迭代版号（当天第一版 01，第二版 02……）
-        // versionCode：系统用的递增整数，每次发版 +1（不可回退，与 versionName 无关）
-        // 注意：Android 仅比较 versionCode 决定是否允许覆盖安装。请确认已发布版本的 versionCode 高于下方值，
-        // 否则覆盖安装会被系统拒绝（需先卸载旧版）。切勿将 versionCode 回退到已发布版本之下。
-        versionCode   = 176
-        versionName   = "2026091311"
+        // versionCode：系统用的递增整数，**每次发版 +1**，与 versionName 无关。
+        //   ⚠️ 坑（2026-09-14 实测）：设备上曾装过日期型版本 2026083103，远大于小整数计数器，
+        //   一旦 versionCode 低于设备已装版本，覆盖安装会报 INSTALL_FAILED_VERSION_DOWNGRADE；
+        //   而 `-d` 只对 debuggable 包生效、release 包无效 → 只能「完整卸载（不带 -k）→ 安装」。
+        //   （不要为此把 versionCode 改成日期型。）
+        // 注意：Android 仅比较 versionCode 决定是否允许覆盖安装。
+        versionCode   = 179
+        versionName   = "2026091402"
     }
 
     signingConfigs {
