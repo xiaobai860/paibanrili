@@ -96,7 +96,7 @@
 - `versionCode`：系统用的递增整数，**每次发版 +1**，与 `versionName` 无关
   - ⚠️ 注意：设备上曾装过**日期型**版本（`2026083103`），其值远大于小整数计数器，因此覆盖安装会报 `INSTALL_FAILED_VERSION_DOWNGRADE`。装包需用 `adb install -r -d`（`-d` 允许降级，**保留数据**），或先卸载旧版。
   - 发版前核对设备真值：`adb shell dumpsys package com.schedulecalendar.app | findstr /C:versionCode`（不要只比对自家历史记录）
-- 当前值：`versionCode = 179`、`versionName = "2026091402"`
+- 当前值：`versionCode = 181`、`versionName = "2026091404"`
 - lint 已屏蔽：`HighAppVersionCode`、`IconLauncherShape`、`IconDuplicates`、`UnusedAttribute`、`NewerVersionAvailable`、`ReportShortcutUsage`
 
 ### 构建命令

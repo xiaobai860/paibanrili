@@ -298,9 +298,16 @@ fun ScheduleDetailScreen(
             if (visibleStatuses.isNotEmpty() && selectedShift != null) {
                 val appliedSt = record.appliedStatus
                 val appliedStatus = appliedSt?.let { st -> visibleStatuses.find { it.id == st.statusId } }
-                // 「计为加班」开关固定在标题行最右侧：仅已选附加状态时出现，
-                // 且请假/调休状态没有加班语义（它们本身就不产生加班工时），同样不显示
+                // 「计为加班」开关固定在标题行最右侧，需同时满足三个条件才显示：
+                // 1. 已选附加状态；
+                // 2. 该状态不是内置请假/调休 —— 它们本身没有加班语义；
+                // 3. 班次是「**无时段**班次」（内置休息/调休/请假）—— 这类班次不排具体上下班时间，
+                //    工时完全由附加状态的时间段决定，加班只能靠这个开关体现，所以**只在这种情况下显示**；
+                //    有时段的普通班次有自己的上下班时间与正常班阈值，不需要它。
+                val shiftHasNoTime = selectedShift.startTime.isNullOrEmpty() ||
+                        selectedShift.endTime.isNullOrEmpty()
                 val st = appliedSt?.takeIf {
+                    shiftHasNoTime &&
                     it.statusId != BUILTIN_STATUS_LEAVE && it.statusId != BUILTIN_STATUS_SWAP
                 }
                 val overtimeToggle: (@Composable () -> Unit)? = if (st != null) {
@@ -586,20 +593,39 @@ private fun SectionLabel(text: String, trailing: (@Composable () -> Unit)? = nul
 /**
  * 标题行最右侧的「计为加班」开关（紧凑形态，整行可点）。
  * 勾选后该附加状态的时间段按当天「计薪方式」归类（工作日→加班工时、周末→周末工时、节假日→节假日工时）。
+ *
+ * 指示方块自绘 16dp，而不用 M3 [Checkbox]：后者自带 20dp 方块 + 48dp 最小交互区，
+ * 放在标题行里相对 14sp 的标题明显偏大。
  */
 @Composable
 private fun OvertimeToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
         modifier          = Modifier
             .clip(RoundedCornerShape(8.dp))
-            .clickable { onCheckedChange(!checked) },
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Checkbox(
-            checked         = checked,
-            onCheckedChange = onCheckedChange
-        )
-        Spacer(Modifier.width(4.dp))
+        Box(
+            modifier         = Modifier
+                .size(16.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(
+                    if (checked) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceVariant
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (checked) {
+                Icon(
+                    imageVector        = Icons.Default.Check,
+                    contentDescription = null,
+                    modifier           = Modifier.size(12.dp),
+                    tint               = MaterialTheme.colorScheme.onPrimary
+                )
+            }
+        }
+        Spacer(Modifier.width(5.dp))
         Text(
             stringResource(R.string.detail_count_as_overtime),
             style = MaterialTheme.typography.labelLarge,
