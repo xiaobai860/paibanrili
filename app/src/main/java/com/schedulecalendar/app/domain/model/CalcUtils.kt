@@ -392,19 +392,23 @@ object CalcUtils {
                 }
 
                 // 迟到/早退计数（仅普通班次）
+                // ⚠️ 只统计「**实际**迟到 / 早退」：晚于计划上班（或早于计划下班）就计 1 次，
+                //    **与容忍时长无关** —— 否则会出现"明明迟到了，统计页却显示 0 次"。
+                //    容忍时长的作用被限定为：① 详情列表里对该条特别标注是否「超容许」；
+                //    ② 迟到/早退扣款的免罚时限（见 calcMonthSalary）。
                 if (effectiveType == ScheduleType.SHIFT) {
                     val shift = if (record.shiftId != null) shifts.find { s -> s.id == record.shiftId } else null
                     if (shift != null && shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) {
                         if (!record.actualStartTime.isNullOrEmpty()) {
                             val lateMin = timeToMin(record.actualStartTime) - timeToMin(shift.startTime)
-                            if (lateMin > attendConfig.lateToleranceMin) lateCount++
+                            if (lateMin > 0) lateCount++
                         }
                         if (record.actualEndTime != null) {
                             val sS = timeToMin(shift.startTime)
                             val (_, normSE) = normRange(sS, timeToMin(shift.endTime))
                             val (_, normAE) = normRange(sS, timeToMin(record.actualEndTime))
                             val earlyMin = normSE - normAE
-                            if (earlyMin > attendConfig.earlyLeaveToleranceMin) earlyLeaveCount++
+                            if (earlyMin > 0) earlyLeaveCount++
                         }
                     }
                 }
@@ -484,6 +488,9 @@ object CalcUtils {
         var normalSalary = 0.0; var overtimeSalary = 0.0
         var weekendSalary = 0.0; var holidaySalary = 0.0
         var totalSubsidy = 0.0; var totalDeduction = 0.0
+        // 迟到/早退要按「第几次」分档扣款，故先按日期收集分钟数，循环外再统一计算
+        val lateMinutesList  = mutableListOf<Pair<String, Int>>()
+        val earlyMinutesList = mutableListOf<Pair<String, Int>>()
 
         for ((date, record) in schedules) {
             if (!date.startsWith(prefix)) continue
@@ -513,22 +520,31 @@ object CalcUtils {
                 else if (item.type == "deduction") totalDeduction += item.amount
             }
 
-            // 迟到/早退按分钟扣款（仅当配置了费率时）
+            // 收集迟到/早退分钟（**实际**迟到/早退即记录，此处不减容许时长）；
+            // 具体扣多少在循环外按「第几次」统一计算（见 attendanceDeduction）
             val shift = shifts.find { it.id == record.shiftId }
-            if (shift != null && attendConfig.lateDeductionPerMin > 0 && !record.actualStartTime.isNullOrEmpty()) {
-                val lateMin = timeToMin(record.actualStartTime) - timeToMin(shift.startTime)
-                if (lateMin > attendConfig.lateToleranceMin)
-                    totalDeduction += lateMin * attendConfig.lateDeductionPerMin
-            }
-            if (shift != null && attendConfig.earlyLeaveDeductionPerMin > 0 && !record.actualEndTime.isNullOrEmpty()) {
-                val sS = timeToMin(shift.startTime)
-                val (_, normSE) = normRange(sS, timeToMin(shift.endTime))
-                val (_, normAE) = normRange(sS, timeToMin(record.actualEndTime))
-                val earlyMin = normSE - normAE
-                if (earlyMin > attendConfig.earlyLeaveToleranceMin)
-                    totalDeduction += earlyMin * attendConfig.earlyLeaveDeductionPerMin
+            if (shift != null && shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) {
+                if (!record.actualStartTime.isNullOrEmpty()) {
+                    val lateMin = timeToMin(record.actualStartTime) - timeToMin(shift.startTime)
+                    if (lateMin > 0) lateMinutesList += date to lateMin
+                }
+                if (!record.actualEndTime.isNullOrEmpty()) {
+                    val sS = timeToMin(shift.startTime)
+                    val (_, normSE) = normRange(sS, timeToMin(shift.endTime))
+                    val (_, normAE) = normRange(sS, timeToMin(record.actualEndTime))
+                    val earlyMin = normSE - normAE
+                    if (earlyMin > 0) earlyMinutesList += date to earlyMin
+                }
             }
         }
+
+        // 迟到/早退扣款：按日期顺序判断「第几次」——允许次数内只扣超出容许时长的部分，超出后扣全部时长
+        totalDeduction += attendanceDeduction(
+            lateMinutesList, attendConfig.lateToleranceMin, attendConfig.lateAlertCount, attendConfig.lateDeductionPerMin
+        )
+        totalDeduction += attendanceDeduction(
+            earlyMinutesList, attendConfig.earlyLeaveToleranceMin, attendConfig.earlyLeaveAlertCount, attendConfig.earlyLeaveDeductionPerMin
+        )
 
         val totalSalary = salaryConfig.baseSalary + salaryConfig.basePerformance +
                 normalSalary + overtimeSalary + weekendSalary + holidaySalary +
@@ -548,6 +564,31 @@ object CalcUtils {
             housingFundDeduction = salaryConfig.housingFundDeduction,
             totalSalary     = roundD2(totalSalary)
         )
+    }
+
+    /**
+     * 迟到 / 早退扣款（分钟 → 金额），规则（用户 2026-09-16 定稿）：
+     * 1. **未超允许次数** 且 **未超容许时长** → 不扣
+     * 2. **未超允许次数** 但 **超容许时长** → 只扣**超出容许时长的部分**（`minutes - tolerance`）
+     * 3. **超出允许次数之后**的每条 → **全部时长都扣**，不再先减容许时长
+     *
+     * 因为要判断「第几次」是第几次，必须按**日期升序**累计（[entries] 的 first 为 `yyyy-MM-dd`）。
+     */
+    private fun attendanceDeduction(
+        entries: List<Pair<String, Int>>,   // (日期, 迟到/早退分钟)
+        toleranceMin: Int,
+        allowedCount: Int,
+        ratePerMin: Double
+    ): Double {
+        if (ratePerMin <= 0.0) return 0.0
+        var total = 0.0
+        entries.sortedBy { it.first }.forEachIndexed { index, (_, minutes) ->
+            val occurrence = index + 1                       // 第几次（1-based）
+            val chargeable = if (occurrence > allowedCount) minutes
+                             else max(0, minutes - toleranceMin)
+            total += chargeable * ratePerMin
+        }
+        return total
     }
 
     // ── 每日明细（用于工时/薪资页） ────────────────────────────────────

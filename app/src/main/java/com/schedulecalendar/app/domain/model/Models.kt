@@ -149,13 +149,13 @@ data class SalaryConfig(
 data class AttendConfig(
     /** 加班计量粒度（分钟），默认 30 */
     val overtimeGranMin: Int                = 30,
-    /** 迟到容忍时长（分钟），默认 0 */
+    /** 迟到容忍时长（分钟）：**超过**它才计为迟到，默认 0 */
     val lateToleranceMin: Int               = 0,
-    /** 早退容忍时长（分钟），默认 0 */
+    /** 早退容忍时长（分钟）：**超过**它才计为早退，默认 0 */
     val earlyLeaveToleranceMin: Int         = 0,
-    /** 当月迟到次数提醒阈值，0 表示不提醒 */
+    /** 当月迟到次数提醒阈值 = **允许的次数**，**超过**才在统计页警示；默认 0 → 迟到 1 次即警示 */
     val lateAlertCount: Int                 = 0,
-    /** 当月早退次数提醒阈值，0 表示不提醒 */
+    /** 当月早退次数提醒阈值 = **允许的次数**，**超过**才在统计页警示；默认 0 → 早退 1 次即警示 */
     val earlyLeaveAlertCount: Int           = 0,
     /** 正常班标准时长（小时），超出部分计为加班 */
     val normalWorkHoursPerDay: Double       = 0.0,

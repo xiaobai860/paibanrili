@@ -342,16 +342,20 @@ class HoursDetailViewModel @Inject constructor(
                         val rec = d.record ?: return@mapNotNull null
                         val shift = d.shift ?: return@mapNotNull null
                         val actualStart = rec.actualStartTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
-                        val lateMinutes = calcLateMinutes(shift.startTime, actualStart, attendConf.lateToleranceMin)
+                        val lateMinutes = calcLateMinutes(shift.startTime, actualStart)
                         if (lateMinutes <= 0) return@mapNotNull null
+                        // 所有迟到记录都列出来（含容忍时长内的），但**只有超过「迟到容忍时长」的才计入
+                        // 统计页次数** —— 这里把它标成警示 + 文案标注，让人一眼看出哪几条被计了次
+                        val beyond = lateMinutes > attendConf.lateToleranceMin
                         val (asName, asColor) = appliedStatusOf(rec)
                         HoursDetailItem(
                             date = d.date,
                             shiftName = shift.name, shiftColor = shift.color,
                             appliedStatusName = asName, appliedStatusColor = asColor,
                             primaryText = "打卡 $actualStart（计划 ${shift.startTime}）",
-                            highlightText = "迟到 ${lateMinutes}分钟",
-                            isAlert = lateMinutes >= (attendConf.lateAlertCount * attendConf.lateToleranceMin)
+                            highlightText = if (beyond) "迟到 ${lateMinutes}分钟（超容许）"
+                                            else "迟到 ${lateMinutes}分钟（容许内不计次）",
+                            isAlert = beyond
                         )
                     }
                 }
@@ -360,16 +364,19 @@ class HoursDetailViewModel @Inject constructor(
                         val rec = d.record ?: return@mapNotNull null
                         val shift = d.shift ?: return@mapNotNull null
                         val actualEnd = rec.actualEndTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
-                        val earlyMinutes = calcEarlyMinutes(shift.endTime, actualEnd, attendConf.earlyLeaveToleranceMin)
+                        val earlyMinutes = calcEarlyMinutes(shift.endTime, actualEnd)
                         if (earlyMinutes <= 0) return@mapNotNull null
+                        // 同 LATE：全部列出，**超过「早退容忍时长」的才计入次数**并标为警示
+                        val beyond = earlyMinutes > attendConf.earlyLeaveToleranceMin
                         val (asName, asColor) = appliedStatusOf(rec)
                         HoursDetailItem(
                             date = d.date,
                             shiftName = shift.name, shiftColor = shift.color,
                             appliedStatusName = asName, appliedStatusColor = asColor,
                             primaryText = "打卡 $actualEnd（计划 ${shift.endTime}）",
-                            highlightText = "早退 ${earlyMinutes}分钟",
-                            isAlert = earlyMinutes >= (attendConf.earlyLeaveAlertCount * attendConf.earlyLeaveToleranceMin)
+                            highlightText = if (beyond) "早退 ${earlyMinutes}分钟（超容许）"
+                                            else "早退 ${earlyMinutes}分钟（容许内不计次）",
+                            isAlert = beyond
                         )
                     }
                 }
@@ -468,19 +475,16 @@ class HoursDetailViewModel @Inject constructor(
         val isCurrentMonth: Boolean
     )
 
-    /** 计算迟到分钟数（超过容忍阈值才算），返回实际迟到分钟 */
-    private fun calcLateMinutes(planStart: String, actualStart: String, toleranceMin: Int): Int {
-        val p = planStart.toMinutes(); val a = actualStart.toMinutes()
-        val diff = a - p  // 正=迟到 负=早到
-        return if (diff >= toleranceMin) diff else 0
-    }
+    /**
+     * 计算**原始**迟到分钟数（**不扣**容忍时长）：正 = 迟到，≤0 = 未迟到/早到。
+     * 是否「超过容忍时长」由调用方判断，口径与 `CalcUtils` 的迟到计数一致：严格**大于**容忍时长。
+     */
+    private fun calcLateMinutes(planStart: String, actualStart: String): Int =
+        actualStart.toMinutes() - planStart.toMinutes()
 
-    /** 计算早退分钟数 */
-    private fun calcEarlyMinutes(planEnd: String, actualEnd: String, toleranceMin: Int): Int {
-        val p = planEnd.toMinutes(); val a = actualEnd.toMinutes()
-        val diff = p - a  // 正=早退 负=晚退
-        return if (diff >= toleranceMin) diff else 0
-    }
+    /** 计算**原始**早退分钟数（**不扣**容忍时长）：正 = 早退，≤0 = 未早退/晚退 */
+    private fun calcEarlyMinutes(planEnd: String, actualEnd: String): Int =
+        planEnd.toMinutes() - actualEnd.toMinutes()
 
     private fun String.toMinutes(): Int {
         val parts = split(":")

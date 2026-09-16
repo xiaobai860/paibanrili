@@ -77,7 +77,7 @@ private fun AttendConfigSection(
 
         ProtectedNumField("迟到提醒阈值（次）", lateAlert, "0")  { lateAlert   = it; save() }
         ProtectedNumField("早退提醒阈值（次）", earlyAlert, "0") { earlyAlert  = it; save() }
-        Text("提醒阈值设为 0 表示不启用提醒",
+        Text("提醒阈值 = 允许的次数，超过才在统计页警示；默认 0 → 出现 1 次即警示",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, top = 2.dp))

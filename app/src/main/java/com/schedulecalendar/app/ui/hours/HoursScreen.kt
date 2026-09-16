@@ -278,18 +278,21 @@ private fun HoursStatsGrid(
         }
         // 行4：迟到次数（可点击）+ 早退次数（可点击）
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val lateAlert = actual.lateCount >= attendCfg.lateAlertCount && actual.lateCount > 0
-            val earlyAlert = actual.earlyLeaveCount >= attendCfg.earlyLeaveAlertCount && actual.earlyLeaveCount > 0
+            // 「当月提醒阈值」= **允许的次数**，**超过**才用警示样式；它不影响是否展示、数值与能否点开详情：
+            //   次数 > 阈值 → 警示色 + 警示角标（默认阈值 0 → 出现 1 次即警示，0 次则不警示）
+            //   次数 ≤ 阈值 → 正常色照常显示（次数是多少就显示多少，也不隐藏），同样可点开看详情
+            val lateAlert = actual.lateCount > attendCfg.lateAlertCount
+            val earlyAlert = actual.earlyLeaveCount > attendCfg.earlyLeaveAlertCount
             HoursStatCell(label = "迟到次数",
                 value  = "${actual.lateCount}次",
-                valueColor = if (lateAlert) Color(0xFFF97316) else if (actual.lateCount > 0) MaterialTheme.colorScheme.error else null,
+                valueColor = if (lateAlert) Color(0xFFF97316) else null,
                 alertBadge = lateAlert,
                 clickable = actual.lateCount > 0,
                 onClick = onLateClick,
                 modifier = Modifier.weight(1f))
             HoursStatCell(label = "早退次数",
                 value  = "${actual.earlyLeaveCount}次",
-                valueColor = if (earlyAlert) Color(0xFFF97316) else if (actual.earlyLeaveCount > 0) MaterialTheme.colorScheme.error else null,
+                valueColor = if (earlyAlert) Color(0xFFF97316) else null,
                 alertBadge = earlyAlert,
                 clickable = actual.earlyLeaveCount > 0,
                 onClick = onEarlyClick,
