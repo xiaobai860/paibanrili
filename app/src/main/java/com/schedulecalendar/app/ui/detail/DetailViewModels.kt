@@ -344,8 +344,8 @@ class HoursDetailViewModel @Inject constructor(
                         val actualStart = rec.actualStartTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
                         val lateMinutes = calcLateMinutes(shift.startTime, actualStart)
                         if (lateMinutes <= 0) return@mapNotNull null
-                        // 所有迟到记录都列出来（含容忍时长内的），但**只有超过「迟到容忍时长」的才计入
-                        // 统计页次数** —— 这里把它标成警示 + 文案标注，让人一眼看出哪几条被计了次
+                        // 所有迟到记录都列出来（含容忍时长内的）。容许内的**不显示任何标签**；
+                        // 只有**超过「迟到容忍时长」**的那条才标一个警示符号，让人一眼看出它被计了次
                         val beyond = lateMinutes > attendConf.lateToleranceMin
                         val (asName, asColor) = appliedStatusOf(rec)
                         HoursDetailItem(
@@ -353,8 +353,7 @@ class HoursDetailViewModel @Inject constructor(
                             shiftName = shift.name, shiftColor = shift.color,
                             appliedStatusName = asName, appliedStatusColor = asColor,
                             primaryText = "打卡 $actualStart（计划 ${shift.startTime}）",
-                            highlightText = if (beyond) "迟到 ${lateMinutes}分钟（超容许）"
-                                            else "迟到 ${lateMinutes}分钟（容许内不计次）",
+                            highlightText = if (beyond) "\u26A0" else "",
                             isAlert = beyond
                         )
                     }
@@ -366,7 +365,7 @@ class HoursDetailViewModel @Inject constructor(
                         val actualEnd = rec.actualEndTime.takeIf { !it.isNullOrEmpty() } ?: return@mapNotNull null
                         val earlyMinutes = calcEarlyMinutes(shift.endTime, actualEnd)
                         if (earlyMinutes <= 0) return@mapNotNull null
-                        // 同 LATE：全部列出，**超过「早退容忍时长」的才计入次数**并标为警示
+                        // 同 LATE：全部列出。容许内的不显示任何标签，只有超过「早退容忍时长」的才标警示符号
                         val beyond = earlyMinutes > attendConf.earlyLeaveToleranceMin
                         val (asName, asColor) = appliedStatusOf(rec)
                         HoursDetailItem(
@@ -374,8 +373,7 @@ class HoursDetailViewModel @Inject constructor(
                             shiftName = shift.name, shiftColor = shift.color,
                             appliedStatusName = asName, appliedStatusColor = asColor,
                             primaryText = "打卡 $actualEnd（计划 ${shift.endTime}）",
-                            highlightText = if (beyond) "早退 ${earlyMinutes}分钟（超容许）"
-                                            else "早退 ${earlyMinutes}分钟（容许内不计次）",
+                            highlightText = if (beyond) "\u26A0" else "",
                             isAlert = beyond
                         )
                     }
