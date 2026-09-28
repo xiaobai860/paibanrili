@@ -509,12 +509,8 @@ fun ScheduleDetailScreen(
             statuses   = visibleStatuses,
             selectedId = record?.appliedStatus?.statusId,
             onSelect   = { id ->
-                // toggleStatus：选中相同状态 = 取消；选不同状态 = 替换；id=null = 取消当前
-                if (id == null) {
-                    record?.appliedStatus?.statusId?.let { vm.toggleStatus(it, null, null) }
-                } else {
-                    vm.toggleStatus(id, null, null)
-                }
+                // 再次点击已选状态保持不变；仅"无"选项（id=null）才取消附加状态
+                if (id == null) vm.clearStatus() else vm.toggleStatus(id, null, null)
                 showStatusPicker = false
             },
             onDismiss = { if (BuildConfig.DEBUG) Log.e("WBD", "detail: status sheet dismiss"); showStatusPicker = false }
@@ -697,6 +693,7 @@ private fun StatusTimeDialog(
 
     // 将时间约束到班次范围内（null=无需修正）
     fun clampToShift(t: String, isStart: Boolean): String? {
+        if (t.isBlank()) return null    // 未填的时间段不约束、也不自动填充
         if (!hasShiftRange) return null  // 班次无时间段（休息/调休）→ 不约束
         val sel = CalcUtils.timeToMin(t)
         val ss = CalcUtils.timeToMin(defaultStartTime)

@@ -153,14 +153,20 @@ class ScheduleDetailViewModel @Inject constructor(
     fun setShift(shiftId: String?) {
         val shift = _state.value.shifts.find { it.id == shiftId }
         val linkedIds = shift?.linkedExtraIds ?: emptyList()
+        val isRestOrSwap = shift?.builtInType == "rest" || shift?.builtInType == "swap"
         updateRecord {
+            // 改为内置休息/调休班次时：若当前附加状态是内置请假/调休，直接清空
+            // （需求要求内置班次隐藏这两个状态，否则名称会因被过滤而显示为空、时间段却残留）
+            val clearedApplied = if (isRestOrSwap &&
+                (appliedStatus?.statusId == BUILTIN_STATUS_LEAVE || appliedStatus?.statusId == BUILTIN_STATUS_SWAP)
+            ) null else appliedStatus
             if (linkedIds.isEmpty()) {
                 // 换班即清打卡：改班次时清空当天打卡时间，widget 不再显示旧班次遗留
-                copy(shiftId = shiftId, actualStartTime = null, actualEndTime = null)
+                copy(shiftId = shiftId, appliedStatus = clearedApplied, actualStartTime = null, actualEndTime = null)
             } else {
                 // 合并班次默认关联项目到当前已选项目（去重）
                 val merged = (extraItemIds + linkedIds).distinct()
-                copy(shiftId = shiftId, extraItemIds = merged, actualStartTime = null, actualEndTime = null)
+                copy(shiftId = shiftId, extraItemIds = merged, appliedStatus = clearedApplied, actualStartTime = null, actualEndTime = null)
             }
         }
     }
@@ -177,8 +183,8 @@ class ScheduleDetailViewModel @Inject constructor(
         updateRecord {
             val existing = appliedStatus
             if (existing?.statusId == statusId) {
-                // 取消选中
-                copy(appliedStatus = null)
+                // 再次点击同一状态：保持不变（取消只通过"无"选项，见 clearStatus）
+                this
             } else {
                 // 选中新状态（单选，替换已有）
                 copy(appliedStatus = AppliedStatus(statusId, startTime, endTime))
@@ -186,10 +192,14 @@ class ScheduleDetailViewModel @Inject constructor(
         }
     }
 
+    /** 取消附加状态（仅底部弹窗的"无"选项调用） */
+    fun clearStatus() = updateRecord { copy(appliedStatus = null) }
+
     fun updateStatusTime(statusId: String, startTime: String?, endTime: String?) {
         updateRecord {
             val existing = appliedStatus
             if (existing?.statusId == statusId) {
+                // 不自动填充：用户填什么存什么（只填开始不补结束、只填结束不补开始）
                 copy(appliedStatus = existing.copy(startTime = startTime, endTime = endTime))
             } else {
                 this
