@@ -23,9 +23,13 @@ import androidx.lifecycle.ViewModel
 import androidx.navigation.NavController
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
+import com.schedulecalendar.app.widget.CalendarGlance3x4Receiver
+import com.schedulecalendar.app.widget.CalendarGlanceReceiver
+import com.schedulecalendar.app.widget.ScheduleGlanceReceiver
 import com.schedulecalendar.app.widget.WIDGET_TYPE_CALENDAR
 import com.schedulecalendar.app.widget.WIDGET_TYPE_SCHEDULE
 import com.schedulecalendar.app.widget.WidgetConfigActivity
+import com.schedulecalendar.app.widget.WidgetPinHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
@@ -63,7 +67,7 @@ fun WidgetSettingsScreen(
                         modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        "长按桌面空白处 → 添加小组件 → 选择「排班日历」或「快捷打卡」，再回来配置样式",
+                        "点击下方每张卡片的「添加到桌面」即可一键钉到桌面；也可长按桌面空白处 → 添加小组件 → 选择「排班日历」或「快捷打卡」，再回来配置样式",
                         style = MaterialTheme.typography.bodySmall,
                         lineHeight = 18.sp,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -72,7 +76,7 @@ fun WidgetSettingsScreen(
                 }
             }
 
-            // ── 日历小组件配置 ────────────────────────────────────────
+            // ── 日历小组件配置（3×3） ──────────────────────────────────
             WidgetConfigCard(
                 icon = Icons.Default.CalendarMonth,
                 iconBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
@@ -85,7 +89,25 @@ fun WidgetSettingsScreen(
                         putExtra("widget_type", WIDGET_TYPE_CALENDAR)
                     }
                     context.startActivity(intent)
-                }
+                },
+                onAddToHome = { WidgetPinHelper.pin(context, CalendarGlanceReceiver::class.java) }
+            )
+
+            // ── 日历小组件配置（3×4） ──────────────────────────────────
+            WidgetConfigCard(
+                icon = Icons.Default.CalendarMonth,
+                iconBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                iconTint = MaterialTheme.colorScheme.primary,
+                title = "日历小组件配置（大）",
+                description = "3×4 网格式日历，展示当月排班、工时与附加状态",
+                badge = "3×4",
+                onClick = {
+                    val intent = Intent(context, WidgetConfigActivity::class.java).apply {
+                        putExtra("widget_type", WIDGET_TYPE_CALENDAR)
+                    }
+                    context.startActivity(intent)
+                },
+                onAddToHome = { WidgetPinHelper.pin(context, CalendarGlance3x4Receiver::class.java) }
             )
 
             // ── 快捷打卡配置 ──────────────────────────────────────────
@@ -101,7 +123,8 @@ fun WidgetSettingsScreen(
                         putExtra("widget_type", WIDGET_TYPE_SCHEDULE)
                     }
                     context.startActivity(intent)
-                }
+                },
+                onAddToHome = { WidgetPinHelper.pin(context, ScheduleGlanceReceiver::class.java) }
             )
 
             Spacer(Modifier.weight(1f))
@@ -124,7 +147,8 @@ private fun WidgetConfigCard(
     title: String,
     description: String,
     badge: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onAddToHome: () -> Unit
 ) {
     ElevatedCard(
         modifier = Modifier
@@ -133,57 +157,74 @@ private fun WidgetConfigCard(
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
-            // 图标容器（圆形浅色底）
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(iconBg, CircleShape),
-                contentAlignment = Alignment.Center
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
-            }
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    // 尺寸徽章
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Text(
-                            badge,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
+                // 图标容器（圆形浅色底）
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(iconBg, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
                 }
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    description,
-                    style = MaterialTheme.typography.bodySmall,
-                    lineHeight = 18.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        // 尺寸徽章
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                badge,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        description,
+                        style = MaterialTheme.typography.bodySmall,
+                        lineHeight = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
                 )
             }
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
-            )
+
+            Spacer(Modifier.height(14.dp))
+            // 一键添加到桌面
+            OutlinedButton(
+                onClick = onAddToHome,
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("添加到桌面", fontWeight = FontWeight.Medium)
+            }
         }
     }
 }
