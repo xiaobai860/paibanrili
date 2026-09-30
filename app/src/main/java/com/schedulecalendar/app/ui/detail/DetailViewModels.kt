@@ -154,20 +154,24 @@ class ScheduleDetailViewModel @Inject constructor(
         val shift = _state.value.shifts.find { it.id == shiftId }
         val linkedIds = shift?.linkedExtraIds ?: emptyList()
         val isRestOrSwap = shift?.builtInType == "rest" || shift?.builtInType == "swap"
+        // 班次变更后，补贴/扣款区域以「新班次的绑定配置」为准：
+        // 直接把 extraItemIds 重置为新班次 linkedExtraIds（未绑定时为空列表），
+        // 而非沿用/合并上一班次关联的项目。这样无论新班次是否绑定、或快速连续切换，
+        // 勾选状态和显示的项目内容都能正确反映当前班次。
         updateRecord {
             // 改为内置休息/调休班次时：若当前附加状态是内置请假/调休，直接清空
             // （需求要求内置班次隐藏这两个状态，否则名称会因被过滤而显示为空、时间段却残留）
             val clearedApplied = if (isRestOrSwap &&
                 (appliedStatus?.statusId == BUILTIN_STATUS_LEAVE || appliedStatus?.statusId == BUILTIN_STATUS_SWAP)
             ) null else appliedStatus
-            if (linkedIds.isEmpty()) {
-                // 换班即清打卡：改班次时清空当天打卡时间，widget 不再显示旧班次遗留
-                copy(shiftId = shiftId, appliedStatus = clearedApplied, actualStartTime = null, actualEndTime = null)
-            } else {
-                // 合并班次默认关联项目到当前已选项目（去重）
-                val merged = (extraItemIds + linkedIds).distinct()
-                copy(shiftId = shiftId, extraItemIds = merged, appliedStatus = clearedApplied, actualStartTime = null, actualEndTime = null)
-            }
+            // 换班即清打卡：改班次时清空当天打卡时间，widget 不再显示旧班次遗留
+            copy(
+                shiftId = shiftId,
+                extraItemIds = linkedIds,
+                appliedStatus = clearedApplied,
+                actualStartTime = null,
+                actualEndTime = null
+            )
         }
     }
     fun setActualStart(t: String)  = updateRecord { copy(actualStartTime = t.ifBlank { null }) }
