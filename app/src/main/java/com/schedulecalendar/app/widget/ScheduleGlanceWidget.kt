@@ -664,4 +664,5 @@ interface WidgetClockEntryPoint {
     fun shiftStatusRepository(): ShiftStatusRepository
     fun appPreferences(): AppPreferences
     fun reminderScheduler(): ReminderScheduler
+    fun widgetRefreshScheduler(): WidgetRefreshScheduler
 }

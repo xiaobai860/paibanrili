@@ -8,6 +8,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.schedulecalendar.app.reminder.ReminderScheduler
 import com.schedulecalendar.app.widget.WidgetClockEntryPoint
+import com.schedulecalendar.app.widget.WidgetRefreshScheduler
 import com.schedulecalendar.app.widget.WidgetRefreshWorker
 import com.schedulecalendar.app.widget.syncAllWidgets
 import dagger.hilt.android.EntryPointAccessors
@@ -34,12 +35,15 @@ class ScheduleApp : Application() {
     /** 上下班提醒调度器（通过 Hilt EntryPoint 获取，供应用级钩子统一触发重排） */
     private lateinit var reminderScheduler: ReminderScheduler
 
+    /** 小组件精确刷新调度器（关键时间点准时刷新组件，弥补 15min worker/Doze 的延迟） */
+    private lateinit var widgetRefreshScheduler: WidgetRefreshScheduler
+
     override fun onCreate() {
         super.onCreate()
-        // 通过 Hilt EntryPoint 取得提醒调度器（与小组件数据变更信号复用同一入口）
-        reminderScheduler = EntryPointAccessors.fromApplication(
-            this, WidgetClockEntryPoint::class.java
-        ).reminderScheduler()
+        // 通过 Hilt EntryPoint 取得提醒调度器与小组件刷新调度器（与小组件数据变更信号复用同一入口）
+        val ep = EntryPointAccessors.fromApplication(this, WidgetClockEntryPoint::class.java)
+        reminderScheduler = ep.reminderScheduler()
+        widgetRefreshScheduler = ep.widgetRefreshScheduler()
         // 小组件周期刷新兜底：事件驱动为主，WorkManager 15min 周期兜底
         scheduleWidgetPeriodicRefresh()
         // 核心：任何排班/班次/附加状态数据变更 → 自动重新计算并刷新全部小组件（事件驱动，无需手动刷新）
@@ -113,6 +117,8 @@ class ScheduleApp : Application() {
                 .collect {
                     runCatching { syncAllWidgets(this@ScheduleApp) }
                     runCatching { reminderScheduler.scheduleActiveReminders() }
+                    // 排班/班次/状态变更可能改动班次时刻 → 重排小组件刷新闹钟，保持关键时间点准确
+                    runCatching { widgetRefreshScheduler.scheduleWidgetRefreshes() }
                 }
         }
         // 进程冷启动（如桌面组件点击唤醒进程）后同步一次，保证组件始终是最新数据；
@@ -121,6 +127,8 @@ class ScheduleApp : Application() {
             delay(1000)
             runCatching { syncAllWidgets(this@ScheduleApp) }
             runCatching { reminderScheduler.scheduleActiveReminders() }
+            // 冷启动即开始「精确刷新链」，保证后续无人打开应用也能在关键时间点准时刷新
+            runCatching { widgetRefreshScheduler.scheduleWidgetRefreshes() }
         }
     }
 

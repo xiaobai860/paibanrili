@@ -106,6 +106,11 @@
             android:name=".widget.WidgetPinnedReceiver"
             android:exported="false" />
 
+        <!-- 小组件精确刷新闹钟接收器（由 WidgetRefreshScheduler 以显式 Intent 触发，无需 intent-filter） -->
+        <receiver
+            android:name=".widget.WidgetRefreshReceiver"
+            android:exported="false" />
+
         <!-- 上下班提醒闹钟接收器 -->
         <receiver
             android:name=".reminder.AlarmReceiver"

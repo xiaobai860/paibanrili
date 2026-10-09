@@ -3,6 +3,7 @@ package com.schedulecalendar.app.widget
 
 import android.content.Context
 import android.util.Log
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import com.google.gson.Gson
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
@@ -77,8 +78,10 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
         Log.d("WIDGET_SYNC", "syncAllWidgets 2x1 shift=${widgetData.shiftName} showIn=${widgetData.showClockIn} showOut=${widgetData.showClockOut} rest=${widgetData.restMessage}")
         ScheduleGlanceWidget.updateWidgetData(context, widgetData)
 
-        // 日历组件：按已存储的显示月份重新计算
-        refreshCalendarWidgets(context, scheduleRepo, shifts, statusMap)
+        // 日历组件：仅当存在日历组件实例时才回源重算整月（无实例则跳过，省一次整月查询+逐日计算）
+        if (hasCalendarWidgetInstance(context)) {
+            refreshCalendarWidgets(context, scheduleRepo, shifts, statusMap)
+        }
         Log.d("WIDGET_SYNC", "syncAllWidgets done")
         true
     } catch (e: Exception) {
@@ -431,6 +434,17 @@ private fun computeClockInWidgetData(
         nextShiftFooter = nextShiftFooter
     )
 }
+
+/**
+ * 是否存在任一日历组件实例（3x3 或 3x4）。
+ * 无实例时 [syncAllWidgets] 可跳过整月日历重算（省一次 getByMonth + 逐日计算）。
+ * 异常时保守返回 true（宁可多算一次，也不让已放置的组件显示不出数据）。
+ */
+private suspend fun hasCalendarWidgetInstance(context: Context): Boolean = runCatching {
+    val manager = GlanceAppWidgetManager(context)
+    manager.getGlanceIds(CalendarGlanceWidget::class.java).isNotEmpty() ||
+        manager.getGlanceIds(Calendar3x4GlanceWidget::class.java).isNotEmpty()
+}.getOrDefault(true)
 
 /** 按已存储的显示月份，从数据库重新计算日历组件数据（覆盖 3x3 与 3x4）。 */
 private suspend fun refreshCalendarWidgets(
