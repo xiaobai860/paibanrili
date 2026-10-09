@@ -68,7 +68,7 @@ class ReminderScheduler @Inject constructor(
         const val CALENDAR_REMINDER_PREFIX = "[上下班提醒] "
         /** 日历提醒事件保留窗口：前 3 天 ~ 后 5 天 */
         private const val REMINDER_PAST_DAYS = 3
-        private const val REMINDER_FUTURE_DAYS = 5
+        private const val REMINDER_FUTURE_DAYS = 7
     }
 
     private val alarmManager: AlarmManager by lazy {

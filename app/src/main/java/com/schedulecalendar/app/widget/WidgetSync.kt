@@ -352,7 +352,7 @@ private fun computeClockInWidgetData(
     if (targetDate == today && todayRest && !overriddenByNightShift) {
         if (!todayHasStatus) {
             // S1：休息文案，无按钮
-            restMessage = "好好休息一下哦！"
+            restMessage = "好好放松一下哦！"
         } else {
             // S3：上班卡全天可见；下班卡自点击上班卡后持续至次日截止
             val st = todayStatus.startTime ?: ""

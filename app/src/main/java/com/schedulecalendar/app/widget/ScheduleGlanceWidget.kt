@@ -39,6 +39,7 @@ import dagger.hilt.components.SingletonComponent
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
+import com.schedulecalendar.app.reminder.ReminderScheduler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -660,4 +661,5 @@ interface WidgetClockEntryPoint {
     fun shiftRepository(): ShiftRepository
     fun shiftStatusRepository(): ShiftStatusRepository
     fun appPreferences(): AppPreferences
+    fun reminderScheduler(): ReminderScheduler
 }
