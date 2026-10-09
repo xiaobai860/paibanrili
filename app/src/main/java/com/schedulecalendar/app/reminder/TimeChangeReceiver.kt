@@ -40,7 +40,7 @@ class TimeChangeReceiver : BroadcastReceiver() {
         (context.applicationContext as ScheduleApp).appScope.launch(Dispatchers.IO) {
             try {
                 // 按当前方式统一重排（基于绝对毫秒，时区变更后需重建）
-                scheduler.scheduleActiveReminders()
+                scheduler.scheduleActiveReminders(force = true)
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {

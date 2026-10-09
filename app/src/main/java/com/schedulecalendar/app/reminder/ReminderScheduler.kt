@@ -19,6 +19,8 @@ import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_SWAP
 import com.schedulecalendar.app.domain.model.CalcUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -75,6 +77,20 @@ class ReminderScheduler @Inject constructor(
         context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     }
 
+    /**
+     * 串行化锁：所有会「先取消再创建」的重排操作（scheduleActiveReminders / rescheduleCalendarReminders）
+     * 都在此锁内执行，避免开机/时间变更/数据变更/回到前台等多个协程并发重排时，
+     * 出现「删全部日历事件」与「重建」交错导致的重复事件或状态不一致。
+     */
+    private val scheduleMutex = Mutex()
+
+    /**
+     * 上次成功重排的配置+排班签名（进程内存，不持久化）。
+     * 同一会话内若签名未变（设置与排班均无变化）则整轮重排可跳过；
+     * 进程因重启/更新而重建时此值为 null，自然触发一次全量重排。
+     */
+    private var lastScheduledSignature: String? = null
+
     init {
         createNotificationChannel()
     }
@@ -104,29 +120,80 @@ class ReminderScheduler @Inject constructor(
      * - [METHOD_NOTIFY]：仅本应用通知栏，使用 setExactAndAllowWhileIdle 独立精确闹钟，
      *   到点直接弹通知栏（不依赖系统闹钟 app、不依赖系统日历），无需应用常驻后台
      */
-    suspend fun scheduleActiveReminders() {
-        val enabled = prefs.getReminderEnabled()
-        if (!enabled) {
-            cancelAllReminders()
-            cleanupCalendarReminders()
-            cancelNotifyBarReminders()
-            return
-        }
-        when (prefs.getReminderMethod()) {
-            METHOD_CALENDAR -> scheduleFixedReminders()
-            METHOD_NOTIFY -> {
-                // 仅通知栏模式：清理另两种模式的残留，注册独立精确闹钟
+    /**
+     * 统一调度入口：根据当前提醒方式分派到具体实现。
+     * 应在应用启动、排班变更、设置变更、开机、时间/时区变更后调用。
+     *
+     * 所有「取消+创建」动作都在 [scheduleMutex] 内串行执行，避免多协程并发重排竞态。
+     *
+     * @param force 为 true 时忽略「签名未变」跳过逻辑、强制全量重排。
+     *             开机、应用更新、时间/时区变更、设置变更等「必须保证重排生效」的场景应传 true；
+     *             回到前台 / 冷启动 / 数据变更等「可能冗余」的场景用默认 false，
+     *             当配置与排班均未变化时直接跳过整轮重排（日历方式尤其受益，省去大量 ContentProvider 往返）。
+     */
+    suspend fun scheduleActiveReminders(force: Boolean = false) {
+        scheduleMutex.withLock {
+            // 同一会话内、设置与窗口内排班均不变时跳过整轮重排；
+            // 跨时区/改时间/重启等需要重排的场景由调用方以 force=true 强制，或进程重启后签名置空自然重排。
+            val signature = computeScheduleSignature()
+            if (!force && signature == lastScheduledSignature) return@withLock
+            lastScheduledSignature = signature
+
+            val enabled = prefs.getReminderEnabled()
+            if (!enabled) {
                 cancelAllReminders()
                 cleanupCalendarReminders()
-                scheduleNotifyBarReminders()
-            }
-            else -> {
-                // 闹钟模式：清理日历/通知栏残留
-                cleanupCalendarReminders()
                 cancelNotifyBarReminders()
-                scheduleFixedReminders()
+                return@withLock
+            }
+            when (prefs.getReminderMethod()) {
+                METHOD_CALENDAR -> scheduleFixedReminders()
+                METHOD_NOTIFY -> {
+                    // 仅通知栏模式：清理另两种模式的残留，注册独立精确闹钟
+                    cancelAllReminders()
+                    cleanupCalendarReminders()
+                    scheduleNotifyBarReminders()
+                }
+                else -> {
+                    // 闹钟模式：清理日历/通知栏残留
+                    cleanupCalendarReminders()
+                    cancelNotifyBarReminders()
+                    scheduleFixedReminders()
+                }
             }
         }
+    }
+
+    /**
+     * 计算当前「提醒配置 + 窗口内排班」的轻量签名。
+     * 仅当该签名与上次成功重排一致时才可安全跳过整轮重排：
+     * 开关 / 方式 / 上下班提前量 / 窗口内排班班次及其上下班时间 / 附加状态任一变化都会改变签名。
+     * 注意：签名不含绝对毫秒——跨时区或手动改时间导致的「同一排班、不同触发时刻」由调用方以 force=true 处理。
+     */
+    private suspend fun computeScheduleSignature(): String {
+        val sb = StringBuilder()
+        sb.append(prefs.getReminderEnabled()).append('|')
+        sb.append(prefs.getReminderMethod()).append('|')
+        sb.append(prefs.getReminderClockIn()).append('|')
+        sb.append(prefs.getReminderClockOut()).append('|')
+        sb.append(prefs.getReminderClockInMinutes()).append('|')
+        sb.append(prefs.getReminderClockOutMinutes()).append('|')
+        val today = LocalDate.now()
+        for (dayOffset in -REMINDER_PAST_DAYS..REMINDER_FUTURE_DAYS) {
+            val date = today.plusDays(dayOffset.toLong())
+            val record = getShiftForDate(date.toString())
+            val shiftId = record?.shiftId ?: ""
+            val shiftTimes = getShiftTimes(shiftId)
+            val st = record?.appliedStatus
+            sb.append(date).append(':')
+                .append(shiftId).append(':')
+                .append(shiftTimes?.first ?: "").append(':')
+                .append(shiftTimes?.second ?: "").append(':')
+                .append(st?.statusId ?: "").append(':')
+                .append(st?.startTime ?: "").append(':')
+                .append(st?.endTime ?: "").append(';')
+        }
+        return sb.toString()
     }
 
     /**
@@ -185,7 +252,8 @@ class ReminderScheduler @Inject constructor(
                         advanceMinutes = clockInMinutes,
                         isClockIn = true,
                         shiftName = shiftTimes.third,
-                        notifyBar = notifyBar
+                        notifyBar = notifyBar,
+                        skipExistenceCheck = true
                     )
                 }
                 if (clockOutEnabled && clockOutTime.isNotBlank()) {
@@ -195,7 +263,8 @@ class ReminderScheduler @Inject constructor(
                         advanceMinutes = clockOutMinutes,
                         isClockIn = false,
                         shiftName = shiftTimes.third,
-                        notifyBar = notifyBar
+                        notifyBar = notifyBar,
+                        skipExistenceCheck = true
                     )
                 }
             }
@@ -388,7 +457,8 @@ class ReminderScheduler @Inject constructor(
      */
     fun cancelAllReminders() {
         val today = LocalDate.now()
-        for (dayOffset in -(REMINDER_PAST_DAYS + 4)..(REMINDER_FUTURE_DAYS + 4)) {
+        // 注册窗口严格为 [-PAST .. +FUTURE]，跨午夜下班提醒会推后一天故上限 +1；无需更宽的范围
+        for (dayOffset in -REMINDER_PAST_DAYS..(REMINDER_FUTURE_DAYS + 1)) {
             val date = today.plusDays(dayOffset.toLong())
             for (isClockIn in listOf(true, false)) {
                 val requestCode = (date.toEpochDay().toInt() * 10) + (if (isClockIn) 1 else 2)
@@ -516,7 +586,8 @@ class ReminderScheduler @Inject constructor(
     /** 取消「仅通知栏」模式注册的所有精确闹钟 */
     fun cancelNotifyBarReminders() {
         val today = LocalDate.now()
-        for (dayOffset in -(REMINDER_PAST_DAYS + 4)..(REMINDER_FUTURE_DAYS + 4)) {
+        // 与 cancelAllReminders 一致：精确注册窗口 [-PAST .. +FUTURE]，跨午夜 +1
+        for (dayOffset in -REMINDER_PAST_DAYS..(REMINDER_FUTURE_DAYS + 1)) {
             val date = today.plusDays(dayOffset.toLong())
             for (isClockIn in listOf(true, false)) {
                 val requestCode = getNotifyBarRequestCode(date, isClockIn)
@@ -547,7 +618,9 @@ class ReminderScheduler @Inject constructor(
         advanceMinutes: Int,
         isClockIn: Boolean,
         shiftName: String,
-        notifyBar: Boolean = true
+        notifyBar: Boolean = true,
+        /** 调用方已先 force-clean 全部旧事件时置 true，跳过「查重」省去一次 ContentProvider 查询 */
+        skipExistenceCheck: Boolean = false
     ) {
         try {
             val timeParts = timeStr.split(":")
@@ -562,9 +635,11 @@ class ReminderScheduler @Inject constructor(
             }
             val dateStr = date.toString()
 
-            // 检查是否已存在，避免重复创建
-            val existingId = calendarRepo.findEventByDateAndTitle(dateStr, title)
-            if (existingId != null) return
+            // 检查是否已存在，避免重复创建（force-clean 后调用可跳过以省去一次查询）
+            if (!skipExistenceCheck) {
+                val existingId = calendarRepo.findEventByDateAndTitle(dateStr, title)
+                if (existingId != null) return
+            }
 
             val triggerTime = date.atTime(LocalTime.of(hour, minute))
                 .minusMinutes(advanceMinutes.toLong())
@@ -626,45 +701,49 @@ class ReminderScheduler @Inject constructor(
      * 与总开关/提醒方式无关：即使当前为闹钟模式，也会清理可能残留的日历事件。
      */
     suspend fun rescheduleCalendarReminders() {
-        try {
-            forceCleanupCalendarReminders()
-            val enabled = prefs.getReminderEnabled()
-            val method = prefs.getReminderMethod()
-            if (!enabled || method != "calendar") return
+        scheduleMutex.withLock {
+            try {
+                forceCleanupCalendarReminders()
+                val enabled = prefs.getReminderEnabled()
+                val method = prefs.getReminderMethod()
+                if (!enabled || method != "calendar") return
 
-            val clockInEnabled = prefs.getReminderClockIn()
-            val clockOutEnabled = prefs.getReminderClockOut()
-            val clockInMinutes = prefs.getReminderClockInMinutes()
-            val clockOutMinutes = prefs.getReminderClockOutMinutes()
-            if (!clockInEnabled && !clockOutEnabled) return
+                val clockInEnabled = prefs.getReminderClockIn()
+                val clockOutEnabled = prefs.getReminderClockOut()
+                val clockInMinutes = prefs.getReminderClockInMinutes()
+                val clockOutMinutes = prefs.getReminderClockOutMinutes()
+                if (!clockInEnabled && !clockOutEnabled) return
 
-            val today = LocalDate.now()
-            for (dayOffset in -REMINDER_PAST_DAYS..REMINDER_FUTURE_DAYS) {
-                val date = today.plusDays(dayOffset.toLong())
-                val record = getShiftForDate(date.toString()) ?: continue
-                val shiftTimes = getShiftTimes(record.shiftId) ?: continue
-                val effectiveTimes = computeEffectiveReminderTimes(
-                    shiftTimes.first, shiftTimes.second, record.appliedStatus
-                ) ?: continue
-                val (clockInTime, clockOutTime) = effectiveTimes
-                val isCrossMidnight = CalcUtils.timeToMin(clockOutTime) < CalcUtils.timeToMin(clockInTime)
-                val clockOutDate = if (isCrossMidnight) date.plusDays(1) else date
+                val today = LocalDate.now()
+                for (dayOffset in -REMINDER_PAST_DAYS..REMINDER_FUTURE_DAYS) {
+                    val date = today.plusDays(dayOffset.toLong())
+                    val record = getShiftForDate(date.toString()) ?: continue
+                    val shiftTimes = getShiftTimes(record.shiftId) ?: continue
+                    val effectiveTimes = computeEffectiveReminderTimes(
+                        shiftTimes.first, shiftTimes.second, record.appliedStatus
+                    ) ?: continue
+                    val (clockInTime, clockOutTime) = effectiveTimes
+                    val isCrossMidnight = CalcUtils.timeToMin(clockOutTime) < CalcUtils.timeToMin(clockInTime)
+                    val clockOutDate = if (isCrossMidnight) date.plusDays(1) else date
 
-                if (clockInEnabled && clockInTime.isNotBlank()) {
-                    scheduleCalendarReminder(
-                        date = date, timeStr = clockInTime, advanceMinutes = clockInMinutes,
-                        isClockIn = true, shiftName = shiftTimes.third, notifyBar = true
-                    )
+                    if (clockInEnabled && clockInTime.isNotBlank()) {
+                        scheduleCalendarReminder(
+                            date = date, timeStr = clockInTime, advanceMinutes = clockInMinutes,
+                            isClockIn = true, shiftName = shiftTimes.third, notifyBar = true,
+                            skipExistenceCheck = true
+                        )
+                    }
+                    if (clockOutEnabled && clockOutTime.isNotBlank()) {
+                        scheduleCalendarReminder(
+                            date = clockOutDate, timeStr = clockOutTime, advanceMinutes = clockOutMinutes,
+                            isClockIn = false, shiftName = shiftTimes.third, notifyBar = true,
+                            skipExistenceCheck = true
+                        )
+                    }
                 }
-                if (clockOutEnabled && clockOutTime.isNotBlank()) {
-                    scheduleCalendarReminder(
-                        date = clockOutDate, timeStr = clockOutTime, advanceMinutes = clockOutMinutes,
-                        isClockIn = false, shiftName = shiftTimes.third, notifyBar = true
-                    )
-                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 

@@ -58,7 +58,7 @@ class ReminderSettingsViewModel @Inject constructor(
             // 首次进入时写入默认配置（启用提醒 + 仅通知栏 + 通知栏开启），并立即注册提醒
             val justInitialized = prefs.ensureReminderDefaults()
             if (justInitialized) {
-                scheduler.scheduleActiveReminders()
+                scheduler.scheduleActiveReminders(force = true)
             }
             val enabled = prefs.getReminderEnabled()
             val method = prefs.getReminderMethod()
@@ -89,7 +89,7 @@ class ReminderSettingsViewModel @Inject constructor(
                 prefs.saveReminderNotifyBar(true)
             } else {
                 // 关闭总开关后，立即清理三种提醒方式（闹钟/日历/仅通知栏）的残留调度
-                scheduler.scheduleActiveReminders()
+                scheduler.scheduleActiveReminders(force = true)
             }
             _state.update { it.copy(enabled = newEnabled) }
         }
@@ -170,7 +170,7 @@ class ReminderSettingsViewModel @Inject constructor(
      */
     fun applyChanges() {
         viewModelScope.launch {
-            scheduler.scheduleActiveReminders()
-        }
+            scheduler.scheduleActiveReminders(force = true)
+            }
     }
 }

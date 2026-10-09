@@ -1,4 +1,6 @@
 ﻿// app/src/main/java/com/schedulecalendar/app/widget/CalendarGlanceWidget.kt
+@file:Suppress("RestrictedApi") // Glance 1.2.0 误将 ColorProvider 标为同 library group 限制，此处为已知问题的官方推荐绕过方式
+
 package com.schedulecalendar.app.widget
 
 import android.content.Context
