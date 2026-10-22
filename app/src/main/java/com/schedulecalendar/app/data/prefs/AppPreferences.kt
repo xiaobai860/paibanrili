@@ -230,9 +230,6 @@ class AppPreferences @Inject constructor(
     suspend fun saveReminderEnabled(enabled: Boolean) = context.dataStore.edit {
         it[KEY_REMINDER_ENABLED] = enabled.toString()
     }
-    val reminderEnabledFlow: Flow<Boolean> = context.dataStore.data.map {
-        it[KEY_REMINDER_ENABLED] == "true"
-    }
 
     /**
      * 提醒方式："calendar"=日历提醒，"alarm"=精确闹钟提醒。
@@ -266,9 +263,6 @@ class AppPreferences @Inject constructor(
     /** 保存提醒方式（归一化：非 "calendar" 一律写 "alarm"，避免旧值/备份还原写入已移除的方式） */
     suspend fun saveReminderMethod(method: String) = context.dataStore.edit {
         it[KEY_REMINDER_METHOD] = normalizeReminderMethod(method)
-    }
-    val reminderMethodFlow: Flow<String> = context.dataStore.data.map {
-        normalizeReminderMethod(it[KEY_REMINDER_METHOD])
     }
 
     /** 旧版「仅通知栏」方式遗留闹钟是否已一次性清理 */
@@ -307,17 +301,6 @@ class AppPreferences @Inject constructor(
     suspend fun saveReminderNotifyBar(enabled: Boolean) = context.dataStore.edit {
         it[KEY_REMINDER_NOTIFY_BAR] = enabled.toString()
     }
-    val reminderNotifyBarFlow: Flow<Boolean> = context.dataStore.data.map {
-        it[KEY_REMINDER_NOTIFY_BAR] != "false"
-    }
-
-    val reminderSettingsFlow = kotlinx.coroutines.flow.combine(
-        reminderEnabledFlow, reminderMethodFlow
-    ) { enabled, method ->
-        ReminderSettingsSnapshot(enabled, method)
-    }
-
-    data class ReminderSettingsSnapshot(val enabled: Boolean, val method: String)
 
     /** 已禁用的日历账户 ID 列表 */
     suspend fun getDisabledAccountIds(): Set<Long> =
