@@ -56,7 +56,8 @@ object LunarCalendar {
         val lunarDay = solarDay.getLunarDay()
         val lunarMonthObj = lunarDay.getLunarMonth()
         val lunarYear = lunarMonthObj.getLunarYear().getYear()
-        val lunarMonthWithLeap = lunarMonthObj.getMonthWithLeap()
+        // getMonth() 返回 1~12 的月份数；是否闰月由 isLeap() 单独判断（避免使用已废弃的 getMonthWithLeap()）
+        val lunarMonthNum = lunarMonthObj.getMonth()
         val lunarDayNum = lunarDay.getDay()
         val isLeap = lunarMonthObj.isLeap()
         val sixtyCycleDay = lunarDay.getSixtyCycleDay()
@@ -65,15 +66,15 @@ object LunarCalendar {
         val dayGanZhi = sixtyCycleDay.getSixtyCycle().getName()
         val zodiac = sixtyCycleDay.getYear().getEarthBranch().getZodiac().getName()
         val monthText = if (isLeap) {
-            "闰" + lunarMonth[kotlin.math.abs(lunarMonthWithLeap) - 1] + "月"
+            "闰" + lunarMonth[lunarMonthNum - 1] + "月"
         } else {
-            lunarMonth[lunarMonthWithLeap - 1] + "月"
+            lunarMonth[lunarMonthNum - 1] + "月"
         }
         val dayText = this.lunarDay[lunarDayNum - 1]
 
         return LunarDate(
             lunarYear = lunarYear,
-            lunarMonth = kotlin.math.abs(lunarMonthWithLeap),
+            lunarMonth = lunarMonthNum,
             lunarDay = lunarDayNum,
             isLeap = isLeap,
             yearGanZhi = yearGanZhi,
