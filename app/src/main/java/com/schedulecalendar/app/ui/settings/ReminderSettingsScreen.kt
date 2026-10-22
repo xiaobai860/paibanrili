@@ -113,7 +113,7 @@ fun ReminderSettingsScreen(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            "开启后根据排班记录自动发送提醒，可选择闹钟、日历或仅通知栏方式",
+                            "开启后根据排班记录自动发送提醒，可选择精确闹钟或日历方式",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -148,7 +148,7 @@ fun ReminderSettingsScreen(
                             CompactChoiceChip(
                                 selected = state.method == "alarm",
                                 onClick = { vm.setMethod("alarm") },
-                                label = "闹钟提醒",
+                                label = "精确闹钟提醒",
                                 modifier = Modifier.weight(1f)
                             )
                             CompactChoiceChip(
@@ -157,19 +157,13 @@ fun ReminderSettingsScreen(
                                 label = "日历提醒",
                                 modifier = Modifier.weight(1f)
                             )
-                            CompactChoiceChip(
-                                selected = state.method == "notify",
-                                onClick = { vm.setMethod("notify") },
-                                label = "仅通知栏",
-                                modifier = Modifier.weight(1f)
-                            )
                         }
 
                         Text(
-                            when (state.method) {
-                                "alarm" -> "使用系统闹钟精确触发提醒（系统闹钟 UI 可见）"
-                                "calendar" -> "通过创建日历事件并设置提醒来触发"
-                                else -> "仅由本应用通知栏推送提醒，不依赖系统闹钟或日历，无需后台常驻即可准点提醒"
+                            if (state.method == "calendar") {
+                                "通过创建日历事件并设置提醒来触发，事件存在系统日历中最可靠（杀进程/重启/ROM 清理闹钟均不丢）"
+                            } else {
+                                "以「系统闹钟」最高优先级精确触发（免疫省电/Doze，系统会显示下一个闹钟图标）；到点由本应用弹通知，不会写入系统时钟 App 的闹钟列表"
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant

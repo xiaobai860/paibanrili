@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.data.calendar.CalendarEventRepository
@@ -59,12 +58,10 @@ class ReminderScheduler @Inject constructor(
         const val NOTIFICATION_ID_CLOCK_IN = 1001
         const val NOTIFICATION_ID_CLOCK_OUT = 1002
 
-        /** 提醒方式：精确闹钟 */
+        /** 提醒方式：精确闹钟（AlarmManager.setAlarmClock，最高优先级、免疫省电/Doze） */
         const val METHOD_ALARM = "alarm"
         /** 提醒方式：系统日历事件 */
         const val METHOD_CALENDAR = "calendar"
-        /** 提醒方式：仅本应用通知栏（独立精确闹钟 + 通知栏推送，不依赖系统闹钟/日历） */
-        const val METHOD_NOTIFY = "notify"
 
         /** 日历提醒事件标题前缀，用于管理和清理 */
         const val CALENDAR_REMINDER_PREFIX = "[上下班提醒] "
@@ -114,15 +111,10 @@ class ReminderScheduler @Inject constructor(
      * 统一调度入口：根据当前提醒方式分派到具体实现。
      * 应在应用启动、排班变更、设置变更、开机、时间/时区变更后调用。
      *
-     * 支持三种提醒方式：
-     * - [METHOD_ALARM]：使用 AlarmManager.setAlarmClock() 精确闹钟（系统闹钟 UI + 通知栏）
+     * 支持两种提醒方式：
+     * - [METHOD_ALARM]：精确闹钟提醒，使用 AlarmManager.setAlarmClock()（最高优先级、免疫省电/Doze），
+     *   到点由 [AlarmReceiver] 弹本应用通知栏
      * - [METHOD_CALENDAR]：创建系统日历事件并设置提醒，由系统日历应用触发通知
-     * - [METHOD_NOTIFY]：仅本应用通知栏，使用 setExactAndAllowWhileIdle 独立精确闹钟，
-     *   到点直接弹通知栏（不依赖系统闹钟 app、不依赖系统日历），无需应用常驻后台
-     */
-    /**
-     * 统一调度入口：根据当前提醒方式分派到具体实现。
-     * 应在应用启动、排班变更、设置变更、开机、时间/时区变更后调用。
      *
      * 所有「取消+创建」动作都在 [scheduleMutex] 内串行执行，避免多协程并发重排竞态。
      *
@@ -139,25 +131,21 @@ class ReminderScheduler @Inject constructor(
             if (!force && signature == lastScheduledSignature) return@withLock
             lastScheduledSignature = signature
 
+            // 旧版「仅通知栏」方式已移除：一次性清理其遗留的独立精确闹钟（requestCode 基线 3/4），
+            // 否则这些残留闹钟会按旧的提前分钟数继续触发，造成时间不准的重复通知。
+            cleanupLegacyNotifyReminders()
+
             val enabled = prefs.getReminderEnabled()
             if (!enabled) {
                 cancelAllReminders()
                 cleanupCalendarReminders()
-                cancelNotifyBarReminders()
                 return@withLock
             }
             when (prefs.getReminderMethod()) {
                 METHOD_CALENDAR -> scheduleFixedReminders()
-                METHOD_NOTIFY -> {
-                    // 仅通知栏模式：清理另两种模式的残留，注册独立精确闹钟
-                    cancelAllReminders()
-                    cleanupCalendarReminders()
-                    scheduleNotifyBarReminders()
-                }
                 else -> {
-                    // 闹钟模式：清理日历/通知栏残留
+                    // 精确闹钟模式：清理日历残留后注册 setAlarmClock 闹钟
                     cleanupCalendarReminders()
-                    cancelNotifyBarReminders()
                     scheduleFixedReminders()
                 }
             }
@@ -473,124 +461,21 @@ class ReminderScheduler @Inject constructor(
     }
 
     /**
-     * 「仅通知栏」模式调度：遍历未来 7 天排班，用 setExactAndAllowWhileIdle 注册独立精确闹钟。
+     * 一次性清理旧版「仅通知栏」方式遗留的独立精确闹钟。
      *
-     * 与闹钟/日历模式的关键区别：
-     * - 使用 setExactAndAllowWhileIdle 而不是 setAlarmClock，
-     *   不会在系统闹钟 UI 留下记录，也不会创建系统日历事件，
-     *   到点后由 [AlarmReceiver] 直接弹本应用通知栏通知。
-     * - 同样由系统进程到点唤醒，无需应用常驻后台（满足「无后台推送」诉求）。
-     * - 需要 USE_EXACT_ALARM 权限（Android 13+ 已声明），无需用户手动授权。
+     * 该方式已移除（与「精确闹钟」在呈现上重复：都是本应用弹通知）。旧版用
+     * `setExactAndAllowWhileIdle` + requestCode 基线 3/4 注册（区别于精确闹钟的 1/2），
+     * 若不清掉，这些残留闹钟会按**旧的提前分钟数**继续触发，导致时间不准的重复通知。
+     * 用 DataStore 标记保证只执行一次；与当前提醒方式/开关无关，禁用提醒时也应清理。
      */
-    private suspend fun scheduleNotifyBarReminders() {
-        // setExactAndAllowWhileIdle 需精确闹钟权限（Android 12+ SCHEDULE_EXACT_ALARM
-        // 或已声明的 USE_EXACT_ALARM）。无权限时跳过注册避免崩溃，并清理旧闹钟。
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !alarmManager.canScheduleExactAlarms()
-        ) {
-            cancelNotifyBarReminders()
-            return
-        }
-
-        val clockInEnabled = prefs.getReminderClockIn()
-        val clockOutEnabled = prefs.getReminderClockOut()
-        val clockInMinutes = prefs.getReminderClockInMinutes()
-        val clockOutMinutes = prefs.getReminderClockOutMinutes()
-
-        if (!clockInEnabled && !clockOutEnabled) {
-            cancelNotifyBarReminders()
-            return
-        }
-
+    private suspend fun cleanupLegacyNotifyReminders() {
+        if (prefs.getNotifyMethodCleaned()) return
         val today = LocalDate.now()
-        for (dayOffset in -REMINDER_PAST_DAYS..REMINDER_FUTURE_DAYS) {
-            val date = today.plusDays(dayOffset.toLong())
-            val record = getShiftForDate(date.toString()) ?: continue
-            val shiftTimes = getShiftTimes(record.shiftId) ?: continue
-
-            val effectiveTimes = computeEffectiveReminderTimes(
-                shiftTimes.first, shiftTimes.second, record.appliedStatus
-            ) ?: continue
-            val (clockInTime, clockOutTime) = effectiveTimes
-
-            val isCrossMidnight = CalcUtils.timeToMin(clockOutTime) < CalcUtils.timeToMin(clockInTime)
-            val clockOutDate = if (isCrossMidnight) date.plusDays(1) else date
-
-            if (clockInEnabled && clockInTime.isNotBlank()) {
-                scheduleNotifyBarReminder(
-                    date = date, timeStr = clockInTime,
-                    advanceMinutes = clockInMinutes, isClockIn = true,
-                    shiftName = shiftTimes.third
-                )
-            }
-            if (clockOutEnabled && clockOutTime.isNotBlank()) {
-                scheduleNotifyBarReminder(
-                    date = clockOutDate, timeStr = clockOutTime,
-                    advanceMinutes = clockOutMinutes, isClockIn = false,
-                    shiftName = shiftTimes.third
-                )
-            }
-        }
-    }
-
-    /**
-     * 注册单个「仅通知栏」精确闹钟。
-     * 使用 setExactAndAllowWhileIdle：系统到点唤醒并投递广播，无需应用后台常驻。
-     */
-    private fun scheduleNotifyBarReminder(
-        date: LocalDate,
-        timeStr: String,
-        advanceMinutes: Int,
-        isClockIn: Boolean,
-        shiftName: String
-    ) {
-        try {
-            val timeParts = timeStr.split(":")
-            val hour = timeParts[0].toIntOrNull() ?: return
-            val minute = timeParts[1].toIntOrNull() ?: return
-
-            val triggerTime = date.atTime(LocalTime.of(hour, minute))
-                .minusMinutes(advanceMinutes.toLong())
-                .atZone(ZoneId.systemDefault())
-                .toInstant()
-                .toEpochMilli()
-
-            // 不设置过去的提醒
-            if (triggerTime <= System.currentTimeMillis()) return
-
-            val intent = Intent(context, AlarmReceiver::class.java).apply {
-                putExtra(EXTRA_IS_CLOCK_IN, isClockIn)
-                putExtra(EXTRA_DATE, date.toString())
-                putExtra(EXTRA_TIME, timeStr)
-                putExtra(EXTRA_SHIFT_NAME, shiftName)
-            }
-            val requestCode = getNotifyBarRequestCode(date, isClockIn)
-            val pendingIntent = PendingIntent.getBroadcast(
-                context, requestCode, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            // 仅在 AlarmManager 就绪时注册（低电耗/待机下仍会被系统排队触发）
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent
-            )
-        } catch (_: Exception) {
-        }
-    }
-
-    /** 「仅通知栏」模式请求码（与闹钟/日历模式的 requestCode 区间错开，避免互相取消） */
-    private fun getNotifyBarRequestCode(date: LocalDate, isClockIn: Boolean): Int {
-        // 用 20 为基数，区别于 scheduleReminder 的 *10 + (1|2)
-        return (date.toEpochDay().toInt() * 10) + (if (isClockIn) 3 else 4)
-    }
-
-    /** 取消「仅通知栏」模式注册的所有精确闹钟 */
-    fun cancelNotifyBarReminders() {
-        val today = LocalDate.now()
-        // 与 cancelAllReminders 一致：精确注册窗口 [-PAST .. +FUTURE]，跨午夜 +1
+        // 覆盖与注册窗口一致的区间（含跨午夜下班提醒 +1 天）
         for (dayOffset in -REMINDER_PAST_DAYS..(REMINDER_FUTURE_DAYS + 1)) {
             val date = today.plusDays(dayOffset.toLong())
             for (isClockIn in listOf(true, false)) {
-                val requestCode = getNotifyBarRequestCode(date, isClockIn)
+                val requestCode = (date.toEpochDay().toInt() * 10) + (if (isClockIn) 3 else 4)
                 val intent = Intent(context, AlarmReceiver::class.java)
                 val pendingIntent = PendingIntent.getBroadcast(
                     context, requestCode, intent,
@@ -599,6 +484,7 @@ class ReminderScheduler @Inject constructor(
                 alarmManager.cancel(pendingIntent)
             }
         }
+        prefs.setNotifyMethodCleaned()
     }
 
     /**

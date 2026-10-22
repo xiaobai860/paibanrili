@@ -121,14 +121,17 @@ class ScheduleApp : Application() {
                     runCatching { widgetRefreshScheduler.scheduleWidgetRefreshes() }
                 }
         }
-        // 进程冷启动（如桌面组件点击唤醒进程）后同步一次，保证组件始终是最新数据；
-        // 同时重排一次提醒，覆盖「仅点小组件唤醒进程、未进应用」的场景。
+        // 进程一起来【立即】注册上下班提醒闹钟 + 小组件刷新闹钟（不做任何延迟）：
+        // 冷启动往往是被闹钟/组件在后台唤醒的，无可见 Activity，进程随时可能被系统回收；
+        // 若延迟注册，进程在延迟窗口内被杀就会导致提醒闹钟一直缺失（表现为「不提醒」）。
+        appScope.launch {
+            runCatching { reminderScheduler.scheduleActiveReminders() }
+            runCatching { widgetRefreshScheduler.scheduleWidgetRefreshes() }
+        }
+        // 组件数据回源同步可稍延迟（避免冷启动抢资源，留时间给进程稳定），保留 1s
         appScope.launch {
             delay(1000)
             runCatching { syncAllWidgets(this@ScheduleApp) }
-            runCatching { reminderScheduler.scheduleActiveReminders() }
-            // 冷启动即开始「精确刷新链」，保证后续无人打开应用也能在关键时间点准时刷新
-            runCatching { widgetRefreshScheduler.scheduleWidgetRefreshes() }
         }
     }
 

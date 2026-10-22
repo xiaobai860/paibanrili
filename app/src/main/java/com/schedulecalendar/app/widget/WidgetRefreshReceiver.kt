@@ -30,6 +30,9 @@ class WidgetRefreshReceiver : BroadcastReceiver() {
                 // 重新调度下一批关键时间点，保证链条自维持
                 val ep = EntryPointAccessors.fromApplication(app, WidgetClockEntryPoint::class.java)
                 ep.widgetRefreshScheduler().scheduleWidgetRefreshes()
+                // 自愈：本进程是被这条闹钟唤醒的，说明部分闹钟仍存活；顺带 force 重排上下班提醒，
+                // 防止 ROM 清理导致的提醒闹钟缺失长期得不到恢复。
+                ep.reminderScheduler().scheduleActiveReminders(force = true)
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {

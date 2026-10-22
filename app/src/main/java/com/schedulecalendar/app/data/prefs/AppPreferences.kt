@@ -62,6 +62,8 @@ class AppPreferences @Inject constructor(
         val KEY_REMINDER_CLOCK_OUT_MINUTES = intPreferencesKey("reminder_clock_out_minutes")
         val KEY_REMINDER_NOTIFY_BAR        = stringPreferencesKey("reminder_notify_bar")
         val KEY_REMINDER_INITIALIZED      = stringPreferencesKey("reminder_initialized")
+        /** 旧版「仅通知栏」提醒方式遗留闹钟是否已一次性清理（该方式已移除） */
+        val KEY_NOTIFY_METHOD_CLEANED     = stringPreferencesKey("notify_method_cleaned")
         val KEY_DISABLED_ACCOUNT_IDS     = stringPreferencesKey("disabled_calendar_accounts")
         val KEY_ACCOUNT_CATEGORIES         = stringPreferencesKey("account_categories")
         val KEY_ACCOUNTS_INITIALIZED     = stringPreferencesKey("accounts_initialized")
@@ -232,12 +234,21 @@ class AppPreferences @Inject constructor(
         it[KEY_REMINDER_ENABLED] == "true"
     }
 
-    /** 提醒方式："calendar"=日历提醒，"alarm"=闹钟提醒，"notify"=仅通知栏 */
+    /**
+     * 提醒方式："calendar"=日历提醒，"alarm"=精确闹钟提醒。
+     *
+     * 旧值 "notify"（仅通知栏）已移除——它与「精确闹钟」在呈现上重复（都是本应用弹通知），
+     * 仅调度 API 不同。此处把历史遗留的 "notify" 一律归一为 "alarm"。
+     */
     suspend fun getReminderMethod(): String =
-        context.dataStore.data.first()[KEY_REMINDER_METHOD] ?: "notify"
+        normalizeReminderMethod(context.dataStore.data.first()[KEY_REMINDER_METHOD])
+
+    /** 归一化提醒方式：仅 "calendar" 保留，其余（含已移除的 "notify" 与 null）一律为 "alarm" */
+    private fun normalizeReminderMethod(method: String?): String =
+        if (method == "calendar") "calendar" else "alarm"
 
     /**
-     * 首次进入提醒设置时写入默认配置：启用提醒 + 方式「仅通知栏」+ 通知栏开启。
+     * 首次进入提醒设置时写入默认配置：启用提醒 + 方式「精确闹钟」+ 通知栏开启。
      * 仅在从未显式初始化过时才写入，避免覆盖用户后续主动关闭/修改。
      * 应在 loadSettings 最早调用。返回 true 表示本次为首次写入（需同步调度一次）。
      */
@@ -246,17 +257,25 @@ class AppPreferences @Inject constructor(
         if (prefsData[KEY_REMINDER_INITIALIZED] == "true") return false
         context.dataStore.edit {
             it[KEY_REMINDER_ENABLED] = "true"
-            it[KEY_REMINDER_METHOD] = "notify"
+            it[KEY_REMINDER_METHOD] = "alarm"
             it[KEY_REMINDER_NOTIFY_BAR] = "true"
             it[KEY_REMINDER_INITIALIZED] = "true"
         }
         return true
     }
+    /** 保存提醒方式（归一化：非 "calendar" 一律写 "alarm"，避免旧值/备份还原写入已移除的方式） */
     suspend fun saveReminderMethod(method: String) = context.dataStore.edit {
-        it[KEY_REMINDER_METHOD] = method
+        it[KEY_REMINDER_METHOD] = normalizeReminderMethod(method)
     }
     val reminderMethodFlow: Flow<String> = context.dataStore.data.map {
-        it[KEY_REMINDER_METHOD] ?: "notify"
+        normalizeReminderMethod(it[KEY_REMINDER_METHOD])
+    }
+
+    /** 旧版「仅通知栏」方式遗留闹钟是否已一次性清理 */
+    suspend fun getNotifyMethodCleaned(): Boolean =
+        context.dataStore.data.first()[KEY_NOTIFY_METHOD_CLEANED] == "true"
+    suspend fun setNotifyMethodCleaned() = context.dataStore.edit {
+        it[KEY_NOTIFY_METHOD_CLEANED] = "true"
     }
 
     /** 提醒内容："both" / "clock_in" / "clock_out" */

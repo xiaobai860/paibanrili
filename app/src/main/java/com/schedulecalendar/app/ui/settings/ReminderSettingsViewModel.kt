@@ -22,7 +22,7 @@ import javax.inject.Inject
  */
 data class ReminderSettingsState(
     val enabled: Boolean = false,
-    val method: String = "notify",           // "alarm" / "calendar" / "notify" 之一
+    val method: String = "alarm",           // "alarm"=精确闹钟提醒 / "calendar"=日历提醒
     val reminderClockIn: Boolean = true,     // 提醒上班
     val reminderClockOut: Boolean = false,   // 提醒下班
     val clockInAdvanceMinutes: Int = 15,     // 上班提前分钟
@@ -55,7 +55,7 @@ class ReminderSettingsViewModel @Inject constructor(
 
     private fun loadSettings() {
         viewModelScope.launch {
-            // 首次进入时写入默认配置（启用提醒 + 仅通知栏 + 通知栏开启），并立即注册提醒
+            // 首次进入时写入默认配置（启用提醒 + 精确闹钟方式 + 通知栏开启），并立即注册提醒
             val justInitialized = prefs.ensureReminderDefaults()
             if (justInitialized) {
                 scheduler.scheduleActiveReminders(force = true)
@@ -88,7 +88,7 @@ class ReminderSettingsViewModel @Inject constructor(
                 // 开启总开关后，通知栏提醒默认开启（保证提醒一定会弹通知）
                 prefs.saveReminderNotifyBar(true)
             } else {
-                // 关闭总开关后，立即清理三种提醒方式（闹钟/日历/仅通知栏）的残留调度
+                // 关闭总开关后，立即清理两种提醒方式（精确闹钟/日历）的残留调度
                 scheduler.scheduleActiveReminders(force = true)
             }
             _state.update { it.copy(enabled = newEnabled) }
@@ -166,7 +166,7 @@ class ReminderSettingsViewModel @Inject constructor(
 
     /**
      * 退出页面时统一应用：根据当前设置执行一次调度。
-     * 统一入口会按当前方式（闹钟 / 日历 / 仅通知栏）自动清理其它模式残留并重新注册。
+     * 统一入口会按当前方式（精确闹钟 / 日历）自动清理其它模式残留并重新注册。
      */
     fun applyChanges() {
         viewModelScope.launch {
