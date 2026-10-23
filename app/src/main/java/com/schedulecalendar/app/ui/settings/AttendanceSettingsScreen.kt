@@ -2,6 +2,8 @@
 package com.schedulecalendar.app.ui.settings
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -81,7 +83,7 @@ private fun AttendConfigSection(
     // 有改动才允许保存（避免误点生成空档案）
     val dirty = buildConfig() != config
 
-    Column(modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // ── 当前生效口径（只读）+ 生效日期选择 ──
         CurrentProfileCard(profile)
