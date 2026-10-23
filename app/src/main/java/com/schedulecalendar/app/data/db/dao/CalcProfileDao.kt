@@ -15,10 +15,12 @@ interface CalcProfileDao {
     suspend fun getAll(): List<CalcProfileEntity>
 
     /** 列表展示用：最新生效的在前（UI 要求最新的在最上面） */
-    @Query("SELECT * FROM calc_profiles ORDER BY effectiveFrom DESC")
+    @Query("SELECT * FROM calc_profiles ORDER BY effectiveFrom DESC, createdAt DESC")
     suspend fun getAllDesc(): List<CalcProfileEntity>
 
-    @Query("SELECT * FROM calc_profiles WHERE effectiveFrom <= :date AND (effectiveTo IS NULL OR effectiveTo >= :date) ORDER BY effectiveFrom ASC LIMIT 1")
+    // ⚠️ 同日生效的多条档案：按 createdAt DESC 取**最新创建**的那条。
+    // 语义：同一天内多次改配置 → 最后一次才是用户当前意图（早先那些是当天曾生效过的中间态）。
+    @Query("SELECT * FROM calc_profiles WHERE effectiveFrom <= :date AND (effectiveTo IS NULL OR effectiveTo >= :date) ORDER BY effectiveFrom ASC, createdAt DESC LIMIT 1")
     suspend fun getEffectiveOn(date: String): CalcProfileEntity?
 
     @Query("SELECT * FROM calc_profiles WHERE effectiveFrom <= :to AND (effectiveTo IS NULL OR effectiveTo >= :from) ORDER BY effectiveFrom ASC")

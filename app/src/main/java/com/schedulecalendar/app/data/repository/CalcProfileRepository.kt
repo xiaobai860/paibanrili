@@ -76,7 +76,6 @@ class CalcProfileRepository @Inject constructor(
             createdAt   = System.currentTimeMillis()
         )
         dao.upsert(profile.toEntity())
-        cleanupEmptyRanges()
         return true
     }
 
@@ -132,15 +131,17 @@ class CalcProfileRepository @Inject constructor(
         ) {
             return prev
         }
-        // 1) 原本延伸到「至今」的档案全部收口到新档案生效日的前一天 —— 包括**同日生效**的那条
-        //    （否则同一天内修改多次会产生多条 effectiveTo == null，全部显示"生效中"）。
-        //    收口后 from > to 的同日档案会被下一步清理掉（它一天都没真正生效过）。
+        // 1) 收口原本延伸到「至今」的档案（生效日 <= 新档案生效日的那些）
+        //    - 生效日 **早于** 新档案 → to = 新档案生效日 − 1（正常接力）
+        //    - 生效日 **等于** 新档案（同一天内多次改配置）→ to = 它自己的生效日，
+        //      即区间收成「当天一天」，**保留记录不倒挂、不删除**（用户规则：数据不一样就生成一条）
         //    ⚠️ 只收口「生效日 <= 新档案生效日」的；更晚生效的档案由第 3 步处理，不能动。
         all.filter { it.effectiveTo == null && it.effectiveFrom <= effectiveFrom }
-            .forEach { dao.update(it.copy(effectiveTo = dayBefore(effectiveFrom)).toEntity()) }
-        // 2) 清理收口产生的倒挂空区间（相邻去重后正常流程不会产生，这里兜底历史坏数据）
-        cleanupEmptyRanges()
-        // 3) 新档案的终点：若已有更晚生效的档案，到它前一天为止
+            .forEach {
+                val closedTo = maxOf(it.effectiveFrom, dayBefore(effectiveFrom))
+                dao.update(it.copy(effectiveTo = closedTo).toEntity())
+            }
+        // 2) 新档案的终点：若已有更晚生效的档案，到它前一天为止
         val nextFuture = dao.getAll()
             .filter { it.effectiveFrom > effectiveFrom }
             .minByOrNull { it.effectiveFrom }
@@ -223,55 +224,43 @@ class CalcProfileRepository @Inject constructor(
      */
     suspend fun deleteIfUnused(profile: CalcProfile): Boolean {
         if (deletability(profile) !is ProfileDeletability.Deletable) return false
+        // 前一条 = 生效日不晚于它的档案里，按（生效日, 创建时间）取最大的一条。
+        // 用 <= 是为了**同日场景**：删掉当前生效的那条后，同一天早些时候创建的那条接管。
         val prev = dao.getAll()
-            .filter { it.effectiveFrom < profile.effectiveFrom }
-            .maxByOrNull { it.effectiveFrom }
+            .filter { it.effectiveFrom <= profile.effectiveFrom && it.id != profile.id }
+            .maxWithOrNull(compareBy({ it.effectiveFrom }, { it.createdAt }))
         if (prev != null && prev.effectiveTo != null) {
-            dao.update(prev.copy(effectiveTo = dao.getAll().filter { it.effectiveFrom > profile.effectiveFrom }
-                .minByOrNull { it.effectiveFrom }?.let { dayBefore(it.effectiveFrom) }))
+            val next = dao.getAll()
+                .filter { it.effectiveFrom > profile.effectiveFrom }
+                .minByOrNull { it.effectiveFrom }
+            // 接管区间：有下一条则到它前一天，否则延伸到「至今」
+            dao.update(prev.copy(effectiveTo = next?.let { dayBefore(it.effectiveFrom) }))
         }
         dao.deleteById(profile.id)
         return true
     }
 
-    /** 清空全部口径档案（清库时用；清库后计算回退到当前现值） */
-    suspend fun cleanupEmptyRanges(): Int {
-        val empties = dao.getAll().filter { it.effectiveTo != null && it.effectiveTo!! < it.effectiveFrom }
-        empties.forEach { dao.deleteById(it.id) }
-        return empties.size
-    }
-
     /**
-     * 接力自愈：按生效日排序，重设每条档案的 effectiveTo = 下一条生效日 − 1（最后一条为 null）。
+     * 接力自愈：只做一件事 —— 按（生效日, 创建时间）排序后**重设 effectiveTo**，
+     * 保证「只有最后一条是 null（至今）」且相邻档案首尾相接。
      *
-     * 用于修复**历史坏数据**：早期版本在同一天内反复复制/修改时，旧档案没有被收口，
-     * 导致多条档案同时是 effectiveTo == null（列表里出现多个"生效中"），
-     * 而实际计算只会命中最早那条 —— 展示与计算不一致。
+     * 用途：修复备份恢复带来的坏数据（旧版本导出时可能多条 effectiveTo == null）。
      *
-     * 同时把「同一天生效」的多条去重成最新一条（其余转为空区间并被清理），
-     * 因为它们本来就是重复操作产生的残留，内容通常完全相同。
+     * ⚠️ **不删任何档案、不去重、不清空区间**：用户规则是「数据不一样就生成一条」，
+     * 同日多条属于合法的历史记录（当天改过几次就留几条），计算侧靠 createdAt 取最新。
+     * 因此自愈只修「谁该是当前生效」这个唯一的事实，不做任何数据取舍。
      */
     suspend fun repairRelay(): Int {
-        val all = dao.getAll().sortedBy { it.effectiveFrom }
+        val all = dao.getAll().sortedWith(compareBy({ it.effectiveFrom }, { it.createdAt }))
         if (all.size < 2) return 0
         var fixed = 0
-        // 1) 同日重复：只保留 createdAt 最大（最新）的那条，其余置为倒挂区间等待清理
-        all.groupBy { it.effectiveFrom }
-            .filter { it.value.size > 1 }
-            .forEach { (_, sameDay) ->
-                val keep = sameDay.maxByOrNull { it.createdAt } ?: return@forEach
-                sameDay.filter { it.id != keep.id }.forEach { stale ->
-                    dao.update(stale.copy(effectiveTo = dayBefore(stale.effectiveFrom)))
-                    fixed++
-                }
-            }
-        cleanupEmptyRanges()
-        // 2) 重设接力：每条的下游是下一条的生效日 − 1，末条为 null（至今）
-        val relayed = dao.getAll().sortedBy { it.effectiveFrom }
-        for (i in relayed.indices) {
-            val expected = relayed.getOrNull(i + 1)?.let { dayBefore(it.effectiveFrom) }
-            if (relayed[i].effectiveTo != expected) {
-                dao.update(relayed[i].copy(effectiveTo = expected))
+        for (i in all.indices) {
+            // 末条 → 至今；其余 → 下一条生效日 − 1，但**不早于自身生效日**
+            // （同日多条时收成「当天一天」，保留记录不倒挂）
+            val expected = all.getOrNull(i + 1)
+                ?.let { maxOf(all[i].effectiveFrom, dayBefore(it.effectiveFrom)) }
+            if (all[i].effectiveTo != expected) {
+                dao.update(all[i].copy(effectiveTo = expected))
                 fixed++
             }
         }
