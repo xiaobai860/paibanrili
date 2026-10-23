@@ -278,11 +278,9 @@ class StorageViewModel @Inject constructor(
     /** 扫描可清理的废弃（已归档且无引用）数据 */
     fun scanOrphanData() = viewModelScope.launch {
         runCatching {
-            val allRecords = scheduleRepo.getAll()
             // 收集所有排班记录中引用的 shiftId、statusId、extraItemId
-            val referencedShiftIds = allRecords.mapNotNull { it.shiftId }.toSet()
-            val referencedStatusIds = allRecords.mapNotNull { it.appliedStatus?.statusId }.toSet()
-            val referencedExtraIds = allRecords.flatMap { it.extraItemIds }.toSet()
+            // （走 referencedIds：只读必要列，不整表读、不映射全表对象）
+            val (referencedShiftIds, referencedStatusIds, referencedExtraIds) = scheduleRepo.referencedIds()
 
             // 找出已归档且未被引用的项目
             val archivedShifts = shiftRepo.getAll().filter { it.archivedAt != null && it.id !in referencedShiftIds }
@@ -322,10 +320,7 @@ class StorageViewModel @Inject constructor(
     /** 执行清理：物理删除所有废弃数据 */
     fun cleanupOrphanData() = viewModelScope.launch {
         runCatching {
-            val allRecords = scheduleRepo.getAll()
-            val referencedShiftIds = allRecords.mapNotNull { it.shiftId }.toSet()
-            val referencedStatusIds = allRecords.mapNotNull { it.appliedStatus?.statusId }.toSet()
-            val referencedExtraIds = allRecords.flatMap { it.extraItemIds }.toSet()
+            val (referencedShiftIds, referencedStatusIds, referencedExtraIds) = scheduleRepo.referencedIds()
 
             val archivedShifts = shiftRepo.getAll().filter { it.archivedAt != null && it.id !in referencedShiftIds }
             // 必须用含归档集合：这里正是要筛「已归档且无引用」的项，用仅有效集合永远扫不到

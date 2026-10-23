@@ -75,7 +75,7 @@ class CalendarEventRepository @Inject constructor(
         /** 提醒日历显示名称后缀 */
         private const val REMINDER_SUFFIX = "-提醒"
         /** getAllEvents 结果缓存有效时长（毫秒）：短 TTL 避免首次/频繁进入时反复全量拉取系统日历 */
-        private const val EVENTS_CACHE_TTL_MS = 5_000L
+        private const val EVENTS_CACHE_TTL_MS = 30_000L
     }
 
     /** getAllEvents 结果缓存（带失效），减少首次进入事项 Tab 时的全量 ContentProvider 查询 */
@@ -213,6 +213,11 @@ class CalendarEventRepository @Inject constructor(
     /**
      * 获取所有可见日历事件（不限时间范围）
      * 优化：批量加载日历信息，避免 N+1 查询
+     *
+     * ⚠️ 事项列表/纪念日列表必须走本方法（不能改用 [getAllEventsInRange]）：
+     * 系统日历的重复事件在 Events 表里只有一条主记录，DTSTART = 首次发生时间；
+     * 若按时间区间过滤，早年创建的年度重复纪念日会整体消失（用户表现为「纪念日不见了」）。
+     * 缓存 30s + ContentObserver 失效已足够，避免频繁全量拉取。
      */
     fun getAllEvents(): List<CalendarEventInfo> {
         // 命中有效缓存则直接复用，避免每次进入事项 Tab 都全量查询系统日历

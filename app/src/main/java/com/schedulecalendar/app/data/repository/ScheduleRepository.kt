@@ -56,6 +56,34 @@ class ScheduleRepository @Inject constructor(
 
     suspend fun getAll(): List<ScheduleRecord> = dao.getAll().map { it.toDomain() }
 
+    /**
+     * 排班中被引用的三类 ID 集合（班次 / 附加状态 / 补贴项）。
+     * 供「废弃数据清理」判断哪些已归档项仍被引用；
+     * 比 [getAll] 少读大量列、少建整表领域对象（排班上千条时差别明显）。
+     */
+    suspend fun referencedIds(): Triple<Set<String>, Set<String>, Set<String>> {
+        val shiftIds = dao.distinctShiftIds().toSet()
+        val statusIds = HashSet<String>()
+        val extraIds = HashSet<String>()
+        for (row in dao.getReferenceColumns()) {
+            // appliedStatusesJson: [{"statusId":"xxx","startTime":null,"endTime":null}]
+            runCatching {
+                com.google.gson.JsonParser.parseString(row.appliedStatusesJson).asJsonArray.forEach { el ->
+                    val id = el.asJsonObject.get("statusId")?.asString
+                    if (!id.isNullOrBlank()) statusIds.add(id)
+                }
+            }
+            // extraItemIdsJson: ["id1","id2"]
+            runCatching {
+                com.google.gson.JsonParser.parseString(row.extraItemIdsJson).asJsonArray.forEach { el ->
+                    val id = el.asString
+                    if (id.isNotBlank()) extraIds.add(id)
+                }
+            }
+        }
+        return Triple(shiftIds, statusIds, extraIds)
+    }
+
     /** 排班总数（轻量指纹查询） */
     suspend fun countAll(): Int = dao.countAll()
     /** 最近排班日期 yyyy-MM-dd */
