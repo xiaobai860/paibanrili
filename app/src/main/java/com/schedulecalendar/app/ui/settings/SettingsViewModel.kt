@@ -54,6 +54,11 @@ class SettingsViewModel @Inject constructor(
     private val _uiEvent = Channel<SettingsUiEvent>(Channel.BUFFERED)
     val uiEvent          = _uiEvent.receiveAsFlow()
 
+    // 当前生效的口径档案。必须声明在 init 之前：viewModelScope 用 Dispatchers.Main.immediate，
+    // init 块里 launch 的协体会同步立即执行，此时若该字段还没赋值就会 NPE。
+    private val _currentProfile = MutableStateFlow<CalcProfile?>(null)
+    val currentProfile = _currentProfile.asStateFlow()
+
     init {
         viewModelScope.launch {
             combine(
@@ -76,9 +81,7 @@ class SettingsViewModel @Inject constructor(
 
     // ── 计算口径档案（改配置不改历史）──────────────────────────────────────
 
-    /** 当前生效的口径档案（设置页展示用） */
-    private val _currentProfile = MutableStateFlow<CalcProfile?>(null)
-    val currentProfile = _currentProfile.asStateFlow()
+    /** 当前生效的口径档案的 StateFlow 已上移到 init 之前声明（见上方注释） */
 
     /**
      * 保存薪资配置 → **生成新口径档案**（而非覆盖当前配置）。

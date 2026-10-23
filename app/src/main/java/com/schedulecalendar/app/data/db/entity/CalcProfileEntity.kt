@@ -2,6 +2,7 @@
 package com.schedulecalendar.app.data.db.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -10,7 +11,11 @@ import androidx.room.PrimaryKey
  * 三类参数（薪资 / 考勤 / 休息时段）以 JSON 快照形式存放：
  * 快照而非外键，是为了**冻结历史口径**——外部配置后续如何变化都不影响这份快照。
  */
-@Entity(tableName = "calc_profiles")
+@Entity(
+    tableName = "calc_profiles",
+    // 按生效日查询是高频操作（取某天生效的档案、区间内档案、列表排序）→ 建索引
+    indices = [Index(value = ["effectiveFrom"], name = "idx_calc_profiles_from")]
+)
 data class CalcProfileEntity(
     @PrimaryKey val id: String,
     val name: String,

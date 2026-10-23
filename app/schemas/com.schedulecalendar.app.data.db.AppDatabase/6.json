@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 6,
-    "identityHash": "e9c1fbe20814f6500831a242b4108d6a",
+    "identityHash": "da2b7751b9f7e5764654dd4944986085",
     "entities": [
       {
         "tableName": "shifts",
@@ -360,12 +360,23 @@
           "columnNames": [
             "id"
           ]
-        }
+        },
+        "indices": [
+          {
+            "name": "idx_calc_profiles_from",
+            "unique": false,
+            "columnNames": [
+              "effectiveFrom"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_calc_profiles_from` ON `${TABLE_NAME}` (`effectiveFrom`)"
+          }
+        ]
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e9c1fbe20814f6500831a242b4108d6a')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'da2b7751b9f7e5764654dd4944986085')"
     ]
   }
 }
