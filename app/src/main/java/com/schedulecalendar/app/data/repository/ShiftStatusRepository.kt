@@ -56,14 +56,6 @@ class ShiftStatusRepository @Inject constructor(
         return BUILTIN_STATUSES + dao.getAll().map { it.toDomain() }.filter { it.id !in builtinIds }
     }
 
-    /** 保证内置状态存在（首次启动调用） */
-    suspend fun ensureBuiltins() {
-        val existing = dao.getAll().map { it.id }.toSet()
-        // 用 upsertAll 单次批量写入，避免首次启动 N 次独立写事务
-        val missing = BUILTIN_STATUSES.filter { it.id !in existing }
-        if (missing.isNotEmpty()) dao.upsertAll(missing.map { it.toEntity() })
-    }
-
     /**
      * 保存状态。
      * @return true=已写入；false=被跳过（内置状态不可写）。

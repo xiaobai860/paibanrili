@@ -43,6 +43,9 @@ class CalcProfileRepository @Inject constructor(
 
     suspend fun getAll(): List<CalcProfile> = dao.getAll().map { it.toDomain() }
 
+    /** 档案总数（轻量指纹查询，应用数据自动备份用：新建/删除档案必须触发重新备份） */
+    suspend fun countAll(): Int = dao.count()
+
     /** 列表展示用：最新生效的在前 */
     suspend fun getAllDesc(): List<CalcProfile> = dao.getAllDesc().map { it.toDomain() }
 

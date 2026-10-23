@@ -9,6 +9,8 @@ import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import androidx.room.withTransaction
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.InstanceCreator
 import com.schedulecalendar.app.data.db.AppDatabase
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.*
@@ -26,7 +28,8 @@ import javax.inject.Singleton
  * 备份管理器（单例）
  * - 应用数据：每天只保留最新一条，keepDays=0 时禁用（keepDays 表示保留天数）
  * - 班次配置：每次保存后生成新备份，keepCount=0 时禁用
- * - 自定义路径：若设置了外部路径则写入外部，恢复始终从私有目录
+ * - 自定义路径：若设置了外部路径则优先写入外部，**失败（介质摘除/权限失效/空间不足）回退私有目录**，
+ *   保证任何情况下当天都有一份可恢复的备份；恢复从备份文件所在位置读取（私有目录或自定义路径）
  */
 @Singleton
 class BackupManager @Inject constructor(
@@ -40,7 +43,7 @@ class BackupManager @Inject constructor(
     private val calcProfileRepo: CalcProfileRepository,
     private val prefs:        AppPreferences
 ) {
-    private val gson = Gson()
+    private val gson = BackupGson.instance
     private val tsFormatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
     private val exportFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
@@ -65,6 +68,38 @@ class BackupManager @Inject constructor(
             tmp.delete()
             writeText(text)
         }
+    }
+
+    /**
+     * 统一备份写入入口：优先写入自定义路径，**失败时回退私有目录**。
+     *
+     * 为什么必须回退：自定义路径指向的外部介质可能被摘除、SAF 权限可能被系统回收、
+     * 空间可能不足——这些情况下原先的实现直接失败，导致「当天一个备份都没有」
+     * （外部不可用时私有目录同样是空的，用户将无任何可恢复的数据）。
+     * 回退后至少保证私有目录始终保有最新一份。
+     */
+    private suspend fun writeBackupFile(fileName: String, json: String): File {
+        val customPath = prefs.getBackupCustomPath()
+        if (customPath.isNotBlank()) {
+            val customResult = runCatching {
+                if (isSafPath(customPath)) {
+                    // 必须回真实文档 URI：拼接的伪路径后续读取/删除会静默失败
+                    File(writeSafBackupFile(customPath.toUri(), fileName, json).toString())
+                } else {
+                    val dir = File(resolveSafPath(customPath)).also { it.mkdirs() }
+                    val file = File(dir, fileName)
+                    file.writeTextAtomic(json)
+                    file
+                }
+            }
+            customResult.onFailure {
+                android.util.Log.w("BackupManager", "custom backup path failed ($customPath), fallback to private dir", it)
+            }
+            customResult.getOrNull()?.let { return it }
+        }
+        val file = File(privateBackupDir, fileName)
+        file.writeTextAtomic(json)
+        return file
     }
 
     /** 持久化 SAF URI 的读写权限（选择目录后必须调用）；返回是否成功 */
@@ -165,7 +200,9 @@ class BackupManager @Inject constructor(
      *
      * 2026-08-21 设计：
      * - 用户每次打开应用触发一次自动备份
-     * - 用轻量 SQL 指纹（5 个 COUNT + 1 个 MAX(date) + prefs 字段 hashCode）检测数据是否变化
+     * - 用轻量 SQL 指纹（表计数 + 档案计数 + 全部备份覆盖的偏好 hashCode）检测数据是否变化，
+     *   覆盖范围必须与 [buildAppDataJson] 导出范围一致，否则「只改未被指纹覆盖的项」时
+     *   当天不备份、恢复即丢（2026-10-24 修：原先只含 salary/attend/rule/schemes 四个 pref）
      * - 未变则跳过整个 backup（含 buildAppDataJson/file.writeText）
      * - **关键**：prune 必须在入口最先执行，不依赖 backup 是否触发，否则历史脏数据无法清理
      */
@@ -201,18 +238,8 @@ class BackupManager @Inject constructor(
                 }
             }
 
-            if (customPath.isNotBlank() && isSafPath(customPath)) {
-                // SAF 目录写入
-                writeSafBackupFile(customPath.toUri(), fileName, json)
-            } else {
-                val targetDir = if (customPath.isNotBlank()) {
-                    File(resolveSafPath(customPath)).also { it.mkdirs() }
-                } else {
-                    privateBackupDir
-                }
-                val file = File(targetDir, fileName)
-                file.writeTextAtomic(json)
-            }
+            // 统一写入（自定义路径失败自动回退私有目录，保证当天必有备份）
+            writeBackupFile(fileName, json)
 
             // 标记今天已备份（用于 UI 显示"今日已备份"等场景）
             prefs.setLastAppDataAutoBackupDate(today)
@@ -225,8 +252,13 @@ class BackupManager @Inject constructor(
     }
 
     /**
-     * 计算应用数据轻量指纹：5 个 COUNT + 1 个 MAX(date) + 4 个 prefs 字段 hashCode。
+     * 计算应用数据轻量指纹：5 个 COUNT + 1 个 MAX(date) + 档案计数 + 全部会进备份的用户偏好 hashCode。
      * 总开销 ~30ms，远小于 buildAppDataJson 的 ~200ms。数据未变化时指纹保持不变。
+     *
+     * ⚠️ 覆盖范围必须与 [buildAppDataJson] 的导出范围一致：历史上指纹只含
+     * salary/attend/rule/schemes 四个 pref，导致「只改提醒设置/排序/颜色索引/账户分类」
+     * 时当天跳过自动备份，恢复旧备份即丢失这些改动；档案表（新建/删除档案）同样必须进指纹
+     * （档案归档只改 effectiveTo、内容不变，不影响计算，计数即可覆盖）。
      */
     private suspend fun computeBackupDataSignature(): Int {
         val scheduleCount = scheduleRepo.countAll()
@@ -235,14 +267,27 @@ class BackupManager @Inject constructor(
         val breaksCount = breakRepo.countAll()
         val statusesCount = statusRepo.countAll()
         val extrasCount = extraRepo.countAll()
-        val salaryFp = prefs.salaryConfigFlow.first().hashCode()
-        val attendFp = prefs.attendConfigFlow.first().hashCode()
-        val ruleFp = prefs.scheduleRuleFlow.first().hashCode()
-        val schemesFp = prefs.displaySchemesFlow.first().hashCode()
+        val profilesCount = calcProfileRepo.countAll()
+        // 其余会进备份的用户偏好：一次读盘后统一哈希，避免逐键 first() 的 N 次磁盘读
+        val prefsFp = prefs.snapshot().let { p ->
+            listOf(
+                p[AppPreferences.KEY_SALARY_CONFIG], p[AppPreferences.KEY_ATTEND_CONFIG],
+                p[AppPreferences.KEY_SCHEDULE_RULE], p[AppPreferences.KEY_DISPLAY_SCHEMES],
+                p[AppPreferences.KEY_REMINDER_ENABLED], p[AppPreferences.KEY_REMINDER_METHOD],
+                p[AppPreferences.KEY_REMINDER_CLOCK_IN], p[AppPreferences.KEY_REMINDER_CLOCK_OUT],
+                p[AppPreferences.KEY_REMINDER_CLOCK_IN_MINUTES], p[AppPreferences.KEY_REMINDER_CLOCK_OUT_MINUTES],
+                p[AppPreferences.KEY_REMINDER_NOTIFY_BAR],
+                p[AppPreferences.KEY_SHIFT_ORDER], p[AppPreferences.KEY_STATUS_ORDER],
+                p[AppPreferences.KEY_EXTRA_ORDER], p[AppPreferences.KEY_BREAK_ORDER],
+                p[AppPreferences.KEY_SHIFT_COLOR_INDEX], p[AppPreferences.KEY_STATUS_COLOR_INDEX],
+                p[AppPreferences.KEY_DISABLED_ACCOUNT_IDS], p[AppPreferences.KEY_ACCOUNT_CATEGORIES],
+                p[AppPreferences.KEY_ACCOUNTS_INITIALIZED]
+            ).hashCode()
+        }
         return listOf(
             scheduleCount, maxScheduleDate,
-            shiftsCount, breaksCount, statusesCount, extrasCount,
-            salaryFp, attendFp, ruleFp, schemesFp
+            shiftsCount, breaksCount, statusesCount, extrasCount, profilesCount,
+            prefsFp
         ).hashCode()
     }
 
@@ -310,46 +355,14 @@ class BackupManager @Inject constructor(
 
     suspend fun createAppDataBackup(): Result<File> = runCatching {
         val json = buildAppDataJson()
-        val ts = LocalDateTime.now().format(tsFormatter)
-        val fileName = "应用数据_${ts}_manual.json"
-        val customPath = prefs.getBackupCustomPath()
-        if (customPath.isNotBlank() && isSafPath(customPath)) {
-            // 必须回真实文档 URI：原先返回「目录 URI + 文件名」拼出的伪路径，
-            // DocumentFile.fromSingleUri 解析不了，后续读取/删除会静默失败
-            val docUri = writeSafBackupFile(customPath.toUri(), fileName, json)
-            File(docUri.toString())
-        } else {
-            val targetDir = if (customPath.isNotBlank()) {
-                File(resolveSafPath(customPath)).also { it.mkdirs() }
-            } else {
-                privateBackupDir
-            }
-            val file = File(targetDir, fileName)
-            file.writeTextAtomic(json)
-            file
-        }
+        val fileName = "应用数据_${LocalDateTime.now().format(tsFormatter)}_manual.json"
+        writeBackupFile(fileName, json)
     }
 
     suspend fun createShiftConfigBackup(): Result<File> = runCatching {
         val json = buildShiftConfigJson()
-        val ts = LocalDateTime.now().format(tsFormatter)
-        val fileName = "班次配置_${ts}_manual.json"
-        val customPath = prefs.getBackupCustomPath()
-        if (customPath.isNotBlank() && isSafPath(customPath)) {
-            // 必须回真实文档 URI：原先返回「目录 URI + 文件名」拼出的伪路径，
-            // DocumentFile.fromSingleUri 解析不了，后续读取/删除会静默失败
-            val docUri = writeSafBackupFile(customPath.toUri(), fileName, json)
-            File(docUri.toString())
-        } else {
-            val targetDir = if (customPath.isNotBlank()) {
-                File(resolveSafPath(customPath)).also { it.mkdirs() }
-            } else {
-                privateBackupDir
-            }
-            val file = File(targetDir, fileName)
-            file.writeTextAtomic(json)
-            file
-        }
+        val fileName = "班次配置_${LocalDateTime.now().format(tsFormatter)}_manual.json"
+        writeBackupFile(fileName, json)
     }
 
     // ── 恢复（始终从私有目录读取） ─────────────────────
@@ -386,20 +399,6 @@ class BackupManager @Inject constructor(
         return result.distinctBy { it.path }
     }
 
-    /** 从私有目录恢复应用数据 */
-    suspend fun restoreAppDataFromPrivate(fileName: String) {
-        val file = File(privateBackupDir, fileName)
-        if (!file.exists()) throw IllegalArgumentException("备份文件不存在：$fileName")
-        restoreAppData(file.readText())
-    }
-
-    /** 从私有目录恢复班次配置 */
-    suspend fun restoreShiftConfigFromPrivate(fileName: String) {
-        val file = File(privateBackupDir, fileName)
-        if (!file.exists()) throw IllegalArgumentException("备份文件不存在：$fileName")
-        restoreShiftConfig(file.readText())
-    }
-
     /** 从外部 JSON 内容恢复（由导入功能调用） */
     suspend fun restoreFromJson(json: String): String {
         // 按顶层 key 集合判断备份类型，避免用子串猜测导致备注里带关键字就误判
@@ -409,8 +408,9 @@ class BackupManager @Inject constructor(
         val keys = root.keySet()
         return when {
             "scheduleRecords" in keys -> {
-                restoreAppData(json)
-                "应用数据恢复成功"
+                // restoreAppData 可能返回旧版备份的注意事项（如只含 12 个月排班），需透出给用户
+                val note = restoreAppData(json)
+                if (note != null) "应用数据恢复成功（$note）" else "应用数据恢复成功"
             }
             "shifts" in keys -> {
                 restoreShiftConfig(json)
@@ -495,9 +495,18 @@ class BackupManager @Inject constructor(
         return gson.toJson(data)
     }
 
-    private suspend fun restoreAppData(json: String) {
+    /**
+     * 恢复应用数据。
+     * @return 需要提醒用户的注意事项（旧版备份的固有缺失），无则 null
+     */
+    private suspend fun restoreAppData(json: String): String? {
         val backup = gson.fromJson(json, AppDataBackup::class.java)
             ?: throw IllegalArgumentException("JSON 解析失败")
+        // v1/v2 时代的备份只序列化最近 12 个月排班（旧实现 (-11..0)，2026-08-22 起才改为全量导出），
+        // 而恢复是「整表替换」→ 更早历史在备份里本就不存在、恢复后直接消失，必须显式告知用户
+        val legacyNote = if (backup.version <= 2) {
+            "该备份为旧版本格式，仅含最近 12 个月排班，更早的历史已不在备份中"
+        } else null
         // 恢复前自动生成一份「应用数据」快照，万一恢复结果不符合预期可回退（幂等，失败仅告警不阻断）
         runCatching { createAppDataBackup() }
             .onFailure { android.util.Log.w("BackupManager", "pre-restore snapshot failed", it) }
@@ -564,6 +573,7 @@ class BackupManager @Inject constructor(
         // ── 恢复颜色索引 ──
         if (backup.shiftColorIndex != null) prefs.saveShiftColorIndex(backup.shiftColorIndex)
         if (backup.statusColorIndex != null) prefs.saveStatusColorIndex(backup.statusColorIndex)
+        return legacyNote
     }
 
     private suspend fun restoreShiftConfig(json: String) {
@@ -573,10 +583,15 @@ class BackupManager @Inject constructor(
             .onFailure { android.util.Log.w("BackupManager", "pre-restore snapshot failed", it) }
 
         db.withTransaction {
+            // 与 restoreAppData 保持一致：字段存在即「整表替换」。
+            // 原先只 upsert 不删除 → 恢复旧班次配置后，备份时点之后被用户删除的班次/状态会残留，
+            // 与恢复弹窗「当前数据会被覆盖」的语义不符（StorageScreen 恢复确认弹窗）。
             data.shifts?.let { list ->
+                shiftRepo.deleteAll()   // 内置班次是代码常量，不在表内，不会被删
                 shiftRepo.saveAll(list.filter { !it.builtIn }.map { it.copy(builtIn = false) })
             }
             data.shiftStatuses?.let { list ->
+                statusRepo.deleteAllUserDefined()
                 list.filter { !it.builtIn }.forEach { statusRepo.save(it) }
             }
             // 字段缺失时保持现状，绝不 deleteAll（防止旧版备份清空用户数据）
@@ -748,3 +763,38 @@ private data class AppDataBackup(
     val shiftColorIndex: Int? = null,
     val statusColorIndex: Int? = null
 )
+
+/**
+ * 备份序列化专用 Gson：与 `AppPreferences` 同一策略——为所有领域模型注册 [InstanceCreator]，
+ * 保证**旧备份缺字段时落 Kotlin 默认值**（"" / emptyList / false / 0.0）而非 JVM null。
+ *
+ * ⚠️ 为什么必须注册：Gson 对「无无参构造器」的 Kotlin data class 用 Unsafe 分配实例，
+ * JSON 里缺失的字段保持 JVM 默认值（对象字段 = null）。v1/v2 时代的备份缺
+ * `ShiftStatus.startTime/endTime`（非空 + NOT NULL 列）、`Shift.linkedExtraIds`（非空列表）
+ * 等字段，不注册会导致这些备份恢复时撞 Room 约束直接失败，或把 null 泄漏进计算链路。
+ *
+ * 注册后行为：JSON 中存在的字段照常反射赋值；缺失的字段保留此处给定的默认值
+ * （与 Kotlin data class 的默认参数一致）。
+ */
+internal object BackupGson {
+    val instance: Gson = GsonBuilder()
+        .registerTypeAdapter(DisplayScheme::class.java, InstanceCreator { DisplayScheme() })
+        .registerTypeAdapter(DataRowConfig::class.java, InstanceCreator { DataRowConfig() })
+        .registerTypeAdapter(SalaryConfig::class.java, InstanceCreator { SalaryConfig() })
+        .registerTypeAdapter(AttendConfig::class.java, InstanceCreator { AttendConfig() })
+        .registerTypeAdapter(ScheduleRule::class.java, InstanceCreator { ScheduleRule() })
+        .registerTypeAdapter(Shift::class.java, InstanceCreator { Shift(id = "", name = "") })
+        .registerTypeAdapter(ShiftStatus::class.java, InstanceCreator { ShiftStatus(id = "", name = "", color = "") })
+        .registerTypeAdapter(ShiftBreak::class.java, InstanceCreator { ShiftBreak(id = "", label = "", startTime = "", endTime = "") })
+        .registerTypeAdapter(ExtraItem::class.java, InstanceCreator { ExtraItem(id = "", name = "", type = "", amount = 0.0) })
+        .registerTypeAdapter(ScheduleRecord::class.java, InstanceCreator { ScheduleRecord(date = "") })
+        .registerTypeAdapter(AppliedStatus::class.java, InstanceCreator { AppliedStatus(statusId = "") })
+        .registerTypeAdapter(CalcProfile::class.java, InstanceCreator {
+            CalcProfile(
+                id = "", name = "",
+                salary = SalaryConfig(), attend = AttendConfig(),
+                breaks = emptyList(), effectiveFrom = ""
+            )
+        })
+        .create()
+}
