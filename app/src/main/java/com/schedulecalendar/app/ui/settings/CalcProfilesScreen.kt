@@ -34,6 +34,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
+import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.CalcProfileRepository
 import com.schedulecalendar.app.domain.model.CalcProfile
 import com.schedulecalendar.app.domain.util.DateFormats
@@ -63,7 +64,8 @@ sealed class CalcProfilesUiEvent {
  */
 @HiltViewModel
 class CalcProfilesViewModel @Inject constructor(
-    private val profileRepo: CalcProfileRepository
+    private val profileRepo: CalcProfileRepository,
+    private val prefs: AppPreferences
 ) : ViewModel() {
 
     private val _profiles = MutableStateFlow<List<CalcProfile>>(emptyList())
@@ -126,6 +128,13 @@ class CalcProfilesViewModel @Inject constructor(
         runCatching { profileRepo.deleteIfUnused(profile) }
             .onSuccess { ok ->
                 refresh()
+                // 删除后当前口径变了 → 同步 DataStore 现值，避免设置页仍显示被删档案的参数
+                if (ok) {
+                    runCatching { profileRepo.getCurrentProfile() }.getOrNull()?.let { cur ->
+                        prefs.saveSalaryConfig(cur.salary)
+                        prefs.saveAttendConfig(cur.attend)
+                    }
+                }
                 _uiEvent.send(
                     if (ok) CalcProfilesUiEvent.ShowMessage("已删除「${profile.name}」，今天起恢复使用上一份口径")
                     else CalcProfilesUiEvent.ShowError("该口径不可删除：删除会改变历史计算结果")
@@ -158,6 +167,10 @@ class CalcProfilesViewModel @Inject constructor(
                 attend = src.attend,
                 breaks = src.breaks
             )
+            // 同步回 DataStore 现值：设置页读的是现值，不同步就会出现
+            // 「档案已换成旧口径、但设置页仍显示新参数」的不一致
+            prefs.saveSalaryConfig(created.salary)
+            prefs.saveAttendConfig(created.attend)
             refresh()
             _uiEvent.send(
                 CalcProfilesUiEvent.ShowMessage(
