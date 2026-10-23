@@ -233,6 +233,17 @@ fun CalcProfilesScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        // 明确告诉用户「现在到底按哪条算」——同日多条时只有最新创建的那条生效
+                        val today = DateFormats.date(java.time.LocalDate.now())
+                        val current = profiles.firstOrNull { it.effectiveTo == null && it.effectiveFrom <= today }
+                        if (current != null) {
+                            Text(
+                                "当前正在生效：${current.name}（自 ${current.effectiveFrom} 起）",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             }
@@ -256,16 +267,22 @@ private fun ProfileCard(
     onDelete: () -> Unit
 ) {
     val today = DateFormats.date(LocalDate.now())
-    // 三态：未来生效 / 正在生效 / 已历史（左闭右闭区间）
+    // 四态：未生效 / 生效中 / 当日旧版 / 历史
+    // 「生效中」= 唯一一条 effectiveTo == null 且已开始生效的档案（getEffectiveOn 同日多条时
+    //  按 createdAt 取最新，而只有最新那条的 to 才是 null）→ 保证同一时刻只有一条生效中。
+    // 「当日旧版」= 同一天内被后续修改取代的档案（区间收成 [今天,今天]，今天仍落在区间内，
+    //  但它已不是当前口径）→ 必须与「生效中」区分，否则会出现多条同时显示生效中。
     val stateLabel = when {
         profile.effectiveFrom > today -> "未生效"
-        profile.isEffectiveOn(today)  -> "生效中"
+        profile.effectiveTo == null   -> "生效中"
+        profile.isEffectiveOn(today)  -> "当日旧版"
         else                          -> "历史"
     }
     val stateColor = when (stateLabel) {
-        "生效中" -> MaterialTheme.colorScheme.primary
-        "未生效" -> MaterialTheme.colorScheme.tertiary
-        else     -> MaterialTheme.colorScheme.onSurfaceVariant
+        "生效中"   -> MaterialTheme.colorScheme.primary
+        "未生效"   -> MaterialTheme.colorScheme.tertiary
+        "当日旧版" -> MaterialTheme.colorScheme.error
+        else       -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
