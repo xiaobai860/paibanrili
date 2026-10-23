@@ -55,6 +55,9 @@ class ScheduleApp : Application() {
         // 内容取迁移时刻的现值（薪资/考勤/休息时段）→ 保证历史月份计算结果逐分不变
         appScope.launch {
             runSafely("ensureInitialProfile") { calcProfileRepository.ensureInitialProfile() }
+            // 接力自愈：修复早期版本「重复复制导致多条同时生效中」的坏数据。
+            // 只重设生效区间（+ 清理同日重复的残留），不改变任何档案内容。
+            runSafely("repairRelay") { calcProfileRepository.repairRelay() }
         }
         // 核心：任何排班/班次/附加状态数据变更 → 自动重新计算并刷新全部小组件（事件驱动，无需手动刷新）
         observeDataChangesForWidgetSync()

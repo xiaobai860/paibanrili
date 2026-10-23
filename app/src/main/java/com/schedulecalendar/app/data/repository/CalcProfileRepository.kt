@@ -119,8 +119,11 @@ class CalcProfileRepository @Inject constructor(
         note: String? = null
     ): CalcProfile {
         val all = dao.getAll()
-        // 1) 原本覆盖生效日并延伸到至今的档案 → 收口到新档案生效日的前一天
-        all.filter { it.effectiveFrom < effectiveFrom && it.effectiveTo == null }
+        // 1) 原本延伸到「至今」的档案全部收口到新档案生效日的前一天 —— 包括**同日生效**的那条
+        //    （否则同一天内复制/修改多次会产生多条 effectiveTo == null，全部显示"生效中"）。
+        //    收口后 from > to 的同日档案会在下一步被清理掉（它一天都没真正生效过）。
+        //    ⚠️ 只收口「生效日 <= 新档案生效日」的；更晚生效的档案由第 3 步处理，不能动。
+        all.filter { it.effectiveTo == null && it.effectiveFrom <= effectiveFrom }
             .forEach { dao.update(it.copy(effectiveTo = dayBefore(effectiveFrom))) }
         // 2) 清理空区间档案（收口后 from > to 的，从未真正生效）
         cleanupEmptyRanges()
@@ -223,6 +226,43 @@ class CalcProfileRepository @Inject constructor(
         val empties = dao.getAll().filter { it.effectiveTo != null && it.effectiveTo!! < it.effectiveFrom }
         empties.forEach { dao.deleteById(it.id) }
         return empties.size
+    }
+
+    /**
+     * 接力自愈：按生效日排序，重设每条档案的 effectiveTo = 下一条生效日 − 1（最后一条为 null）。
+     *
+     * 用于修复**历史坏数据**：早期版本在同一天内反复复制/修改时，旧档案没有被收口，
+     * 导致多条档案同时是 effectiveTo == null（列表里出现多个"生效中"），
+     * 而实际计算只会命中最早那条 —— 展示与计算不一致。
+     *
+     * 同时把「同一天生效」的多条去重成最新一条（其余转为空区间并被清理），
+     * 因为它们本来就是重复操作产生的残留，内容通常完全相同。
+     */
+    suspend fun repairRelay(): Int {
+        val all = dao.getAll().sortedBy { it.effectiveFrom }
+        if (all.size < 2) return 0
+        var fixed = 0
+        // 1) 同日重复：只保留 createdAt 最大（最新）的那条，其余置为倒挂区间等待清理
+        all.groupBy { it.effectiveFrom }
+            .filter { it.value.size > 1 }
+            .forEach { (_, sameDay) ->
+                val keep = sameDay.maxByOrNull { it.createdAt } ?: return@forEach
+                sameDay.filter { it.id != keep.id }.forEach { stale ->
+                    dao.update(stale.copy(effectiveTo = dayBefore(stale.effectiveFrom)))
+                    fixed++
+                }
+            }
+        cleanupEmptyRanges()
+        // 2) 重设接力：每条的下游是下一条的生效日 − 1，末条为 null（至今）
+        val relayed = dao.getAll().sortedBy { it.effectiveFrom }
+        for (i in relayed.indices) {
+            val expected = relayed.getOrNull(i + 1)?.let { dayBefore(it.effectiveFrom) }
+            if (relayed[i].effectiveTo != expected) {
+                dao.update(relayed[i].copy(effectiveTo = expected))
+                fixed++
+            }
+        }
+        return fixed
     }
 
     suspend fun deleteAll() { dao.deleteAll() }

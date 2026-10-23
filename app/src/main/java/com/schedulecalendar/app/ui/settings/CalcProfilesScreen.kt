@@ -136,6 +136,15 @@ class CalcProfilesViewModel @Inject constructor(
             }
     }
 
+    /**
+     * 复制档案时的命名：源名已以当年月开头就沿用，避免
+     * 「2026-10 回滚至 2026-10 回滚至 初始口径」这种越叠越长的名字。
+     */
+    private fun copyAsName(srcName: String, today: String): String {
+        val ym = today.take(7)
+        return if (srcName.startsWith(ym)) srcName else "$ym $srcName"
+    }
+
     /** 把某个档案复制为「今天生效」的新档案（回滚到旧口径 / 基于旧口径微调） */
     fun copyAsNew(id: String) = viewModelScope.launch {
         runCatching {
@@ -144,7 +153,7 @@ class CalcProfilesViewModel @Inject constructor(
             val today = DateFormats.date(LocalDate.now())
             val created = profileRepo.createDerivedProfile(
                 effectiveFrom = today,
-                name = "${today.take(7)} 回滚至 ${src.name}",
+                name = copyAsName(src.name, today),
                 salary = src.salary,
                 attend = src.attend,
                 breaks = src.breaks
