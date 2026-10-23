@@ -66,8 +66,10 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
     Log.d("WIDGET_SYNC", "syncAllWidgets start")
     return@withLock try {
         val (scheduleRepo, shiftRepo, statusRepo) = getRepos(context)
-        val shifts = shiftRepo.getAllWithBuiltin()
-        val statuses = statusRepo.getAllWithBuiltin()
+        // 组件要展示昨天/前天的历史排班，班次/状态可能已归档 → 必须用含归档集合，
+        // 否则历史排班解析不到班次，组件显示「无班次」
+        val shifts = shiftRepo.getAllIncludingArchivedWithBuiltin()
+        val statuses = statusRepo.getAllIncludingArchivedWithBuiltin()
         val statusMap = statuses.associateBy { it.id }
 
         // 2x1 打卡组件：需要今天 / 昨天（跨午夜夜班）/ 明天 的排班记录
@@ -76,12 +78,19 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
         val tomorrow = today.plusDays(1)
         val dates = listOf(today, yesterday, tomorrow)
         val schedules = mutableMapOf<String, ScheduleRecord>()
+        // 一次范围查询覆盖昨天~明天：原先逐日 getByDate = 3 次 DB 往返
+        val rangeRecords = scheduleRepo.getByRange(
+            DateFormats.date(yesterday), DateFormats.date(tomorrow)
+        ).associateBy { it.date }
         for (d in dates) {
+            // 一次范围查询取三天：原先逐日 getByDate = 3 次 DB 往返
             val key = DateFormats.date(d)
-            scheduleRepo.getByDate(key)?.let { schedules[key] = it }
+            rangeRecords[key]?.let { schedules[key] = it }
         }
 
         // S4（正常班+请假/调休）未打卡时，默认附加状态时间段 = 覆盖当天班次时间段（§3.5）
+        // 该修复是幂等的：写入后 appliedStatus.startTime 非空，下一轮会在这里直接 return，
+        // 因此不会形成「写库 → changeSignal → 再同步」的自触发循环，仅首次多一轮同步。
         repairS4DefaultStatus(scheduleRepo, shifts, fmtDate(today))
 
         val widgetData = computeClockInWidgetData(shifts, schedules, statusMap)
@@ -94,6 +103,9 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
         }
         Log.d("WIDGET_SYNC", "syncAllWidgets done")
         true
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        // 协程取消必须原样抛出：被吞掉会破坏取消语义（调用方无法停止本轮同步）
+        throw e
     } catch (e: Exception) {
         Log.e("WIDGET_SYNC", "syncAllWidgets failed", e)
         false

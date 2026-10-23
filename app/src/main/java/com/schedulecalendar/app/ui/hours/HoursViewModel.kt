@@ -98,9 +98,11 @@ class HoursViewModel @Inject constructor(
                 _state.update { it.copy(loading = true) }
             }
             runCatching {
-                val shifts       = shiftRepo.getAllWithBuiltin()
+                // 含归档班次/状态：班次编辑采用「归档旧记录 + 新 ID」，
+                // 历史排班仍引用旧 ID，用仅有效集合会导致历史工时算不出来
+                val shifts       = shiftRepo.getAllIncludingArchivedWithBuiltin()
                 val breaks       = breakRepo.getAll()
-                val statuses     = statusRepo.getAllWithBuiltin()
+                val statuses     = statusRepo.getAllIncludingArchivedWithBuiltin()
                 val extraItems   = extraRepo.getAll()
                 val salaryConf   = prefs.salaryConfigFlow.first()
                 val attendConf   = prefs.attendConfigFlow.first()
@@ -114,7 +116,8 @@ class HoursViewModel @Inject constructor(
                     (year == today.year && month > today.monthValue)
 
                 // 全月工时（基础计算，actual/future 复用，避免重复整月重算）
-                val fullSummary = CalcUtils.calcMonthHours(year, month, schedules, shifts, breaks, statuses, attendConf)
+                val fullSummary = if (isCurrentMonth) null
+                    else CalcUtils.calcMonthHours(year, month, schedules, shifts, breaks, statuses, attendConf)
 
                 // 实际：历史月=全月，当前月=≤今天，未来月=空
                 val actual = when {
@@ -122,7 +125,7 @@ class HoursViewModel @Inject constructor(
                     isCurrentMonth -> CalcUtils.calcMonthHours(year, month, schedules, shifts, breaks, statuses, attendConf) {
                         it <= todayStr
                     }
-                    else -> fullSummary   // 历史月实际 = 全月
+                    else -> fullSummary ?: HoursSummary()   // 历史月实际 = 全月
                 }
                 // 预计：历史月=null，当前月=>今天，未来月=全月
                 val future = when {
@@ -154,9 +157,12 @@ class HoursViewModel @Inject constructor(
                     shiftStatuses = statuses,
                     loading     = false
                 )}
-            }.onFailure {
+            }.onFailure { e ->
+                // CancellationException 必须原样抛出：runCatching 会吞掉协程取消，
+                // 导致切月时旧任务被取消却弹出「加载失败」并写坏 loading 状态
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _state.update { it.copy(loading = false) }
-                _uiEvent.tryEmit(HoursUiEvent.ShowError("加载工时失败：${it.message}"))
+                _uiEvent.tryEmit(HoursUiEvent.ShowError("加载工时失败：${e.message}"))
             }
         }
     }
@@ -203,11 +209,27 @@ class HoursViewModel @Inject constructor(
         shifts: List<Shift>, breaks: List<ShiftBreak>,
         statuses: List<ShiftStatus>, attendConf: AttendConfig
     ): List<MonthlyHoursTrend> {
+        // 一次取 7 个月区间排班：原先 7 次 getByMonth（SQLite 单连接串行，耗时叠加）
+        val monthKeys = (6 downTo 0).map { i ->
+            var m = month - i; var y = year
+            if (m <= 0) { m += 12; y -= 1 }
+            DateFormats.yearMonth(y, m)
+        }
+        val firstYM = monthKeys.first()
+        val lastYM = monthKeys.last()
+        val fromKey = DateFormats.date(
+            firstYM.substring(0, 4).toInt(), firstYM.substring(5, 7).toInt(), 1
+        )
+        val lastYear = lastYM.substring(0, 4).toInt()
+        val lastMonth = lastYM.substring(5, 7).toInt()
+        val toKey = DateFormats.date(lastYear, lastMonth, java.time.YearMonth.of(lastYear, lastMonth).lengthOfMonth())
+        val preFetched = scheduleRepo.getByRange(fromKey, toKey).groupBy { it.date.substring(0, 7) }
+
         val result = mutableListOf<MonthlyHoursTrend>()
         for (i in 6 downTo 0) {
             var m = month - i; var y = year
             if (m <= 0) { m += 12; y -= 1 }
-            val recs      = scheduleRepo.getByMonth(DateFormats.yearMonth(y, m))
+            val recs      = preFetched[DateFormats.yearMonth(y, m)].orEmpty()
             val schMap    = recs.associateBy { it.date }
             if (schMap.isEmpty()) { result.add(MonthlyHoursTrend("${m}月", 0.0, 0.0, 0.0)); continue }
             val summary   = CalcUtils.calcMonthHours(y, m, schMap, shifts, breaks, statuses, attendConf)

@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import java.time.LocalDate
+import java.util.UUID
 
 // ── ScheduleDetail ViewModel ──────────────────────────────────────────────────
 
@@ -73,8 +74,8 @@ class ScheduleDetailViewModel @Inject constructor(
     init { load() }
 
     private fun load() = viewModelScope.launch {
-        val rawShifts   = shiftRepo.getAllWithBuiltin()
-        val rawStatuses = shiftStatusRepo.getAllWithBuiltin()
+        val rawShifts   = shiftRepo.getAllIncludingArchivedWithBuiltin()
+        val rawStatuses = shiftStatusRepo.getAllIncludingArchivedWithBuiltin()
         val extras    = extraRepo.getAll()
         val breaks    = breakRepo.getAll()
         val record    = scheduleRepo.getByDate(date)
@@ -107,10 +108,17 @@ class ScheduleDetailViewModel @Inject constructor(
         recalcPreview()
     }
 
+    private var previewJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * 预览重算：每次字段变更都会触发，必须取消上一次任务 —— 否则「先启动后完成」
+     * 的旧任务会用旧 record 覆盖新预览值，表现为工时/薪资与表单不一致。
+     */
     private fun recalcPreview() {
         val st = _state.value
         val rec = st.record ?: return
-        viewModelScope.launch {
+        previewJob?.cancel()
+        previewJob = viewModelScope.launch {
             val attendConfig = prefs.attendConfigFlow.first()
             val salaryConf = prefs.salaryConfigFlow.first()
             val h = CalcUtils.calcDayHours(rec, date, st.shifts, st.globalBreaks, attendConfig)
@@ -132,6 +140,8 @@ class ScheduleDetailViewModel @Inject constructor(
                 st.extraItems.find { it.id == id }?.let { if (it.type == "allowance") it.amount else -it.amount } ?: 0.0
             }
             val totalSal = CalcUtils.roundD2(normalSal + overtimeSal + extrasTotal)
+            // 回写前校验 record 未被后续操作改动，防止过期计算结果覆盖新值
+            if (_state.value.record != rec) return@launch
             _state.update { it.copy(
                 previewHours = totalHours,
                 autoModeLabel = label,
@@ -329,9 +339,9 @@ class HoursDetailViewModel @Inject constructor(
     private fun load() = viewModelScope.launch {
         // 数据加载 + 工时计算移至 IO 线程，避免阻塞 Main 线程导致导航卡顿
         val loaded = withContext(kotlinx.coroutines.Dispatchers.IO) {
-            val shifts      = shiftRepo.getAllWithBuiltin()
+            val shifts      = shiftRepo.getAllIncludingArchivedWithBuiltin()
             val breaks      = breakRepo.getAll()
-            val statuses    = shiftStatusRepo.getAllWithBuiltin()
+            val statuses    = shiftStatusRepo.getAllIncludingArchivedWithBuiltin()
             val extras      = extraRepo.getAll()
             val salaryConf  = prefs.salaryConfigFlow.first()
             val attendConf  = prefs.attendConfigFlow.first()
@@ -587,11 +597,26 @@ class ExtraItemsViewModel @Inject constructor(
         }.onFailure { _uiEvent.send(ExtraItemsUiEvent.ShowError("保存失败：${it.message}")) }
     }
 
-    /** 编辑项目：归档旧记录 + 创建新记录（新ID，保留历史金额） */
+    /**
+     * 编辑项目：归档旧记录 + 以新 ID 创建新记录（保留历史排班引用的旧记录与金额）。
+     *
+     * ⚠️ 编辑弹窗传入的 newItem 沿用原 id（见 ExtraItemsScreen/ExtraItemEditorDialog），
+     * 若直接 save + archive 会把刚保存的记录自己归档，表现为「编辑后条目从列表消失」。
+     * 因此统一在这里生成新 ID，并把新 ID 放到原排序位置。
+     */
     fun saveAsReplacement(originalItem: ExtraItem, newItem: ExtraItem) = viewModelScope.launch {
         runCatching {
-            repo.save(newItem)                          // 先创建新记录
-            repo.archive(originalItem.id)               // 再归档旧记录
+            val replacement =
+                if (newItem.id == originalItem.id) newItem.copy(id = UUID.randomUUID().toString())
+                else newItem
+            repo.save(replacement)                      // 新 ID 记录生效
+            repo.archive(originalItem.id)               // 旧记录归档（历史排班仍引用它，金额保持不变）
+            // 排序：把旧 ID 的位置换成新 ID，避免编辑后排到列表末尾
+            val currentOrder = _extraOrder.value
+            val idx = currentOrder.indexOf(originalItem.id)
+            if (idx >= 0) {
+                updateExtraOrder(currentOrder.toMutableList().also { it[idx] = replacement.id })
+            }
         }.onFailure { _uiEvent.send(ExtraItemsUiEvent.ShowError("保存失败：${it.message}")) }
     }
 

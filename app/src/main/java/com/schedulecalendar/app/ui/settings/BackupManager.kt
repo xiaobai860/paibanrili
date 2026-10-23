@@ -313,8 +313,10 @@ class BackupManager @Inject constructor(
         val fileName = "应用数据_${ts}_manual.json"
         val customPath = prefs.getBackupCustomPath()
         if (customPath.isNotBlank() && isSafPath(customPath)) {
-            writeSafBackupFile(customPath.toUri(), fileName, json)
-            File(customPath, fileName)  // 伪路径，仅用于显示
+            // 必须回真实文档 URI：原先返回「目录 URI + 文件名」拼出的伪路径，
+            // DocumentFile.fromSingleUri 解析不了，后续读取/删除会静默失败
+            val docUri = writeSafBackupFile(customPath.toUri(), fileName, json)
+            File(docUri.toString())
         } else {
             val targetDir = if (customPath.isNotBlank()) {
                 File(resolveSafPath(customPath)).also { it.mkdirs() }
@@ -333,8 +335,10 @@ class BackupManager @Inject constructor(
         val fileName = "班次配置_${ts}_manual.json"
         val customPath = prefs.getBackupCustomPath()
         if (customPath.isNotBlank() && isSafPath(customPath)) {
-            writeSafBackupFile(customPath.toUri(), fileName, json)
-            File(customPath, fileName)  // 伪路径，仅用于显示
+            // 必须回真实文档 URI：原先返回「目录 URI + 文件名」拼出的伪路径，
+            // DocumentFile.fromSingleUri 解析不了，后续读取/删除会静默失败
+            val docUri = writeSafBackupFile(customPath.toUri(), fileName, json)
+            File(docUri.toString())
         } else {
             val targetDir = if (customPath.isNotBlank()) {
                 File(resolveSafPath(customPath)).also { it.mkdirs() }
@@ -497,8 +501,14 @@ class BackupManager @Inject constructor(
 
         // DB 部分放在同一事务内：任一步失败整体回滚，避免「排班已写、休息已删」的半套数据
         db.withTransaction {
-            backup.scheduleRecords?.let { scheduleRepo.saveAll(it) }
+            // 排班记录按「整表替换」恢复：原先只upsert 合并，备份里已删除的旧排班会残留，
+            // 恢复结果不是备份当时的快照（与其余表的替换语义保持一致）
+            backup.scheduleRecords?.let {
+                scheduleRepo.deleteAll()
+                scheduleRepo.saveAll(it)
+            }
             backup.shifts?.let { list ->
+                shiftRepo.deleteAll()   // 内置班次是代码常量，不在表内，不会被删
                 shiftRepo.saveAll(list.filter { !it.builtIn }.map { it.copy(builtIn = false) })
             }
             // 仅当备份中确实存在该字段才做「全删 + 重建」；旧版备份缺字段时保持现状，
@@ -508,6 +518,7 @@ class BackupManager @Inject constructor(
                 backup.globalBreaks.forEach { breakRepo.save(it) }
             }
             if (backup.shiftStatuses != null) {
+                statusRepo.deleteAllUserDefined()
                 backup.shiftStatuses.filter { !it.builtIn }.forEach { statusRepo.save(it) }
             }
             if (backup.extraItems != null) {

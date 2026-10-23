@@ -172,7 +172,9 @@ class CalendarViewModel @Inject constructor(
                 prefs.scheduleRuleFlow.distinctUntilChanged()
             ) { shifts, records, schemes, rule ->
                 Triple(shifts, records, Pair(schemes, rule))
-            }.collect { (rawShifts, records, pair) ->
+                // conflate：连续打卡/批量排班会连发多次，中间状态直接丢弃，
+                // 避免排队跑多轮「3 个月 ×逐日工时薪资」重算（只需最终结果）
+            }.conflate().collect { (rawShifts, records, pair) ->
                 val (schemes, rule) = pair
                 // 将数据加载与重计算整体移到后台线程，避免首次/切换 Tab 时阻塞主线程导致卡顿。
                 // 所有输入（Room 查询结果、SharedPreferences）均为内存数据，线程安全；_state.update 为原子操作可跨线程。
@@ -184,11 +186,13 @@ class CalendarViewModel @Inject constructor(
                     val breaks     = breakRepo.getAll()
                     val extraItems = extraRepo.getAll()
                     val rawStatuses = statusRepo.getAllWithBuiltin()
-                    val salaryConf = prefs.salaryConfigFlow.first()
-                    val attendConf = prefs.attendConfigFlow.first()
+                    // 配置与排序一次读盘（原先 4 次 first() = 4 次文件读 + 4 次整份反序列化）
+                    val calcCtx    = prefs.loadCalcContext()
+                    val salaryConf = calcCtx.salaryConfig
+                    val attendConf = calcCtx.attendConfig
                     // 按用户自定义排序（与 ShiftsScreen 保持一致），并过滤已归档项
-                    val shiftOrder = prefs.getShiftOrder()
-                    val statusOrder = prefs.getStatusOrder()
+                    val shiftOrder = calcCtx.shiftOrder
+                    val statusOrder = calcCtx.statusOrder
                     val activeShifts = rawShifts.filter { it.archivedAt == null }
                     val activeStatuses = rawStatuses.filter { it.archivedAt == null }
                     val shifts = if (shiftOrder.isEmpty()) activeShifts else {
@@ -447,7 +451,11 @@ class CalendarViewModel @Inject constructor(
                 android.util.Log.w("CalendarViewModel", "loadSelectedDateEvents failed: $date", e)
                 emptyList()
             }
-            _state.update { it.copy(selectedDateEvents = events) }
+            // 回写前校验仍是当前选中日期：慢查询返回时用户可能已切到别的日期，
+            // 直接回写会让别的日期显示旧日期的事件
+            if (_state.value.selectedDate == date) {
+                _state.update { it.copy(selectedDateEvents = events) }
+            }
         }
     }
 
@@ -614,11 +622,19 @@ class CalendarViewModel @Inject constructor(
                 }
             }
 
-            val targetRec = scheduleRepo.getByDate(targetDate) ?: ScheduleRecord(targetDate)
-            targetRec.copy(
-                actualStartTime = if (targetDate == date) finalStartTime else targetRec.actualStartTime,
-                actualEndTime   = if (targetDate == date) finalEndTime else finalEndTime
-            )
+            if (targetDate != date && !startTime.isNullOrBlank()) {
+                // 跨午夜：上班时间属当天、下班时间属前一天，必须分别落到两条记录。
+                // 原实现只把下班时间写到前一天，上班时间被静默丢弃
+                scheduleRepo.save(rec.copy(actualStartTime = startTime))
+                val prevRec = scheduleRepo.getByDate(targetDate) ?: ScheduleRecord(targetDate)
+                prevRec.copy(actualEndTime = endTime ?: prevRec.actualEndTime)
+            } else {
+                val targetRec = scheduleRepo.getByDate(targetDate) ?: ScheduleRecord(targetDate)
+                targetRec.copy(
+                    actualStartTime = if (targetDate == date) finalStartTime else targetRec.actualStartTime,
+                    actualEndTime   = finalEndTime
+                )
+            }
         }
         scheduleRepo.save(updated)
         _uiEvent.send(CalendarUiEvent.ShowMessage("已补填 $date 打卡记录"))
@@ -826,7 +842,9 @@ class CalendarViewModel @Inject constructor(
     fun batchDelete() = viewModelScope.launch {
         val sel = _state.value.batchSelected
         if (sel.isEmpty()) return@launch
-        sel.forEach { scheduleRepo.delete(it) }
+        // 单事务批量删除：原先逐日 delete 会产生 N 次写事务 + N 次 refreshSignal
+        //（触发 N 轮小组件同步与提醒重排），且中途失败会留下部分删除
+        scheduleRepo.deleteMany(sel.toList())
         exitAllModes()
         _uiEvent.send(CalendarUiEvent.ShowMessage("已清除 ${sel.size} 天排班"))
         loadCurrentMonth()
@@ -1007,7 +1025,13 @@ class CalendarViewModel @Inject constructor(
                 return@launch
             }
             scheduleRepo.saveAll(results)
-            _uiEvent.send(CalendarUiEvent.ShowMessage("已复制 ${results.size} 天排班至 ${dstYear}年${dstMonth}月"))
+            val truncatedDays = (srcDays - dstDays).coerceAtLeast(0)
+            val msg = buildString {
+                append("已复制 ${results.size} 天排班至 ${dstYear}年${dstMonth}月")
+                // 31 天复制到 2 月会静默丢 3 天，必须让用户知道
+                if (overwrite && truncatedDays > 0) append("（目标月较短，源月有 $truncatedDays 天未复制）")
+            }
+            _uiEvent.send(CalendarUiEvent.ShowMessage(msg))
             // 如果复制到当前显示月，刷新
             if (dstYear == _state.value.year && dstMonth == _state.value.month) loadCurrentMonth()
         }

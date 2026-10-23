@@ -46,18 +46,6 @@ private fun fmtH(n: Double): String {
     return if (r == r.toLong().toDouble()) r.toLong().toString() else "%.1f".format(r)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun HoursScreen(navController: NavController, vm: HoursViewModel = hiltViewModel()) {
-    HoursContent(
-        navController = navController,
-        sharedYear = null,
-        sharedMonth = null,
-        onMonthChange = { _, _ -> },
-        vm = vm
-    )
-}
-
 /** 嵌入式内容：由 StatisticsScreen 传入共享月份 */
 @Composable
 fun HoursContent(

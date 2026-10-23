@@ -3,11 +3,9 @@ package com.schedulecalendar.app.reminder
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import dagger.hilt.EntryPoint
 import dagger.hilt.android.EntryPointAccessors
-import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
 import com.schedulecalendar.app.ScheduleApp
+import com.schedulecalendar.app.widget.WidgetClockEntryPoint
 import com.schedulecalendar.app.widget.WidgetRefreshScheduler
 import com.schedulecalendar.app.widget.syncAllWidgets
 import kotlinx.coroutines.Dispatchers
@@ -25,12 +23,8 @@ import kotlinx.coroutines.launch
  */
 class TimeChangeReceiver : BroadcastReceiver() {
 
-    @EntryPoint
-    @InstallIn(SingletonComponent::class)
-    interface TimeChangeReceiverEntryPoint {
-        fun reminderScheduler(): ReminderScheduler
-        fun widgetRefreshScheduler(): WidgetRefreshScheduler
-    }
+    // 依赖获取统一走 [WidgetClockEntryPoint]（已包含 reminderScheduler + widgetRefreshScheduler），
+    // 不再为本接收器单独定义一份内容完全相同的 EntryPoint 接口
 
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
@@ -41,7 +35,7 @@ class TimeChangeReceiver : BroadcastReceiver() {
         // onReceive 中任何未捕获异常都会杀死进程；goAsync() 之前的整段都要有防护
         val result = runCatching {
             val ep = EntryPointAccessors
-                .fromApplication(context, TimeChangeReceiverEntryPoint::class.java)
+                .fromApplication(context, WidgetClockEntryPoint::class.java)
             val scheduler = ep.reminderScheduler()
             val widgetScheduler = ep.widgetRefreshScheduler()
 

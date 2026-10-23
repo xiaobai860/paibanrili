@@ -356,11 +356,13 @@ object HolidayData {
      * @return Pair<节假日名称, 剩余天数>，如果当天是节假日则天数为0
      */
     fun getNextHolidayCountdown(currentDate: String): Pair<String, Int> {
-        val parts = currentDate.split("-")
-        val year = parts[0].toInt()
-        val month = parts[1].toInt()
-        val day = parts[2].toInt()
-        val current = java.time.LocalDate.of(year, month, day)
+        // 该函数会在 Glance 组件组合内被调用，非法日期若抛异常会直接拖垮组件刷新，
+        // 因此这里必须兜底返回而不是让异常冒出去
+        val current = runCatching { java.time.LocalDate.parse(currentDate) }.getOrNull()
+            ?: return Pair("未知", -1)
+        val year = current.year
+        val month = current.monthValue
+        val day = current.dayOfMonth
 
         // 检查当天是否为节假日（调休补班日不算「在放假」）
         val todayHoliday = getHolidayName(currentDate)

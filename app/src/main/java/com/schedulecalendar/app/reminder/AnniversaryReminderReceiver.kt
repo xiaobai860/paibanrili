@@ -21,6 +21,8 @@ class AnniversaryReminderReceiver : BroadcastReceiver() {
         const val CHANNEL_ID = "anniversary_reminder"
         const val CHANNEL_NAME = "纪念日提醒"
         const val BASE_NOTIFICATION_ID = 2000
+        /** 通知 ID 取模范围：越大越不容易出现两个纪念日互相覆盖 */
+        const val NOTIFICATION_ID_RANGE = 100000
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -47,11 +49,12 @@ class AnniversaryReminderReceiver : BroadcastReceiver() {
                 .setAutoCancel(true)
                 .build()
 
-            // 优先使用调用方传入的稳定 ID；缺省时退化为标题哈希（保持旧行为兼容）
+            // 优先使用调用方传入的稳定 ID；缺省时退化为标题哈希（保持旧行为兼容）。
+            // 取模基数从 1000 扩到 100000：原来两个纪念日 ID 同余时通知会互相覆盖
             val notificationId = if (stableId > 0) {
-                BASE_NOTIFICATION_ID + (stableId % 1000)
+                BASE_NOTIFICATION_ID + (stableId % NOTIFICATION_ID_RANGE)
             } else {
-                BASE_NOTIFICATION_ID + (title.hashCode() and Int.MAX_VALUE) % 1000
+                BASE_NOTIFICATION_ID + (title.hashCode() and Int.MAX_VALUE) % NOTIFICATION_ID_RANGE
             }
             nm.notify(notificationId, notification)
         }.onFailure { it.printStackTrace() }

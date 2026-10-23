@@ -418,15 +418,23 @@ class CalendarEventViewModel @Inject constructor(
     /**
      * 更新日历事件
      */
-    fun updateEvent(updatedEvent: CalendarEventInfo) {
+    /**
+     * 更新日历事件。
+     * @param onResult 可选回调（成功/失败）：调用方据此决定何时退出页面，
+     *                 避免「不等结果就 pop」导致保存失败用户无感知。
+     */
+    fun updateEvent(updatedEvent: CalendarEventInfo, onResult: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
-            val success = calendarRepo.updateEvent(updatedEvent)
+            val success = runCatching { calendarRepo.updateEvent(updatedEvent) }
+                .onFailure { android.util.Log.w("CalendarEventVM", "updateEvent failed", it) }
+                .getOrDefault(false)
             if (success) {
                 loadEvents()
             }
             _state.update {
                 it.copy(showEditDialog = false, selectedEvent = null)
             }
+            onResult?.invoke(success)
         }
     }
 

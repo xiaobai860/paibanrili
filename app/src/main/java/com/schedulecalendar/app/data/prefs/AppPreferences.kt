@@ -230,6 +230,42 @@ class AppPreferences @Inject constructor(
     /** 清除所有 DataStore 键值对，恢复出厂默认值 */
     suspend fun clearAll() = context.dataStore.edit { it.clear() }
 
+    /**
+     * 一次性读取全部偏好快照。
+     *
+     * 本类约 25 个 getter 都是「单键 data.first()」，每调用一次就重新读文件 + 反序列化整份
+     * preferences；同一次业务里读多个键会被放大成几十次磁盘读（提醒调度、月度统计最明显）。
+     * 需要一次读多个键时先取 snapshot 再从 map 取。
+     */
+    suspend fun snapshot(): Preferences = context.dataStore.data.first()
+
+    /** 一次读盘取得的「工时/薪资计算上下文」，避免同一次计算里多次 first() 读盘 */
+    data class CalcContext(
+        val salaryConfig: SalaryConfig,
+        val attendConfig: AttendConfig,
+        val shiftOrder: List<String>,
+        val statusOrder: List<String>
+    )
+
+    /**
+     * 一次读盘取出薪资配置、考勤配置与班次/状态排序。
+     * 原实现在每次数据变更回调里分别 first() 四次（= 四次文件读 + 四次整份反序列化），
+     * 连续打卡/批量排班时会重复放大。
+     */
+    suspend fun loadCalcContext(): CalcContext {
+        val p = snapshot()
+        return CalcContext(
+            salaryConfig = p[KEY_SALARY_CONFIG]?.let { json ->
+                runCatching { gson.fromJson(json, SalaryConfig::class.java) }.getOrNull()
+            } ?: SalaryConfig(),
+            attendConfig = p[KEY_ATTEND_CONFIG]?.let { json ->
+                runCatching { gson.fromJson(json, AttendConfig::class.java) }.getOrNull()
+            } ?: AttendConfig(),
+            shiftOrder = p[KEY_SHIFT_ORDER]?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
+            statusOrder = p[KEY_STATUS_ORDER]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+        )
+    }
+
     // ── 上下班提醒配置 ───────────────────────────────────
 
     /** 提醒是否启用 */

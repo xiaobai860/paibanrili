@@ -2,6 +2,7 @@
 package com.schedulecalendar.app.widget
 
 import android.content.Context
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dagger.hilt.android.EntryPointAccessors
@@ -31,7 +32,7 @@ class WidgetRefreshWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        return runCatching {
+        return try {
             // 1) 回源重算并刷新全部小组件
             syncAllWidgets(appContext)
 
@@ -42,9 +43,21 @@ class WidgetRefreshWorker(
             )
             ep.reminderScheduler().scheduleActiveReminders(force = true)
             ep.widgetRefreshScheduler().scheduleWidgetRefreshes()
-        }.fold(
-            onSuccess = { Result.success() },
-            onFailure = { Result.retry() }
-        )
+            Result.success()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // 被取消不是失败：交回系统处理，不产生 Result（否则会屏蔽取消语义）
+            throw e
+        } catch (e: Exception) {
+            Log.w("WidgetRefreshWorker", "doWork failed", e)
+            // 只对「环境性失败」重试：数据/配置类异常重试无意义，
+            // 原先一律 Result.retry() 会让永久性失败无限重试并伴随取消屏蔽
+            if (isRetryable(e)) Result.retry() else Result.failure()
+        }
     }
+
+    /** 可重试的失败类型：IO / 数据库瞬时异常；其余视为永久失败 */
+    private fun isRetryable(e: Exception): Boolean =
+        e is java.io.IOException ||
+            e is android.database.sqlite.SQLiteException ||
+            e is android.os.RemoteException
 }

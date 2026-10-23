@@ -3,33 +3,20 @@ package com.schedulecalendar.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
+// ⚠️ 本文件只保留「项目语义色」。此前还定义了一组中性色/灰阶/蓝绿辅色
+// （Gray900…Gray50、Green600、Green50、Blue600、Blue100、OrangeWarn、RestGray、White、Black），
+// 全项目 0 引用（外部一律用 Compose 自带的 `Color.White`/`Color.Black` 等限定名），
+// 已删除以免误用。需要中性色时直接用 MaterialTheme.colorScheme 或 Color.White 等。
+
 // 主色调：绿色系
 val Green700   = Color(0xFF059669)
-val Green600   = Color(0xFF10B981)
 val Green100   = Color(0xFFD1FAE5)
-val Green50    = Color(0xFFECFDF5)
-
-// 辅色：蓝色
-val Blue600    = Color(0xFF1677FF)
-val Blue100    = Color(0xFFDBEAFE)
-
-// 中性色
-val Gray900    = Color(0xFF111827)
-val Gray700    = Color(0xFF374151)
-val Gray500    = Color(0xFF6B7280)
-val Gray300    = Color(0xFFD1D5DB)
-val Gray100    = Color(0xFFF3F4F6)
-val Gray50     = Color(0xFFF9FAFB)
 
 // 语义色
 val RedError   = Color(0xFFEF4444)
-val OrangeWarn = Color(0xFFF59E0B)
-val White      = Color(0xFFFFFFFF)
-val Black      = Color(0xFF000000)
 
 // 节假日/休息
 val HolidayRed = Color(0xFFDC2626)
-val RestGray   = Color(0xFF9CA3AF)
 
 // 业务语义色（补贴/扣款/分类标签）
 val AllowanceGreen = Color(0xFF059669)   // 补贴/确认绿色

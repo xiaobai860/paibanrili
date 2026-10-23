@@ -11,9 +11,6 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ScheduleRecordDao {
     @Query("SELECT * FROM schedule_records WHERE date >= :rangeStart AND date <= :rangeEnd ORDER BY date ASC")
-    fun observeByMonth(rangeStart: String, rangeEnd: String): Flow<List<ScheduleRecordEntity>>
-
-    @Query("SELECT * FROM schedule_records WHERE date >= :rangeStart AND date <= :rangeEnd ORDER BY date ASC")
     suspend fun getByMonth(rangeStart: String, rangeEnd: String): List<ScheduleRecordEntity>
 
     @Query("SELECT * FROM schedule_records WHERE date = :date")
@@ -21,6 +18,9 @@ interface ScheduleRecordDao {
 
     @Query("SELECT * FROM schedule_records WHERE date >= :from AND date <= :to ORDER BY date ASC")
     fun observeByRange(from: String, to: String): Flow<List<ScheduleRecordEntity>>
+
+    @Query("SELECT * FROM schedule_records WHERE date >= :from AND date <= :to ORDER BY date ASC")
+    suspend fun getByRange(from: String, to: String): List<ScheduleRecordEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(record: ScheduleRecordEntity)
@@ -31,8 +31,14 @@ interface ScheduleRecordDao {
     @Query("DELETE FROM schedule_records WHERE date = :date")
     suspend fun deleteByDate(date: String)
 
-    @Query("DELETE FROM schedule_records WHERE date >= :from AND date <= :to")
-    suspend fun deleteByRange(from: String, to: String)
+    /**
+     * 批量按日期删除（单事务）。
+     * 逐日调用 deleteByDate 会产生 N 次写事务，且中途失败会留下部分删除的状态。
+     */
+    @Transaction
+    suspend fun deleteByDates(dates: List<String>) {
+        dates.forEach { deleteByDate(it) }
+    }
 
     @Query("SELECT * FROM schedule_records")
     suspend fun getAll(): List<ScheduleRecordEntity>

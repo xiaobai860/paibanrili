@@ -3,6 +3,8 @@ package com.schedulecalendar.app.ui.shifts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
+import com.schedulecalendar.app.data.db.AppDatabase
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.ExtraItemRepository
 import com.schedulecalendar.app.data.repository.ShiftBreakRepository
@@ -65,7 +67,8 @@ class ShiftsViewModel @Inject constructor(
     private val statusRepo: ShiftStatusRepository,
     private val extraRepo: ExtraItemRepository,
     private val backupManager: com.schedulecalendar.app.ui.settings.BackupManager,
-    private val prefs: AppPreferences
+    private val prefs: AppPreferences,
+    private val db: AppDatabase
 ) : ViewModel() {
 
     val shifts: StateFlow<List<Shift>> = shiftRepo.observeAllWithBuiltin()
@@ -314,31 +317,42 @@ class ShiftsViewModel @Inject constructor(
             var importedShifts   = 0
             var importedBreaks   = 0
             var importedStatuses = 0
+            var importedExtras   = 0
             val existingIds = shiftRepo.getAll().map { it.id }.toSet()
-            // 字段缺失（旧版备份）按空列表处理，不影响其他字段导入
-            data.shifts.orEmpty().forEach { s ->
-                if (overwrite || s.id !in existingIds) {
-                    shiftRepo.save(s.copy(builtIn = false)); importedShifts++
-                }
-            }
-            if (overwrite) {
-                breakRepo.deleteAll()
-                data.globalBreaks.orEmpty().forEach { breakRepo.save(it) }
-                importedBreaks = data.globalBreaks.orEmpty().size
-            } else {
-                val existingBreakIds = breakRepo.getAll().map { it.id }.toSet()
-                data.globalBreaks.orEmpty().filter { it.id !in existingBreakIds }.forEach {
-                    breakRepo.save(it); importedBreaks++
-                }
-            }
+            val existingBreakIds = breakRepo.getAll().map { it.id }.toSet()
             val existingStatusIds = statusRepo.getAll().filter { !it.builtIn }.map { it.id }.toSet()
-            data.shiftStatuses.orEmpty().filter { !it.builtIn }.forEach { st ->
-                if (overwrite || st.id !in existingStatusIds) {
-                    statusRepo.save(st); importedStatuses++
+            val existingExtraIds = extraRepo.getAll().map { it.id }.toSet()
+            // 整个导入放进同一事务：原先逐条保存，中途失败会留下「班次已导入、时段没导入」的半成品
+            db.withTransaction {
+                // 字段缺失（旧版备份）按空列表处理，不影响其他字段导入
+                data.shifts.orEmpty().forEach { s ->
+                    if (overwrite || s.id !in existingIds) {
+                        shiftRepo.save(s.copy(builtIn = false)); importedShifts++
+                    }
+                }
+                if (overwrite) {
+                    breakRepo.deleteAll()
+                    data.globalBreaks.orEmpty().forEach { breakRepo.save(it) }
+                    importedBreaks = data.globalBreaks.orEmpty().size
+                } else {
+                    data.globalBreaks.orEmpty().filter { it.id !in existingBreakIds }.forEach {
+                        breakRepo.save(it); importedBreaks++
+                    }
+                }
+                data.shiftStatuses.orEmpty().filter { !it.builtIn }.forEach { st ->
+                    if (overwrite || st.id !in existingStatusIds) {
+                        statusRepo.save(st); importedStatuses++
+                    }
+                }
+                // 补上此前完全遗漏的补贴扣款项：导出会带上它们，导入却从不恢复
+                data.extraItems.orEmpty().forEach { e ->
+                    if (overwrite || e.id !in existingExtraIds) {
+                        extraRepo.save(e); importedExtras++
+                    }
                 }
             }
             _uiEvent.send(ShiftsUiEvent.ShowMessage(
-                "导入成功：班次 $importedShifts，时段 $importedBreaks，状态 $importedStatuses"
+                "导入成功：班次 $importedShifts，时段 $importedBreaks，状态 $importedStatuses，项目 $importedExtras"
             ))
         }.onFailure {
             _uiEvent.send(ShiftsUiEvent.ShowError("导入失败：${it.message}"))

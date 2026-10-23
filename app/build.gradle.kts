@@ -151,7 +151,7 @@ dependencies {
 
     // Glance（Compose-first 桌面小组件）
     implementation(libs.glance.appwidget)
-    implementation(libs.glance.material3)
+    // 注：glance-material3 已移除（GlanceTheme 全项目 0 引用）
 
     // WorkManager（小组件周期刷新兜底：事件驱动为主 + 15min 周期兜底）
     implementation(libs.workmanager.runtime)

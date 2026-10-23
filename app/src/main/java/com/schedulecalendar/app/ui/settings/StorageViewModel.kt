@@ -5,13 +5,17 @@ import android.content.Context
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
+import com.schedulecalendar.app.data.db.AppDatabase
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
@@ -81,7 +85,8 @@ class StorageViewModel @Inject constructor(
     private val breakRepo:    ShiftBreakRepository,
     private val statusRepo:   ShiftStatusRepository,
     private val extraRepo:    ExtraItemRepository,
-    private val prefs: AppPreferences
+    private val prefs: AppPreferences,
+    private val db: AppDatabase
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(StorageUiState())
@@ -146,9 +151,12 @@ class StorageViewModel @Inject constructor(
     // ── 备份操作 ──────────────────────────────────────────────────
 
     fun createBackup(type: BackupType) = viewModelScope.launch {
-        val result = when (type) {
-            BackupType.APP_DATA -> backupManager.createAppDataBackup()
-            BackupType.SHIFT_CONFIG -> backupManager.createShiftConfigBackup()
+    	// 全量 DB 导出 + 文件写入都是阻塞 IO：原先直接在 Main 线程执行，大备份易 ANR
+        val result = withContext(Dispatchers.IO) {
+            when (type) {
+                BackupType.APP_DATA -> backupManager.createAppDataBackup()
+                BackupType.SHIFT_CONFIG -> backupManager.createShiftConfigBackup()
+            }
         }
         result.onSuccess { file ->
             _uiEvent.send(StorageUiEvent.ShowMessage("备份成功：${file.name}"))
@@ -160,12 +168,15 @@ class StorageViewModel @Inject constructor(
 
     fun restoreBackup(file: BackupFile) = viewModelScope.launch {
         runCatching {
-            val json = backupManager.readBackupContent(file.path)
-            when (file.type) {
-                BackupType.APP_DATA -> backupManager.restoreFromJson(json)
-                BackupType.SHIFT_CONFIG -> backupManager.restoreFromJson(json)
+            // 读取备份文件 + 写库都是阻塞 IO，挪到 IO 线程避免 ANR
+            val msg = withContext(Dispatchers.IO) {
+                val json = backupManager.readBackupContent(file.path)
+                when (file.type) {
+                    BackupType.APP_DATA -> backupManager.restoreFromJson(json)
+                    BackupType.SHIFT_CONFIG -> backupManager.restoreFromJson(json)
+                }
             }
-            _uiEvent.send(StorageUiEvent.ShowMessage("恢复成功"))
+            _uiEvent.send(StorageUiEvent.ShowMessage(msg.takeIf { it.isNotBlank() } ?: "恢复成功"))
         }.onFailure {
             _uiEvent.send(StorageUiEvent.ShowError("恢复失败：${it.message}"))
         }
@@ -173,7 +184,12 @@ class StorageViewModel @Inject constructor(
 
     fun deleteBackup(file: BackupFile) = viewModelScope.launch {
         runCatching {
-            backupManager.deleteBackupFile(file.path)
+            // 必须按返回值提示：SAF 目录下文件可能已被系统回收或无权限，
+            // 忽略返回值会让用户以为删掉了，实际文件还在
+            if (!backupManager.deleteBackupFile(file.path)) {
+                _uiEvent.send(StorageUiEvent.ShowError("删除失败：${file.name}（可能已被系统回收或无删除权限）"))
+                return@launch
+            }
             _uiEvent.send(StorageUiEvent.ShowMessage("已删除 ${file.name}"))
             reload()
         }.onFailure {
@@ -217,7 +233,7 @@ class StorageViewModel @Inject constructor(
     fun prepareExportJson(file: BackupFile, onReady: (json: String, suggestedName: String) -> Unit) =
         viewModelScope.launch {
             runCatching {
-                val json = backupManager.readBackupContent(file.path)
+                val json = withContext(Dispatchers.IO) { backupManager.readBackupContent(file.path) }
                 onReady(json, file.name)
             }.onFailure {
                 _uiEvent.send(StorageUiEvent.ShowError("读取失败：${it.message}"))
@@ -227,7 +243,7 @@ class StorageViewModel @Inject constructor(
     /** 从外部 URI 导入备份 */
     fun importFromJson(json: String) = viewModelScope.launch {
         runCatching {
-            val msg = backupManager.restoreFromJson(json)
+            val msg = withContext(Dispatchers.IO) { backupManager.restoreFromJson(json) }
             _uiEvent.send(StorageUiEvent.ShowMessage(msg))
         }.onFailure {
             _uiEvent.send(StorageUiEvent.ShowError("导入失败：${it.message}"))
@@ -238,12 +254,18 @@ class StorageViewModel @Inject constructor(
 
     fun clearAllData() = viewModelScope.launch {
         runCatching {
-            shiftRepo.deleteAll()
-            scheduleRepo.deleteAll()
-            extraRepo.deleteAll()
-            breakRepo.deleteAll()
-            statusRepo.deleteAllUserDefined()
-            prefs.clearAll()
+            withContext(Dispatchers.IO) {
+                // 5 张表的删除放进同一事务：原先逐表删除，中途异常会留下
+                // 「库表已清空但 DataStore 偏好仍在」的半清状态，且不可回滚
+                db.withTransaction {
+                    shiftRepo.deleteAll()
+                    scheduleRepo.deleteAll()
+                    extraRepo.deleteAll()
+                    breakRepo.deleteAll()
+                    statusRepo.deleteAllUserDefined()
+                }
+                prefs.clearAll()
+            }
             _uiEvent.send(StorageUiEvent.ShowMessage("数据已清空"))
             reload()
         }.onFailure {
@@ -264,7 +286,8 @@ class StorageViewModel @Inject constructor(
 
             // 找出已归档且未被引用的项目
             val archivedShifts = shiftRepo.getAll().filter { it.archivedAt != null && it.id !in referencedShiftIds }
-            val archivedStatuses = statusRepo.getAllWithBuiltin().filter { it.archivedAt != null && it.id !in referencedStatusIds }
+            // 必须用含归档集合：这里正是要筛「已归档且无引用」的项，用仅有效集合永远扫不到
+            val archivedStatuses = statusRepo.getAllIncludingArchivedWithBuiltin().filter { it.archivedAt != null && it.id !in referencedStatusIds }
             val archivedExtras = extraRepo.getAll().filter { it.archivedAt != null && it.id !in referencedExtraIds }
             // 不计入时段为全局生效，已归档的即为废弃
             val archivedBreaks = breakRepo.getAllWithArchived().filter { it.archivedAt != null }
@@ -305,15 +328,22 @@ class StorageViewModel @Inject constructor(
             val referencedExtraIds = allRecords.flatMap { it.extraItemIds }.toSet()
 
             val archivedShifts = shiftRepo.getAll().filter { it.archivedAt != null && it.id !in referencedShiftIds }
-            val archivedStatuses = statusRepo.getAllWithBuiltin().filter { it.archivedAt != null && it.id !in referencedStatusIds }
+            // 必须用含归档集合：这里正是要筛「已归档且无引用」的项，用仅有效集合永远扫不到
+            val archivedStatuses = statusRepo.getAllIncludingArchivedWithBuiltin().filter { it.archivedAt != null && it.id !in referencedStatusIds }
             val archivedExtras = extraRepo.getAll().filter { it.archivedAt != null && it.id !in referencedExtraIds }
             val archivedBreaks = breakRepo.getAllWithArchived().filter { it.archivedAt != null }
 
-            var deletedCount = 0
-            archivedShifts.forEach { shiftRepo.delete(it.id); deletedCount++ }
-            archivedStatuses.filter { !it.builtIn }.forEach { statusRepo.delete(it.id); deletedCount++ }
-            archivedExtras.forEach { extraRepo.delete(it.id); deletedCount++ }
-            archivedBreaks.forEach { breakRepo.delete(it.id); deletedCount++ }
+            // 整个清理放进单事务：原先逐条物理删除，中途失败会留下「删一半」且不可回滚的状态。
+            // 事务成功后计数必然与实际一致（原先逐条累加，异常时提示的数字与实际不符）
+            db.withTransaction {
+                archivedShifts.forEach { shiftRepo.delete(it.id) }
+                archivedStatuses.filter { !it.builtIn }.forEach { statusRepo.delete(it.id) }
+                archivedExtras.forEach { extraRepo.delete(it.id) }
+                archivedBreaks.forEach { breakRepo.delete(it.id) }
+            }
+            val deletedCount = archivedShifts.size +
+                archivedStatuses.count { !it.builtIn } +
+                archivedExtras.size + archivedBreaks.size
 
             _uiEvent.send(StorageUiEvent.ShowMessage("已清理 $deletedCount 条废弃数据"))
             // 重新扫描

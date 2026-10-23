@@ -20,12 +20,7 @@ class ShiftRepository @Inject constructor(
     private val _changeSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val changeSignal: Flow<Unit> = _changeSignal.asSharedFlow()
 
-    private suspend fun notifyChanged() {
-        // tryEmit 可能因无 collector/缓冲满而失败，记录日志避免「静默不刷新」难以排查
-        if (!_changeSignal.tryEmit(Unit)) {
-            android.util.Log.w("ShiftRepo", "changeSignal emit dropped")
-        }
-    }
+    private suspend fun notifyChanged() = _changeSignal.notifyChangedOrLog("ShiftRepo")
 
     /** 观察有效（未归档）的班次 */
     fun observeActive(): Flow<List<Shift>> = dao.observeActive().map { list -> list.map { it.toDomain() } }

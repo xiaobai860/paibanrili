@@ -38,18 +38,6 @@ import com.schedulecalendar.app.ui.util.rememberToday
 
 private fun fmtY(v: Double): String = "%.2f".format(v)
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SalaryScreen(navController: NavController, vm: SalaryViewModel = hiltViewModel()) {
-    SalaryContent(
-        navController = navController,
-        sharedYear = null,
-        sharedMonth = null,
-        onMonthChange = { _, _ -> },
-        vm = vm
-    )
-}
-
 /** 嵌入式内容：由 StatisticsScreen 传入共享月份 */
 @Composable
 fun SalaryContent(

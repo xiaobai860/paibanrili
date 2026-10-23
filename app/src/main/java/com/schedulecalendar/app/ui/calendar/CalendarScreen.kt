@@ -66,6 +66,22 @@ private data class DayCellData(
     val isPrevMonth: Boolean = false, val isNextMonth: Boolean = false
 )
 
+/** 日期格记忆化 key：只包含网格渲染真正依赖的字段（避免无关状态变化触发 42 格重算） */
+private data class GridCacheKey(
+    val year: Int, val month: Int, val rows: Int,
+    val shiftMap: Map<String, Shift>,
+    val schedules: Map<String, ScheduleRecord>,
+    val dayDetails: Map<String, DayScheduleDetail>,
+    val datesWithEvents: Set<String>,
+    val todayStr: String,
+    val selectedDate: String?,
+    val batchSelected: Set<String>,
+    val batchMode: Boolean, val deleteMode: Boolean,
+    val copyMode: Boolean, val copyPhase: Int,
+    val copySourceDates: Set<String>,
+    val copyTargetDate: String?
+)
+
 @Composable
 private fun renderDateGrid(
     gridYear: Int, gridMonth: Int, totalRows: Int,
@@ -77,7 +93,18 @@ private fun renderDateGrid(
 ) {
     // 42 个格子的 HolidayData / 节假日 / 选中态计算较重，且滑动翻页、动画帧都会触发重组。
     // 这里按「真正影响结果的输入」记忆化，避免同一状态下重复计算（state 为 data class，按值比较）。
-    val allDays: List<DayCellData> = remember(gridYear, gridMonth, totalRows, shiftMap, state, todayStr) {
+    // key 只取网格真正依赖的字段：原先整个 CalendarUiState 作 key，
+    // loading / 复制面板开合等与格子无关的变化也会重算 42 个格子
+    val gridKey = GridCacheKey(
+        year = gridYear, month = gridMonth, rows = totalRows, shiftMap = shiftMap,
+        schedules = state.schedules, dayDetails = state.dayDetails,
+        datesWithEvents = state.datesWithEvents, todayStr = todayStr,
+        selectedDate = state.selectedDate, batchSelected = state.batchSelected,
+        batchMode = state.batchMode, deleteMode = state.deleteMode,
+        copyMode = state.copyMode, copyPhase = state.copyPhase,
+        copySourceDates = state.copySourceDates, copyTargetDate = state.copyTargetDate
+    )
+    val allDays: List<DayCellData> = remember(gridKey) {
         val gym = YearMonth.of(gridYear, gridMonth)
         val gDaysInMonth = gym.lengthOfMonth()
         val gFirstDow = LocalDate.of(gridYear, gridMonth, 1).dayOfWeek.let {
@@ -460,7 +487,8 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                 val pagerState = rememberPagerState(initialPage = 500) { 1000 }
                 val rowHeight = 83.dp  // dateHeight(28)+lunarGap(2)+lunarHeight(12)+dataGap(3)+3*dataRowHeight(36)+2*dataRowGap(2)
                 // Continuous height interpolation - handles both forward and backward scrolling
-                val frac = pagerState.currentPageOffsetFraction
+                // 只在 frac 真正变化时触发重组：原先直接读会让人手拖动的每一帧都重组整块日历（42 格网格）
+                val frac by remember { derivedStateOf { pagerState.currentPageOffsetFraction } }
                 val curPage = pagerState.currentPage
                 val baseYM = YearMonth.of(today.year, today.monthValue).plusMonths((curPage - 500).toLong())
                 val baseFirstDow = LocalDate.of(baseYM.year, baseYM.monthValue, 1).dayOfWeek.let { if (it == DayOfWeek.SUNDAY) 6 else it.value - 1 }
@@ -895,13 +923,7 @@ private fun BatchToolbar(
     }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// 月份复制弹窗
-// ════════════════════════════════════════════════════════════════════════════
-
 /** 内置项小标记（系统内置班次/状态） */
-// ════════════════════════════════════════════════════════════════════════════
-// IDE Preview 函数（Design / Preview 标签页支持）
 // ════════════════════════════════════════════════════════════════════════════
 
 @Preview(showBackground = true, backgroundColor = 0xFFF9FAFB, widthDp = 90, heightDp = 90)

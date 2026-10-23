@@ -84,12 +84,20 @@ class CalendarEventRepository @Inject constructor(
     @Volatile
     private var allEventsCacheTime: Long = 0L
 
+    /** 日历名映射缓存（TTL）：loadAllCalendarInfo 每次全量查 Calendars 表，高频调用时开销明显 */
+    @Volatile
+    private var calendarInfoCache: Map<Long, CalendarInfo>? = null
+    @Volatile
+    private var calendarInfoCacheTime: Long = 0L
+
     /**
      * 使 getAllEvents 缓存失效（系统日历事件变化时由观察者调用），确保下次查询拿到最新数据
      */
     fun invalidateEventsCache() {
         allEventsCache = null
         allEventsCacheTime = 0L
+        calendarInfoCache = null
+        calendarInfoCacheTime = 0L
     }
 
     /**
@@ -300,6 +308,8 @@ class CalendarEventRepository @Inject constructor(
      * 批量加载所有可见日历的信息（避免 N+1 查询）
      */
     private fun loadAllCalendarInfo(): Map<Long, CalendarInfo> {
+        val nowMs = System.currentTimeMillis()
+        calendarInfoCache?.let { if (nowMs - calendarInfoCacheTime < EVENTS_CACHE_TTL_MS) return it }
         val map = mutableMapOf<Long, CalendarInfo>()
         val projection = arrayOf(
             CalendarContract.Calendars._ID,
@@ -326,6 +336,8 @@ class CalendarEventRepository @Inject constructor(
             // 静默返回空 Map 会让所有事件的日历名变空且无从排查，这里记日志
             android.util.Log.w("CalendarEventRepo", "loadAllCalendarInfo failed", e)
         }
+        calendarInfoCache = map
+        calendarInfoCacheTime = nowMs
         return map
     }
 

@@ -33,14 +33,10 @@ import com.schedulecalendar.app.ui.detail.DisplaySchemesScreen
 import com.schedulecalendar.app.ui.detail.ExtraItemsScreen
 import com.schedulecalendar.app.ui.detail.HoursDetailScreen
 import com.schedulecalendar.app.ui.detail.ScheduleDetailScreen
-import com.schedulecalendar.app.ui.hours.HoursScreen
-import com.schedulecalendar.app.ui.salary.SalaryScreen
 import com.schedulecalendar.app.ui.settings.SettingsScreen
 import com.schedulecalendar.app.ui.settings.SalarySettingsScreen
 import com.schedulecalendar.app.ui.settings.AttendanceSettingsScreen
 import com.schedulecalendar.app.ui.settings.CalendarAccountSettingsScreen
-import com.schedulecalendar.app.ui.settings.AutoClockSettingsScreen
-import com.schedulecalendar.app.ui.settings.OtherSettingsScreen
 import com.schedulecalendar.app.ui.settings.StorageScreen
 import com.schedulecalendar.app.ui.shifts.ShiftEditorScreen
 import com.schedulecalendar.app.ui.shifts.ShiftsScreen
@@ -219,8 +215,7 @@ fun AppNavHost() {
                 enterTransition = tabEnter, exitTransition = tabExit,
                 popEnterTransition = tabEnter, popExitTransition = tabExit
             ) { StatisticsScreen(navController) }
-            composable<RouteHours>      { HoursScreen(navController) }    // 保留兼容
-            composable<RouteSalary>     { SalaryScreen(navController) }   // 保留兼容
+            
             composable<RouteSettings>(
                 enterTransition = tabEnter, exitTransition = tabExit,
                 popEnterTransition = tabEnter, popExitTransition = tabExit
@@ -233,8 +228,7 @@ fun AppNavHost() {
             composable<RouteSalarySettings>    { SalarySettingsScreen(navController) }
             composable<RouteAttendanceSettings> { AttendanceSettingsScreen(navController) }
             composable<RouteCalendarAccountSettings> { CalendarAccountSettingsScreen(navController) }
-            composable<RouteAutoClockSettings> { AutoClockSettingsScreen(navController) }
-            composable<RouteOtherSettings>     { OtherSettingsScreen(navController) }
+            
             composable<RouteExtraItems>        { ExtraItemsScreen(navController) }
             composable<RouteDisplaySchemes>    { DisplaySchemesScreen(navController) }
             composable<RouteShiftEditor>       { ShiftEditorScreen(navController) }

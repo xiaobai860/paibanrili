@@ -9,6 +9,7 @@ import android.graphics.PorterDuffColorFilter
 import android.util.Log
 import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.glance.GlanceModifier
@@ -33,7 +34,9 @@ fun widgetIcon(
     color: Color,
     modifier: GlanceModifier
 ) {
-    val bmp = runCatching {
+    // 缓存位图：Glance 每次 update()/配置变化都会重组本组件，不缓存则每次都新建
+    // 128×128 ARGB_8888（64KB）并重绘矢量，刷新频繁时内存抖动明显
+    val bmp = remember(resId, color) { runCatching {
         val drawable = ContextCompat.getDrawable(context, resId) ?: return@runCatching null
         val size = drawable.intrinsicWidth
             .coerceIn(1, MAX_ICON_BITMAP_SIZE)
@@ -50,7 +53,7 @@ fun widgetIcon(
         drawable.colorFilter = PorterDuffColorFilter(argb, PorterDuff.Mode.SRC_IN)
         drawable.draw(canvas)
         bitmap
-    }.onFailure { Log.w("widgetIcon", "render icon failed, fallback to resource", it) }.getOrNull()
+    }.onFailure { Log.w("widgetIcon", "render icon failed, fallback to resource", it) }.getOrNull() }
 
     Image(
         provider = bmp?.let { ImageProvider(it) } ?: ImageProvider(resId),

@@ -510,19 +510,39 @@ fun AddAnniversaryScreen(
                         isCreating = true
 
                         if (isEditMode) {
-                            // 编辑模式：更新现有事件
+                            // 编辑模式：更新现有事件。
+                            // existingEvent 为空说明加载失败或缺日历权限，必须在此拦住，
+                            // 否则 existingEvent!! 会直接 NPE 崩溃
+                            val target = existingEvent
+                            if (target == null) {
+                                isCreating = false
+                                android.widget.Toast.makeText(
+                                    context, "纪念日事件未加载成功，无法保存（请检查日历权限）",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                                return@Button
+                            }
                             val editRrule = if (repeatYearly) "FREQ=YEARLY" else null
-                            val updatedEvent = existingEvent!!.copy(
+                            val updatedEvent = target.copy(
                                 title = fullTitle,
                                 description = desc,
                                 dtStart = startTime,
                                 dtEnd = endTime,
                                 allDay = true,
                                 rrule = editRrule,
-                                calendarId = anniversaryCalId ?: existingEvent.calendarId
+                                calendarId = anniversaryCalId ?: target.calendarId
                             )
-                            vm.updateEvent(updatedEvent)
-                            navController.popBackStack()
+                            // 等保存结果再退出：原实现立即 pop，失败时用户无感知且按钮卡在禁用态
+                            vm.updateEvent(updatedEvent) { success ->
+                                isCreating = false
+                                if (success) {
+                                    navController.popBackStack()
+                                } else {
+                                    android.widget.Toast.makeText(
+                                        context, "保存失败，请重试", android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
                         } else {
                             // 创建模式：写入纪念日专用日历
                             vm.createEventAsync(

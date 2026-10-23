@@ -159,7 +159,10 @@ class WidgetClockInAction : ActionCallback {
         val data = runCatching { Gson().fromJson(prefsJson, ClockInWidgetData::class.java) }
             .getOrElse { ClockInWidgetData() }
 
-        if (data.clockInDate.isBlank()) {
+        // 组件数据跨零点未刷新时 clockInDate 会停在昨天/前天，
+        // 直接写入等于把「今天的打卡」写到历史记录上 → 非今天一律走 fallback
+        val todayStr = DateFormats.date(LocalDate.now())
+        if (data.clockInDate.isBlank() || data.clockInDate != todayStr) {
             fallbackClock(context, glanceId, true)
             return
         }

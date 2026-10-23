@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.merge
@@ -127,8 +128,11 @@ class ScheduleApp : Application() {
         // 冷启动往往是被闹钟/组件在后台唤醒的，无可见 Activity，进程随时可能被系统回收；
         // 若延迟注册，进程在延迟窗口内被杀就会导致提醒闹钟一直缺失（表现为「不提醒」）。
         appScope.launch {
-            runSafely("scheduleActiveReminders(coldStart)") { reminderScheduler.scheduleActiveReminders() }
-            runSafely("scheduleWidgetRefreshes(coldStart)") { widgetRefreshScheduler.scheduleWidgetRefreshes() }
+            // 两个调度并行执行：原先串行 await，冷启动要等两轮（含各自的 DB/DataStore 读取）
+            val reminders = async { runSafely("scheduleActiveReminders(coldStart)") { reminderScheduler.scheduleActiveReminders() } }
+            val widgets = async { runSafely("scheduleWidgetRefreshes(coldStart)") { widgetRefreshScheduler.scheduleWidgetRefreshes() } }
+            reminders.await()
+            widgets.await()
         }
         // 组件数据回源同步可稍延迟（避免冷启动抢资源，留时间给进程稳定），保留 1s
         appScope.launch {

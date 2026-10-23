@@ -22,16 +22,10 @@ class ShiftBreakRepository @Inject constructor(
     private val _changeSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val changeSignal: Flow<Unit> = _changeSignal.asSharedFlow()
 
-    private suspend fun notifyChanged() {
-        // tryEmit 可能因无 collector/缓冲满而失败，记录日志避免「静默不刷新」难以排查
-        if (!_changeSignal.tryEmit(Unit)) {
-            android.util.Log.w("ShiftBreakRepo", "changeSignal emit dropped")
-        }
-    }
+    private suspend fun notifyChanged() = _changeSignal.notifyChangedOrLog("ShiftBreakRepo")
 
     /** 观察有效（未归档）的时段 */
     fun observeActive(): Flow<List<ShiftBreak>> = dao.observeActive().map { it.map { e -> e.toDomain() } }
-    fun observeAll(): Flow<List<ShiftBreak>> = dao.observeAll().map { it.map { e -> e.toDomain() } }
     suspend fun getAll(): List<ShiftBreak> = dao.getAll().map { it.toDomain() }
     /** 休息时段总数（轻量指纹查询） */
     suspend fun countAll(): Int = dao.countAll()

@@ -90,9 +90,9 @@ class SalaryViewModel @Inject constructor(
                 _state.update { it.copy(loading = true) }
             }
             runCatching {
-                val shifts       = shiftRepo.getAllWithBuiltin()
+                val shifts       = shiftRepo.getAllIncludingArchivedWithBuiltin()
                 val breaks       = breakRepo.getAll()
-                val statuses     = statusRepo.getAllWithBuiltin()
+                val statuses     = statusRepo.getAllIncludingArchivedWithBuiltin()
                 val extraItems   = extraItemRepo.getAll()
                 val salaryConf   = prefs.salaryConfigFlow.first()
                 val attendConf   = prefs.attendConfigFlow.first()
@@ -166,9 +166,12 @@ class SalaryViewModel @Inject constructor(
                     shiftStatuses = statuses,
                     loading      = false
                 )}
-            }.onFailure {
+            }.onFailure { e ->
+                // CancellationException 必须原样抛出：runCatching 会吞掉协程取消，
+                // 导致切月时旧任务被取消却弹出「薪资计算失败」并写坏 loading 状态
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _state.update { it.copy(loading = false) }
-                _uiEvent.send(SalaryUiEvent.ShowError("薪资计算失败：${it.message}"))
+                _uiEvent.send(SalaryUiEvent.ShowError("薪资计算失败：${e.message}"))
             }
         }
     }

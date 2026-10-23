@@ -16,6 +16,7 @@ import com.schedulecalendar.app.domain.model.AppliedStatus
 import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_LEAVE
 import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_SWAP
 import com.schedulecalendar.app.domain.model.CalcUtils
+import com.schedulecalendar.app.domain.util.DateFormats
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
@@ -141,34 +142,71 @@ class ReminderScheduler @Inject constructor(
         scheduleMutex.withLock {
             // 同一会话内、设置与窗口内排班均不变时跳过整轮重排；
             // 跨时区/改时间/重启等需要重排的场景由调用方以 force=true 强制，或进程重启后签名置空自然重排。
-            val signature = computeScheduleSignature()
+            val prefsSnapshot = loadPrefsSnapshot()
+            val signature = computeScheduleSignature(prefsSnapshot)
             val now = System.currentTimeMillis()
             // force 节流：自愈路径高频 force 时，距上次成功 force 过近则降级为按签名判断，
             // 避免日历模式 15 分钟一次「删全部+重建」写风暴、闹钟模式反复 cancel/rebuild。
             val effectiveForce = force && (now - lastForceScheduleAt) >= MIN_FORCE_INTERVAL_MILLIS
             if (!effectiveForce && signature == lastScheduledSignature) return@withLock
-            lastScheduledSignature = signature
             if (effectiveForce) lastForceScheduleAt = now
 
-            // 旧版「仅通知栏」方式已移除：一次性清理其遗留的独立精确闹钟（requestCode 基线 3/4），
-            // 否则这些残留闹钟会按旧的提前分钟数继续触发，造成时间不准的重复通知。
-            cleanupLegacyNotifyReminders()
+            // 整轮成功后才提交签名：原先在排班之前就写入 lastScheduledSignature，
+            // 一旦中途抛异常，后续相同签名会被永久跳过 → 提醒再也不注册。
+            try {
+                // 旧版「仅通知栏」方式已移除：一次性清理其遗留的独立精确闹钟（requestCode 基线 3/4），
+                // 否则这些残留闹钟会按旧的提前分钟数继续触发，造成时间不准的重复通知。
+                cleanupLegacyNotifyReminders()
 
-            val enabled = prefs.getReminderEnabled()
-            if (!enabled) {
-                cancelAllRemindersLocked()
-                cleanupCalendarReminders()
-                return@withLock
-            }
-            when (prefs.getReminderMethod()) {
-                METHOD_CALENDAR -> scheduleFixedReminders()
-                else -> {
-                    // 精确闹钟模式：清理日历残留后注册 setAlarmClock 闹钟
+                val enabled = prefsSnapshot.enabled
+                if (!enabled) {
+                    cancelAllRemindersLocked()
                     cleanupCalendarReminders()
-                    scheduleFixedReminders()
+                } else {
+                    when (prefsSnapshot.method) {
+                        METHOD_CALENDAR -> scheduleFixedReminders(prefsSnapshot)
+                        else -> {
+                            // 精确闹钟模式：清理日历残留后注册 setAlarmClock 闹钟
+                            cleanupCalendarReminders()
+                            scheduleFixedReminders(prefsSnapshot)
+                        }
+                    }
                 }
+                lastScheduledSignature = signature
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("ReminderScheduler", "schedule failed, signature not committed", e)
             }
         }
+    }
+
+    /**
+     * 一次读取的提醒配置快照。
+     *
+     * [AppPreferences] 的 getter 都是「单键 data.first()」（每次重新读文件 + 反序列化整份
+     * preferences），单次调度要读 6 个键 = 6 次磁盘读；这里一次读完、整轮复用。
+     * 各字段默认值与语义与 AppPreferences 的同名 getter 保持一致。
+     */
+    private data class ReminderPrefs(
+        val enabled: Boolean,
+        val method: String,
+        val clockIn: Boolean,
+        val clockOut: Boolean,
+        val clockInMinutes: Int,
+        val clockOutMinutes: Int
+    )
+
+    private suspend fun loadPrefsSnapshot(): ReminderPrefs {
+        val p = prefs.snapshot()
+        return ReminderPrefs(
+            enabled = p[AppPreferences.KEY_REMINDER_ENABLED] == "true",
+            method = if (p[AppPreferences.KEY_REMINDER_METHOD] == METHOD_CALENDAR) METHOD_CALENDAR else "alarm",
+            clockIn = p[AppPreferences.KEY_REMINDER_CLOCK_IN] != "false",
+            clockOut = p[AppPreferences.KEY_REMINDER_CLOCK_OUT] != "false",
+            clockInMinutes = p[AppPreferences.KEY_REMINDER_CLOCK_IN_MINUTES] ?: 15,
+            clockOutMinutes = p[AppPreferences.KEY_REMINDER_CLOCK_OUT_MINUTES] ?: 15
+        )
     }
 
     /**
@@ -177,20 +215,24 @@ class ReminderScheduler @Inject constructor(
      * 开关 / 方式 / 上下班提前量 / 窗口内排班班次及其上下班时间 / 附加状态任一变化都会改变签名。
      * 注意：签名不含绝对毫秒——跨时区或手动改时间导致的「同一排班、不同触发时刻」由调用方以 force=true 处理。
      */
-    private suspend fun computeScheduleSignature(): String {
+    private suspend fun computeScheduleSignature(p: ReminderPrefs): String {
         val sb = StringBuilder()
-        sb.append(prefs.getReminderEnabled()).append('|')
-        sb.append(prefs.getReminderMethod()).append('|')
-        sb.append(prefs.getReminderClockIn()).append('|')
-        sb.append(prefs.getReminderClockOut()).append('|')
-        sb.append(prefs.getReminderClockInMinutes()).append('|')
-        sb.append(prefs.getReminderClockOutMinutes()).append('|')
+        sb.append(p.enabled).append('|')
+        sb.append(p.method).append('|')
+        sb.append(p.clockIn).append('|')
+        sb.append(p.clockOut).append('|')
+        sb.append(p.clockInMinutes).append('|')
+        sb.append(p.clockOutMinutes).append('|')
         val today = LocalDate.now()
+        // 窗口内排班与班次定义各查一次即可：原先逐日 getShiftForDate + 逐条 getShiftTimes
+        // 会产生 20+ 次 DB 往返，而这段每轮调度必跑
+        val windowRecords = loadWindowRecords()
+        val shiftTimesMap = loadShiftTimesMap()
         for (dayOffset in -REMINDER_PAST_DAYS..REMINDER_FUTURE_DAYS) {
             val date = today.plusDays(dayOffset.toLong())
-            val record = getShiftForDate(date.toString())
+            val record = windowRecords[DateFormats.date(date)]
             val shiftId = record?.shiftId ?: ""
-            val shiftTimes = getShiftTimes(shiftId)
+            val shiftTimes = if (shiftId.isBlank()) null else shiftTimesMap[shiftId]
             val st = record?.appliedStatus
             sb.append(date).append(':')
                 .append(shiftId).append(':')
@@ -203,22 +245,40 @@ class ReminderScheduler @Inject constructor(
         return sb.toString()
     }
 
+    /** 提醒窗口（过去 N 天 ~ 未来 N 天）的排班记录，一次范围查询 */
+    private suspend fun loadWindowRecords(): Map<String, com.schedulecalendar.app.domain.model.ScheduleRecord> {
+        val today = LocalDate.now()
+        val from = DateFormats.date(today.minusDays(REMINDER_PAST_DAYS.toLong()))
+        val to = DateFormats.date(today.plusDays(REMINDER_FUTURE_DAYS.toLong()))
+        return scheduleRepo.getByRange(from, to).associateBy { it.date }
+    }
+
+    /** 班次 id → (开始时间, 结束时间, 名称)，一次查询建表；含归档班次（历史排班可能仍引用） */
+    private suspend fun loadShiftTimesMap(): Map<String, Triple<String, String, String>> {
+        val map = HashMap<String, Triple<String, String, String>>()
+        for (s in shiftRepo.getAllIncludingArchivedWithBuiltin()) {
+            if (s.builtIn && s.builtInType != null) continue      // 内置休息/调休不设提醒
+            if (s.startTime.isBlank() || s.endTime.isBlank()) continue
+            map[s.id] = Triple(s.startTime, s.endTime, s.name)
+        }
+        return map
+    }
+
     /**
      * 闹钟 / 日历模式的具体实现。
      */
-    private suspend fun scheduleFixedReminders() {
-        val enabled = prefs.getReminderEnabled()
-        if (!enabled) {
+    private suspend fun scheduleFixedReminders(p: ReminderPrefs) {
+        if (!p.enabled) {
             cancelAllRemindersLocked()
             cleanupCalendarReminders()
             return
         }
 
-        val method = prefs.getReminderMethod()
-        val clockInEnabled = prefs.getReminderClockIn()
-        val clockOutEnabled = prefs.getReminderClockOut()
-        val clockInMinutes = prefs.getReminderClockInMinutes()
-        val clockOutMinutes = prefs.getReminderClockOutMinutes()
+        val method      = p.method
+        val clockInEnabled  = p.clockIn
+        val clockOutEnabled = p.clockOut
+        val clockInMinutes  = p.clockInMinutes
+        val clockOutMinutes = p.clockOutMinutes
 
         if (!clockInEnabled && !clockOutEnabled) {
             cancelAllRemindersLocked()
@@ -421,8 +481,18 @@ class ReminderScheduler @Inject constructor(
     ) {
         try {
             val timeParts = timeStr.split(":")
-            val hour = timeParts[0].toIntOrNull() ?: return
-            val minute = timeParts[1].toIntOrNull() ?: return
+            // 脏数据（如 "8"、"08:"）会数组越界，必须先校验长度并记日志：
+            // 否则异常被外层空 catch 吞掉，表现为「该日提醒静默不注册」
+            if (timeParts.size < 2) {
+                android.util.Log.w("ReminderScheduler", "bad time format: $timeStr")
+                return
+            }
+            val hour = timeParts[0].toIntOrNull()
+            val minute = timeParts[1].toIntOrNull()
+            if (hour == null || minute == null || hour !in 0..23 || minute !in 0..59) {
+                android.util.Log.w("ReminderScheduler", "bad time value: $timeStr")
+                return
+            }
 
             val triggerTime = date.atTime(LocalTime.of(hour, minute))
                 .minusMinutes(advanceMinutes.toLong())
@@ -537,8 +607,18 @@ class ReminderScheduler @Inject constructor(
     ) {
         try {
             val timeParts = timeStr.split(":")
-            val hour = timeParts[0].toIntOrNull() ?: return
-            val minute = timeParts[1].toIntOrNull() ?: return
+            // 脏数据（如 "8"、"08:"）会数组越界，必须先校验长度并记日志：
+            // 否则异常被外层空 catch 吞掉，表现为「该日提醒静默不注册」
+            if (timeParts.size < 2) {
+                android.util.Log.w("ReminderScheduler", "bad time format: $timeStr")
+                return
+            }
+            val hour = timeParts[0].toIntOrNull()
+            val minute = timeParts[1].toIntOrNull()
+            if (hour == null || minute == null || hour !in 0..23 || minute !in 0..59) {
+                android.util.Log.w("ReminderScheduler", "bad time value: $timeStr")
+                return
+            }
 
             val typeLabel = if (isClockIn) "上班" else "下班"
             val title = if (shiftName.isNotEmpty()) {
@@ -576,8 +656,11 @@ class ReminderScheduler @Inject constructor(
                 calendarId = calendarRepo.getOrCreateReminderCalendarId(), // 强制使用提醒专用日历
                 reminderMinutes = reminderMinutes
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            // silently handle error
+            // 日历提醒创建失败不能静默：否则用户表现为「提醒配了却从不响」且无线索
+            android.util.Log.w("ReminderScheduler", "scheduleCalendarReminder failed: $date $timeStr", e)
         }
     }
 
@@ -602,8 +685,11 @@ class ReminderScheduler @Inject constructor(
             if (eventIds.isNotEmpty()) {
                 calendarRepo.deleteEvents(eventIds)
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            // silently handle error
+            // 清理失败必须留痕：残留事件会导致「明明关了提醒，通知还在弹」
+            android.util.Log.w("ReminderScheduler", "forceCleanupCalendarReminders failed", e)
         }
     }
 }

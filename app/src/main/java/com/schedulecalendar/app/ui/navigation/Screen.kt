@@ -7,8 +7,7 @@ import kotlinx.serialization.Serializable
 @Serializable object RouteCalendar
 @Serializable object RouteTodo       // 新：事项页
 @Serializable object RouteShifts
-@Serializable object RouteHours      // 保留兼容
-@Serializable object RouteSalary     // 保留兼容
+
 @Serializable object RouteStatistics  // 新：合并统计页
 @Serializable object RouteSettings
 
@@ -19,8 +18,7 @@ import kotlinx.serialization.Serializable
 @Serializable object RouteSalarySettings
 @Serializable object RouteAttendanceSettings
 @Serializable object RouteCalendarAccountSettings
-@Serializable object RouteAutoClockSettings
-@Serializable object RouteOtherSettings
+
 @Serializable object RouteExtraItems
 @Serializable object RouteDisplaySchemes
 @Serializable data class RouteShiftEditor(val shiftId: String? = null)

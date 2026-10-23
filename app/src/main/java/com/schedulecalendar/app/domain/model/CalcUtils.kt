@@ -16,6 +16,17 @@ import com.schedulecalendar.app.domain.util.DateFormats
  */
 object CalcUtils {
 
+    /**
+     * 内置班次 id → 排班类型；非内置班次用记录自身的 type。
+     * 原先同一段 when 在本文件里写了 3 遍，改一处容易漏另一处。
+     */
+    private fun effectiveScheduleType(record: ScheduleRecord): ScheduleType = when (record.shiftId) {
+        BUILTIN_SHIFT_LEAVE -> ScheduleType.LEAVE
+        BUILTIN_SHIFT_SWAP  -> ScheduleType.SWAP
+        BUILTIN_SHIFT_REST  -> ScheduleType.REST
+        else -> record.type
+    }
+
     // ── 基础时间工具 ─────────────────────────────────────────────────
 
     /**
@@ -37,15 +48,17 @@ object CalcUtils {
     private data class MonthDetailsKey(
         val year: Int,
         val month: Int,
-        val schedulesFp: Int,
-        val shiftsFp: Int,
-        val breaksFp: Int,
-        val extraFp: Int,
-        val salaryFp: Int,
-        val attendFp: Int
+        // 指纹用 64 位（SHA-256 截取）：原 32 位 hashCode 碰撞概率不低，
+        // 一旦碰撞缓存会直接返回整月错误数据，表现为薪资/工时错误且极难复现
+        val schedulesFp: Long,
+        val shiftsFp: Long,
+        val breaksFp: Long,
+        val extraFp: Long,
+        val salaryFp: Long,
+        val attendFp: Long
     )
     private val monthDetailsCache = object : LinkedHashMap<MonthDetailsKey, List<DayScheduleDetail>>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<MonthDetailsKey, List<DayScheduleDetail>>): Boolean = size > 64
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<MonthDetailsKey, List<DayScheduleDetail>>): Boolean = size > 16
     }
 
     fun timeToMin(t: String): Int {
@@ -225,12 +238,7 @@ object CalcUtils {
     ): DayHours {
         val zero = DayHours()
         // 通过 shiftId 推导有效排班类型
-        val effectiveType = when (record.shiftId) {
-            BUILTIN_SHIFT_LEAVE -> ScheduleType.LEAVE
-            BUILTIN_SHIFT_SWAP  -> ScheduleType.SWAP
-            BUILTIN_SHIFT_REST  -> ScheduleType.REST
-            else -> record.type
-        }
+        val effectiveType = effectiveScheduleType(record)
 
         // 休息/调休班次：如果附加状态有时间段，则按该时间段计算工时
         if (effectiveType == ScheduleType.REST || effectiveType == ScheduleType.SWAP) {
@@ -367,12 +375,7 @@ object CalcUtils {
             if (!date.startsWith(prefix)) continue
             if (dateFilter != null && !dateFilter(date)) continue
 
-            val effectiveType = when (record.shiftId) {
-                BUILTIN_SHIFT_LEAVE -> ScheduleType.LEAVE
-                BUILTIN_SHIFT_SWAP  -> ScheduleType.SWAP
-                BUILTIN_SHIFT_REST  -> ScheduleType.REST
-                else -> record.type
-            }
+            val effectiveType = effectiveScheduleType(record)
 
             if (effectiveType == ScheduleType.SHIFT
                 || effectiveType == ScheduleType.REST
@@ -497,12 +500,7 @@ object CalcUtils {
             if (!date.startsWith(prefix)) continue
             if (dateFilter != null && !dateFilter(date)) continue
 
-            val effectiveType = when (record.shiftId) {
-                BUILTIN_SHIFT_LEAVE -> ScheduleType.LEAVE
-                BUILTIN_SHIFT_SWAP  -> ScheduleType.SWAP
-                BUILTIN_SHIFT_REST  -> ScheduleType.REST
-                else -> record.type
-            }
+            val effectiveType = effectiveScheduleType(record)
             if (effectiveType != ScheduleType.SHIFT
                 && effectiveType != ScheduleType.REST
                 && effectiveType != ScheduleType.SWAP) continue
@@ -594,6 +592,25 @@ object CalcUtils {
 
     // ── 每日明细（用于工时/薪资页） ────────────────────────────────────
 
+    /**
+     * 内容指纹：SHA-256 取前 8 字节。
+     * 只在月度缓存 key 计算时使用（每月几次），开销可忽略；
+     * 相比 hashCode() 的 32 位指纹，碰撞概率低到可忽略。
+     */
+    private fun contentFingerprint(value: Any?): Long {
+        val text = value?.toString() ?: return 0L
+        return runCatching {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(text.toByteArray(Charsets.UTF_8))
+            var h = 0L
+            for (i in 0 until 8) h = (h shl 8) or (digest[i].toLong() and 0xFF)
+            h
+        }.getOrElse {
+            // SHA 不可用时退化为 32 位 hash（组合 size 降低误命中）
+            (text.hashCode().toLong() shl 32) or (text.length.toLong() and 0xFFFFFFFFL)
+        }
+    }
+
     fun getMonthScheduleDetails(
         year: Int, month: Int,
         schedules: Map<String, ScheduleRecord>,
@@ -605,12 +622,12 @@ object CalcUtils {
     ): List<DayScheduleDetail> {
         val key = MonthDetailsKey(
             year = year, month = month,
-            schedulesFp = schedules.hashCode(),
-            shiftsFp = shifts.hashCode(),
-            breaksFp = breaks.hashCode(),
-            extraFp = extraItems.hashCode(),
-            salaryFp = salaryConfig.hashCode(),
-            attendFp = attendConfig.hashCode()
+            schedulesFp = contentFingerprint(schedules),
+            shiftsFp = contentFingerprint(shifts),
+            breaksFp = contentFingerprint(breaks),
+            extraFp = contentFingerprint(extraItems),
+            salaryFp = contentFingerprint(salaryConfig),
+            attendFp = contentFingerprint(attendConfig)
         )
         // 该缓存被主线程与后台计算线程并发访问，需同步保护（计算在锁外执行，仅锁缓存读写）
         synchronized(monthDetailsCache) {

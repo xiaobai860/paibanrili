@@ -45,26 +45,21 @@ fun EditCalendarEventScreen(
     val loadedEvent by vm.singleEvent.collectAsStateWithLifecycle()
     val isSingleLoading by vm.isSingleLoading.collectAsStateWithLifecycle()
 
-    // 加载中显示指示器
+    // 加载中 / 事件不存在：抽成独立分支并在下方才创建表单状态，
+    // 避免「同一组合体里先 remember 表单再 return」造成结构随加载状态变化
     if (isSingleLoading) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator()
-        }
+        EventLoadingBox()
         return
     }
 
     // 加载完成后如果找不到事件，返回
-    if (loadedEvent == null) {
+    val event = loadedEvent
+    if (event == null) {
         LaunchedEffect(Unit) {
             navController.popBackStack()
         }
         return
     }
-
-    val event = loadedEvent!! // 此时一定非空
 
     // ── 预填充表单状态 ──────────────────────────────────────────
     val eventCalendar = remember(event.dtStart) {
@@ -304,5 +299,16 @@ fun EditCalendarEventScreen(
                 TextButton(onClick = { showEndTimePicker = false }) { Text("取消") }
             }
         )
+    }
+}
+
+/** 事件加载中占位（抽成独立 Composable，便于主组合体在加载完成前不创建任何表单状态） */
+@Composable
+private fun EventLoadingBox() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        CircularProgressIndicator()
     }
 }

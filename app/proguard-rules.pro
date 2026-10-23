@@ -15,7 +15,7 @@
 
 # ── Gson（DataStore 序列化模型）────────────────────────────────────────────────
 -keepattributes Signature
--keepattributes *Annotation*
+# 注：-keepattributes *Annotation* 已在文件上方 Hilt 段落声明过一次，此处不再重复
 -dontwarn sun.misc.**
 -keep class com.google.gson.** { *; }
 -keep class * implements com.google.gson.TypeAdapterFactory
@@ -33,10 +33,10 @@
 -keep class com.schedulecalendar.app.widget.** { *; }
 
 # ── Glance 运行时（Action / Composition / 内部 Provider，防止 R8 破坏反射路径）────
+# ⚠️ 这两条全量 keep 是历史踩坑后的修复：收窄后 release 包小组件会「载入出错」，
+#    改动必须真机验证组件能正常加载与后台刷新，勿轻易删改。
 -keep class androidx.glance.** { *; }
 -keepclassmembers class androidx.glance.** { *; }
--keep class androidx.glance.appwidget.** { *; }
--keepclassmembers class androidx.glance.appwidget.** { *; }
 # Glance 通过 WorkManager 在后台进程执行 provideGlance 的 composition，
 # 必须保留 androidx.work 全部类及其无参构造，否则 OverwritingInputMerger 等
 # 内部类被 R8 破坏 → worker 实例化失败 → widget 永远"载入出错"

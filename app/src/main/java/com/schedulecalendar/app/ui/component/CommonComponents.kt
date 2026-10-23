@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.schedulecalendar.app.domain.util.hexToColorSafe
 import com.schedulecalendar.app.ui.theme.ShiftPresetColors
 import kotlinx.coroutines.delay
 
@@ -65,7 +66,7 @@ fun ScheduleTopBar(
 /** 班次颜色圆点 */
 @Composable
 fun ShiftColorDot(hexColor: String, size: Int = 10) {
-    val color = runCatching { Color(hexColor.toColorInt()) }.getOrElse { Color(0xFF059669) }
+    val color = hexToColorSafe(hexColor, Color(0xFF059669))
     Box(
         Modifier
             .size(size.dp)
@@ -86,7 +87,7 @@ fun ColorPicker(selected: String, onSelect: (String) -> Unit) {
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 rowColors.forEach { hex ->
-                    val color = runCatching { Color(hex.toColorInt()) }.getOrElse { Color.Gray }
+                    val color = hexToColorSafe(hex, Color.Gray)
                     Box(
                         Modifier
                             .size(34.dp)

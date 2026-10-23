@@ -1146,27 +1146,19 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
 
     // ── 编辑导航：使用 Unit key 避免协程被取消 ──
     LaunchedEffect(Unit) {
-        while (true) {
-            val id = pendingEditEventId
-            if (id != null) {
-                kotlinx.coroutines.delay(200)
-                pendingEditEventId = null
-                navController.navigate(RouteEditCalendarEvent(id))
+        snapshotFlow { pendingEditEventId to pendingAccountSettings }
+            .collect { (editId, accSettings) ->
+                if (editId != null) {
+                    pendingEditEventId = null
+                    kotlinx.coroutines.delay(200)
+                    navController.navigate(RouteEditCalendarEvent(editId))
+                }
+                if (accSettings) {
+                    pendingAccountSettings = false
+                    kotlinx.coroutines.delay(200)
+                    navController.navigate(RouteCalendarAccountSettings)
+                }
             }
-            kotlinx.coroutines.delay(100)
-        }
-    }
-
-    // ── 账户设置导航：同样使用 Unit key ──
-    LaunchedEffect(Unit) {
-        while (true) {
-            if (pendingAccountSettings) {
-                pendingAccountSettings = false
-                kotlinx.coroutines.delay(200)
-                navController.navigate(RouteCalendarAccountSettings)
-            }
-            kotlinx.coroutines.delay(100)
-        }
     }
 
     // ── 详情/编辑弹窗 ─────────────────────────────────────

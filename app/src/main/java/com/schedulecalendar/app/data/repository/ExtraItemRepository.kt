@@ -24,24 +24,13 @@ class ExtraItemRepository @Inject constructor(
     private val _changeSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val changeSignal: Flow<Unit> = _changeSignal.asSharedFlow()
 
-    private suspend fun notifyChanged() {
-        // tryEmit 可能因无 collector/缓冲满而失败，记录日志避免「静默不刷新」难以排查
-        if (!_changeSignal.tryEmit(Unit)) {
-            Log.w("ExtraItemRepo", "changeSignal emit dropped")
-        }
-    }
+    private suspend fun notifyChanged() = _changeSignal.notifyChangedOrLog("ExtraItemRepo")
 
     /** 观察有效（未归档）的项目，用于UI显示 */
     fun observeActive(): Flow<List<ExtraItem>> = dao.observeActive().map { it.map { e -> e.toDomain() } }
-    /** 观察所有项目（含已归档） */
-    fun observeAll(): Flow<List<ExtraItem>> = dao.observeAll().map { it.map { e -> e.toDomain() } }
-    /** 获取有效项目 */
-    suspend fun getActive(): List<ExtraItem> = dao.observeActive().first().map { it.toDomain() }
+    
     /** 获取所有项目（含已归档），用于薪资计算查找历史金额 */
     suspend fun getAll(): List<ExtraItem> = dao.getAllIncludingArchived().map { it.toDomain() }
-    /** @deprecated 与 [getAll] 完全重复，保留仅为兼容旧调用；新代码请用 [getAll] */
-    @Deprecated("Use getAll() instead", ReplaceWith("getAll()"))
-    suspend fun getAllIncludingArchived(): List<ExtraItem> = getAll()
     /** 补贴扣款总数（轻量指纹查询） */
     suspend fun countAll(): Int = dao.countAll()
     suspend fun save(item: ExtraItem) { dao.upsert(item.toEntity()); notifyChanged() }

@@ -22,10 +22,6 @@ import androidx.glance.appwidget.GlanceAppWidgetReceiver
  */
 object WidgetPinHelper {
 
-    /** 当前桌面是否支持一键钉 widget（极少数第三方桌面不支持） */
-    fun canPin(context: Context): Boolean =
-        AppWidgetManager.getInstance(context).isRequestPinAppWidgetSupported
-
     /**
      * 请求把 [receiverClass] 对应的小组件钉到桌面。
      * 不支持时给出兜底提示（引导用户去桌面长按添加）。
