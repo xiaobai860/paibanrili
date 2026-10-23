@@ -36,7 +36,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.CalcProfileRepository
+import com.schedulecalendar.app.data.repository.ShiftBreakRepository
 import com.schedulecalendar.app.domain.model.CalcProfile
+import com.schedulecalendar.app.domain.model.ShiftBreak
 import com.schedulecalendar.app.domain.util.DateFormats
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -65,7 +67,8 @@ sealed class CalcProfilesUiEvent {
 @HiltViewModel
 class CalcProfilesViewModel @Inject constructor(
     private val profileRepo: CalcProfileRepository,
-    private val prefs: AppPreferences
+    private val prefs: AppPreferences,
+    private val breakRepo: ShiftBreakRepository
 ) : ViewModel() {
 
     private val _profiles = MutableStateFlow<List<CalcProfile>>(emptyList())
@@ -133,6 +136,7 @@ class CalcProfilesViewModel @Inject constructor(
                     runCatching { profileRepo.getCurrentProfile() }.getOrNull()?.let { cur ->
                         prefs.saveSalaryConfig(cur.salary)
                         prefs.saveAttendConfig(cur.attend)
+                        syncBreaksToTable(cur.breaks)
                     }
                 }
                 _uiEvent.send(
@@ -154,6 +158,18 @@ class CalcProfilesViewModel @Inject constructor(
         return if (srcName.startsWith(ym)) srcName else "$ym $srcName"
     }
 
+    /**
+     * 把档案的休息时段同步回 `shift_break` 表。
+     *
+     * 休息时段有**两份数据**：档案里的 JSON 快照（计算用）+ shift_break 表（编辑器读的）。
+     * 之前只做了「改时段 → 先建档案再落库」一个方向，反方向（复制/删除口径）漏了同步，
+     * 导致档案已回退、但时段编辑器仍显示改动后的集合。
+     */
+    private suspend fun syncBreaksToTable(breaks: List<ShiftBreak>) {
+        breakRepo.getAll().forEach { breakRepo.archive(it.id) }
+        breaks.forEach { breakRepo.save(it) }
+    }
+
     /** 把某个档案复制为「今天生效」的新档案（回滚到旧口径 / 基于旧口径微调） */
     fun copyAsNew(id: String) = viewModelScope.launch {
         runCatching {
@@ -171,6 +187,7 @@ class CalcProfilesViewModel @Inject constructor(
             // 「档案已换成旧口径、但设置页仍显示新参数」的不一致
             prefs.saveSalaryConfig(created.salary)
             prefs.saveAttendConfig(created.attend)
+            syncBreaksToTable(created.breaks)
             refresh()
             _uiEvent.send(
                 CalcProfilesUiEvent.ShowMessage(
