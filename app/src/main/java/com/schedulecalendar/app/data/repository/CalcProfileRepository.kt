@@ -122,10 +122,12 @@ class CalcProfileRepository @Inject constructor(
     ): CalcProfile {
         val all = dao.getAll().map { it.toDomain() }
         // 0) **相邻去重**：新档案内容与「紧邻的上一条」完全一致 → 不新建（只跟相邻的那条比，不跨条数）。
-        //    仅在上一条本身就是当前生效档案（effectiveTo == null）时生效 —— 此时它已覆盖新生效日，
-        //    无需任何改动；若上一条是历史档案则正常新建，由下面的收口逻辑维护接力，
-        //    避免出现「延长上一条区间导致与后续档案重叠」的问题。
-        val prev = all.filter { it.effectiveFrom < effectiveFrom }.maxByOrNull { it.effectiveFrom }
+        //    上一条按（生效日, 创建时间）取最大 —— 新生效日是"今天"时它就是当前生效档案
+        //    （effectiveTo == null）；此时它已覆盖新生效日，无需任何改动。
+        //    ⚠️ 必须用 `<=`：若用 `<` 会排除当天生效的那条，导致"复制当前口径"永远走到新建分支。
+        //    若上一条是历史档案（内容不同）则正常新建，由下面的收口逻辑维护接力。
+        val prev = all.filter { it.effectiveFrom <= effectiveFrom }
+            .maxWithOrNull(compareBy({ it.effectiveFrom }, { it.createdAt }))
         if (prev != null && prev.effectiveTo == null &&
             prev.salary == salary && prev.attend == attend && prev.breaks == breaks
         ) {
