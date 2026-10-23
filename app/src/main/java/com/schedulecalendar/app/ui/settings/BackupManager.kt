@@ -589,6 +589,18 @@ class BackupManager @Inject constructor(
                 data.extraItems.forEach { extraRepo.save(it) }
             }
         }
+        if (data.globalBreaks != null) {
+            val today = com.schedulecalendar.app.domain.util.DateFormats.date(java.time.LocalDate.now())
+            runCatching {
+                calcProfileRepo.createDerivedProfile(
+                    effectiveFrom = today,
+                    name = "${today.take(7)} 时段恢复",
+                    breaks = breakRepo.getAll()
+                )
+            }.onFailure {
+                android.util.Log.w("BackupManager", "sync profile after restore failed", it)
+            }
+        }
 
         // v6：恢复排序顺序与颜色索引（旧版备份为 null 时跳过，保持现状）
         data.shiftOrder?.let { prefs.saveShiftOrder(it) }
