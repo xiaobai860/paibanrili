@@ -193,14 +193,19 @@ class SalaryViewModel @Inject constructor(
         shifts: List<Shift>, breaks: List<ShiftBreak>,
         extraItems: List<ExtraItem>, salaryConf: SalaryConfig, attendConf: AttendConfig
     ): List<MonthlySalaryTrend> {
+        val months = (7 downTo 0).map { i -> var m = month - i; var y = year; if (m <= 0) { m += 12; y -= 1 }; y to m }
+        val fromKey = DateFormats.date(months.first().first, months.first().second, 1)
+        val lastY = months.last().first
+        val lastM = months.last().second
+        val toKey = DateFormats.date(lastY, lastM, java.time.YearMonth.of(lastY, lastM).lengthOfMonth())
+        val trendSegments = calcInputs.segmentsInRange(fromKey, toKey)
+        val trendInputs   = trendSegments.inputsLookup(calcInputs.fallbackInputs())
         val result = mutableListOf<MonthlySalaryTrend>()
-        for (i in 7 downTo 0) {
-            var m = month - i; var y = year
-            if (m <= 0) { m += 12; y -= 1 }
+        for ((y, m) in months) {
             val recs   = scheduleRepo.getByMonth(DateFormats.yearMonth(y, m))
             val schMap = recs.associateBy { it.date }
             val value  = if (schMap.isEmpty()) 0.0
-            else CalcUtils.calcMonthSalary(y, m, schMap, shifts, breaks, extraItems, salaryConf, attendConf).totalSalary
+            else CalcUtils.calcMonthSalaryByDate(y, m, schMap, shifts, extraItems, trendInputs).totalSalary
             result.add(MonthlySalaryTrend("${m}月", value, y, m))
         }
         return result

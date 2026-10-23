@@ -117,7 +117,8 @@ class CalendarViewModel @Inject constructor(
     private val statusRepo: ShiftStatusRepository,
     private val backupManager: com.schedulecalendar.app.ui.settings.BackupManager,
     private val prefs: AppPreferences,
-    private val calendarEventRepo: CalendarEventRepository
+    private val calendarEventRepo: CalendarEventRepository,
+    private val calcInputs: com.schedulecalendar.app.data.repository.CalcInputResolver
 ) : ViewModel() {
 
     private val _state   = MutableStateFlow(CalendarUiState())
@@ -188,6 +189,9 @@ class CalendarViewModel @Inject constructor(
                     val rawStatuses = statusRepo.getAllWithBuiltin()
                     // 配置与排序一次读盘（原先 4 次 first() = 4 次文件读 + 4 次整份反序列化）
                     val calcCtx    = prefs.loadCalcContext()
+                    val segments  = calcInputs.segmentsInRange(rangeFrom, rangeTo)
+                    val inputsFor = segments.inputsLookup(calcInputs.fallbackInputs())
+                    val inputsFp  = segments.inputsFingerprint()
                     val salaryConf = calcCtx.salaryConfig
                     val attendConf = calcCtx.attendConfig
                     // 按用户自定义排序（与 ShiftsScreen 保持一致），并过滤已归档项
@@ -211,15 +215,15 @@ class CalendarViewModel @Inject constructor(
                     val allShifts = rawShifts
                     val allShiftStatuses = rawStatuses
                     // 计算当月详情（使用完整列表，确保历史归档班次也能正确计算）
-                    val curDetails = CalcUtils.getMonthScheduleDetails(
-                        s.year, s.month, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
+                    val curDetails = CalcUtils.getMonthScheduleDetailsByDate(
+                        s.year, s.month, schedules, allShifts, extraItems, inputsFor, inputsFp
                     ).associateBy { it.date }
                     // 计算完整相邻月份详情（支持滑动联动时显示相邻月份网格）
-                    val prevDetails = CalcUtils.getMonthScheduleDetails(
-                        prevYM.year, prevYM.monthValue, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
+                                        val prevDetails = CalcUtils.getMonthScheduleDetailsByDate(
+                        prevYM.year, prevYM.monthValue, schedules, allShifts, extraItems, inputsFor, inputsFp
                     ).associateBy { it.date }
-                    val nextDetails = CalcUtils.getMonthScheduleDetails(
-                        nextYM.year, nextYM.monthValue, schedules, allShifts, breaks, extraItems, salaryConf, attendConf
+                                        val nextDetails = CalcUtils.getMonthScheduleDetailsByDate(
+                        nextYM.year, nextYM.monthValue, schedules, allShifts, extraItems, inputsFor, inputsFp
                     ).associateBy { it.date }
                     val allDetails = curDetails + prevDetails + nextDetails
                     val todos      = buildTodos(s.year, s.month, schedules, allShifts, attendConf, allShiftStatuses)

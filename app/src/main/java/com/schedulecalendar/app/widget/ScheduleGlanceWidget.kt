@@ -192,7 +192,7 @@ class WidgetClockInAction : ActionCallback {
                 record = record.copy(actualStartTime = currentTime)
                 val shift = record.shiftId?.let { id -> shiftRepo.getById(id) }
                 if (shift != null) {
-                    val grain = entryPoint.appPreferences().attendConfigFlow.first().overtimeGranMin
+                    val grain = entryPoint.calcInputResolver().inputsFor(targetDate).attend.overtimeGranMin
                     record = applyS4StatusRange(record, shift, grain)
                 }
             } else {
@@ -285,7 +285,7 @@ class WidgetClockOutAction : ActionCallback {
                 record = record.copy(actualEndTime = currentTime)
                 val shift = record.shiftId?.let { id -> shiftRepo.getById(id) }
                 if (shift != null) {
-                    val grain = entryPoint.appPreferences().attendConfigFlow.first().overtimeGranMin
+                    val grain = entryPoint.calcInputResolver().inputsFor(targetDate).attend.overtimeGranMin
                     record = applyS4StatusRange(record, shift, grain)
                 }
             } else {
@@ -663,6 +663,7 @@ interface WidgetClockEntryPoint {
     fun shiftBreakRepository(): ShiftBreakRepository
     fun extraItemRepository(): ExtraItemRepository
     fun appPreferences(): AppPreferences
+    fun calcInputResolver(): com.schedulecalendar.app.data.repository.CalcInputResolver
     fun reminderScheduler(): ReminderScheduler
     fun widgetRefreshScheduler(): WidgetRefreshScheduler
 }

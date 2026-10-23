@@ -237,6 +237,8 @@ class HoursViewModel @Inject constructor(
         val lastMonth = lastYM.substring(5, 7).toInt()
         val toKey = DateFormats.date(lastYear, lastMonth, java.time.YearMonth.of(lastYear, lastMonth).lengthOfMonth())
         val preFetched = scheduleRepo.getByRange(fromKey, toKey).groupBy { it.date.substring(0, 7) }
+        val trendSegments = calcInputs.segmentsInRange(fromKey, toKey)
+        val trendInputs   = trendSegments.inputsLookup(calcInputs.fallbackInputs())
 
         val result = mutableListOf<MonthlyHoursTrend>()
         for (i in 6 downTo 0) {
@@ -245,7 +247,7 @@ class HoursViewModel @Inject constructor(
             val recs      = preFetched[DateFormats.yearMonth(y, m)].orEmpty()
             val schMap    = recs.associateBy { it.date }
             if (schMap.isEmpty()) { result.add(MonthlyHoursTrend("${m}月", 0.0, 0.0, 0.0)); continue }
-            val summary   = CalcUtils.calcMonthHours(y, m, schMap, shifts, breaks, statuses, attendConf)
+            val summary   = CalcUtils.calcMonthHoursByDate(y, m, schMap, shifts, statuses, trendInputs)
             val ot        = CalcUtils.roundD2(summary.overtimeHours + summary.weekendHours + summary.holidayHours)
             result.add(MonthlyHoursTrend("${m}月", summary.normalHours, ot, CalcUtils.roundD2(summary.totalHours)))
         }

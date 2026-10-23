@@ -61,6 +61,7 @@ class ScheduleDetailViewModel @Inject constructor(
     private val extraRepo: ExtraItemRepository,
     private val breakRepo: ShiftBreakRepository,
     private val prefs: AppPreferences,
+    private val calcInputs: com.schedulecalendar.app.data.repository.CalcInputResolver,
     savedState: SavedStateHandle
 ) : ViewModel() {
 
@@ -123,7 +124,8 @@ class ScheduleDetailViewModel @Inject constructor(
         previewJob = viewModelScope.launch {
             val attendConfig = prefs.attendConfigFlow.first()
             val salaryConf = prefs.salaryConfigFlow.first()
-            val h = CalcUtils.calcDayHours(rec, date, st.shifts, st.globalBreaks, attendConfig)
+                        val dayInputs = calcInputs.inputsFor(date)
+            val h = CalcUtils.calcDayHours(rec, date, st.shifts, dayInputs.breaks, dayInputs.attend)
             val autoMode = CalcUtils.autoSalaryMode(date)
             val label = when (autoMode) {
                 SalaryMode.HOLIDAY -> "节假日"
@@ -318,6 +320,7 @@ class HoursDetailViewModel @Inject constructor(
     private val shiftStatusRepo: ShiftStatusRepository,
     private val extraRepo: ExtraItemRepository,
     private val prefs: AppPreferences,
+    private val calcInputs: com.schedulecalendar.app.data.repository.CalcInputResolver,
     savedState: SavedStateHandle
 ) : ViewModel() {
 
@@ -349,7 +352,13 @@ class HoursDetailViewModel @Inject constructor(
             val attendConf  = prefs.attendConfigFlow.first()
             val records     = scheduleRepo.getByMonth(DateFormats.yearMonth(year, month))
             val schedules   = records.associateBy { it.date }
-            val details     = CalcUtils.getMonthScheduleDetails(year, month, schedules, shifts, breaks, extras, salaryConf, attendConf)
+            // 计算口径按生效日取（配置档案）：一次查该月区间的档案，段内查表
+            val monthFrom   = DateFormats.monthStart(year, month)
+            val monthTo     = DateFormats.date(year, month, java.time.YearMonth.of(year, month).lengthOfMonth())
+            val segments    = calcInputs.segmentsInRange(monthFrom, monthTo)
+            val inputsFor   = segments.inputsLookup(calcInputs.fallbackInputs())
+            val inputsFp    = segments.inputsFingerprint()
+            val details     = CalcUtils.getMonthScheduleDetailsByDate(year, month, schedules, shifts, extras, inputsFor, inputsFp)
             // 附加状态 id → ShiftStatus 映射，用于查名称/颜色
             val statusMap   = statuses.associateBy { it.id }
 
