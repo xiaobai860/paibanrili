@@ -73,6 +73,7 @@ class CalcProfileRepository @Inject constructor(
             createdAt   = System.currentTimeMillis()
         )
         dao.upsert(profile.toEntity())
+        cleanupEmptyRanges()
         return true
     }
 
@@ -104,8 +105,10 @@ class CalcProfileRepository @Inject constructor(
 
     /**
      * 新建档案并维护区间接力：
-     * - 生效日之前「正在生效」的那条档案，其 effectiveTo 收口为新档案生效日的前一天；
-     * - 新档案 effectiveTo = null（接续到下一个档案生效前）。
+     * - 原本延伸到「至今」的档案，其 effectiveTo 收口为新档案生效日的前一天；
+     * - 若存在**更晚生效**的档案，新档案的 effectiveTo 只能到它前一天（否则区间重叠）；
+     * - 收口后区间变空的档案（from > to，说明它从未真正生效过，例如同一天内反复改配置）
+     *   直接删除，避免留下"今天生效、昨天失效"这种倒挂区间污染列表。
      */
     suspend fun createProfile(
         name: String,
@@ -115,10 +118,16 @@ class CalcProfileRepository @Inject constructor(
         effectiveFrom: String,
         note: String? = null
     ): CalcProfile {
-        val current = dao.getEffectiveOn(effectiveFrom)
-        if (current != null && current.effectiveTo == null) {
-            dao.update(current.copy(effectiveTo = dayBefore(effectiveFrom)))
-        }
+        val all = dao.getAll()
+        // 1) 原本覆盖生效日并延伸到至今的档案 → 收口到新档案生效日的前一天
+        all.filter { it.effectiveFrom < effectiveFrom && it.effectiveTo == null }
+            .forEach { dao.update(it.copy(effectiveTo = dayBefore(effectiveFrom))) }
+        // 2) 清理空区间档案（收口后 from > to 的，从未真正生效）
+        cleanupEmptyRanges()
+        // 3) 新档案的终点：若已有更晚生效的档案，到它前一天为止
+        val nextFuture = dao.getAll()
+            .filter { it.effectiveFrom > effectiveFrom }
+            .minByOrNull { it.effectiveFrom }
         val profile = CalcProfile(
             id          = "profile_${System.currentTimeMillis()}",
             name        = name,
@@ -126,7 +135,7 @@ class CalcProfileRepository @Inject constructor(
             attend      = attend,
             breaks      = breaks,
             effectiveFrom = effectiveFrom,
-            effectiveTo = null,
+            effectiveTo = nextFuture?.let { dayBefore(it.effectiveFrom) },
             note        = note,
             createdAt   = System.currentTimeMillis()
         )
@@ -202,13 +211,20 @@ class CalcProfileRepository @Inject constructor(
             .filter { it.effectiveFrom < profile.effectiveFrom }
             .maxByOrNull { it.effectiveFrom }
         if (prev != null && prev.effectiveTo != null) {
-            dao.update(prev.copy(effectiveTo = null))
+            dao.update(prev.copy(effectiveTo = dao.getAll().filter { it.effectiveFrom > profile.effectiveFrom }
+                .minByOrNull { it.effectiveFrom }?.let { dayBefore(it.effectiveFrom) }))
         }
         dao.deleteById(profile.id)
         return true
     }
 
     /** 清空全部口径档案（清库时用；清库后计算回退到当前现值） */
+    suspend fun cleanupEmptyRanges(): Int {
+        val empties = dao.getAll().filter { it.effectiveTo != null && it.effectiveTo!! < it.effectiveFrom }
+        empties.forEach { dao.deleteById(it.id) }
+        return empties.size
+    }
+
     suspend fun deleteAll() { dao.deleteAll() }
 
     /** 整表替换（备份恢复用） */
