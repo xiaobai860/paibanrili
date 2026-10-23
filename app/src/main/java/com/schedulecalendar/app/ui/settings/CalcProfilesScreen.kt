@@ -156,7 +156,7 @@ fun CalcProfilesScreen(
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             title = { Text("删除口径") },
-            text = { Text("确定删除「${target.name}」吗？\n\n该口径今天才生效、且没有任何排班记录使用它，删除后今天起恢复使用上一份口径，历史数据不受影响。") },
+            text = { Text("确定删除当前口径「${target.name}」吗？\n\n删除后，${target.effectiveFrom} 起恢复使用上一份口径。\n若该期间已有排班记录按它计算过，这些记录会改用上一份口径重算，数值可能变化（更早的历史口径不受影响）。") },
             confirmButton = { TextButton(onClick = { vm.delete(target.id); pendingDelete = null }) { Text("删除") } },
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } }
         )

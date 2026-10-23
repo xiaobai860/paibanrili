@@ -31,8 +31,8 @@ android {
         //   而 `-d` 只对 debuggable 包生效、release 包无效 → 只能「完整卸载（不带 -k）→ 安装」。
         //   （不要为此把 versionCode 改成日期型。）
         // 注意：Android 仅比较 versionCode 决定是否允许覆盖安装。
-        versionCode   = 201
-        versionName   = "2026102307"
+        versionCode   = 202
+        versionName   = "2026102308"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

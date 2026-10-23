@@ -172,19 +172,23 @@ class CalcProfileRepository @Inject constructor(
      * 其余情况一律不可删（删了等于让那段历史改用别的口径重算）。
      */
     suspend fun deletability(profile: CalcProfile): ProfileDeletability {
+        // 规则（用户 2026-10-23 定）：**只允许删除当前生效的口径**。
+        // 历史口径承载着那段时间的计算结果，删掉会让那些日期改用别的口径重算 → 一律不给删。
+        if (profile.effectiveTo != null) {
+            return ProfileDeletability.NotDeletable("历史口径不能删除（它承载着那段时间的计算结果）")
+        }
         if (profile.id == INITIAL_PROFILE_ID) {
             return ProfileDeletability.NotDeletable("初始口径覆盖全部历史，不能删除")
         }
-        val today = DateFormats.date(LocalDate.now())
-        if (profile.effectiveFrom < today) {
-            return ProfileDeletability.NotDeletable("该口径已生效过并覆盖历史日期，删除会改变历史计算结果")
-        }
-        val used = scheduleRepo.countRecordsSince(profile.effectiveFrom)
-        if (used > 0) {
-            return ProfileDeletability.NotDeletable("该口径已有 $used 条排班记录，删除会改变这些记录的计算结果")
-        }
         return ProfileDeletability.Deletable
     }
+
+    /**
+     * 该口径的生效区间内已有多少条排班记录用它算过。
+     * 仅用于删除前的**告知**（有数据时删除会让这些记录改用上一份口径重算）。
+     */
+    suspend fun affectedRecordCount(profile: CalcProfile): Int =
+        runCatching { scheduleRepo.countRecordsSince(profile.effectiveFrom) }.getOrDefault(0)
 
     /**
      * 删除一条「今天才生效、区间内无数据」的口径，并把前一份口径的接力恢复为「至今」。
