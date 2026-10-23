@@ -68,7 +68,8 @@ class ShiftsViewModel @Inject constructor(
     private val extraRepo: ExtraItemRepository,
     private val backupManager: com.schedulecalendar.app.ui.settings.BackupManager,
     private val prefs: AppPreferences,
-    private val db: AppDatabase
+    private val db: AppDatabase,
+    private val profileRepo: com.schedulecalendar.app.data.repository.CalcProfileRepository
 ) : ViewModel() {
 
     val shifts: StateFlow<List<Shift>> = shiftRepo.observeAllWithBuiltin()
@@ -192,9 +193,29 @@ class ShiftsViewModel @Inject constructor(
     // ── 全局不计时段 CRUD ──────────────────────────────────────────
     fun saveBreak(item: ShiftBreak) = viewModelScope.launch {
         // 编辑时：归档旧记录 + 创建新ID的新记录
-        val existing = breakRepo.getAll().find { it.id == item.id }
+        val current = breakRepo.getAll()
+        val existing = current.find { it.id == item.id }
         val isEdit = existing != null
         val newItem = if (isEdit) item.copy(id = UUID.randomUUID().toString()) else item
+        // 新口径的时段集合 = 当前有效集合（编辑时用新项替换旧项）
+        val newBreaks = if (isEdit) current.filter { it.id != existing.id } + newItem else current + newItem
+        // 休息时段参与工时计算 → 改动必须同步生成新口径档案（今天生效），
+        // 否则「设置里改了午休、计算却仍读旧档案」会前后不一致。
+        // 顺序：**先建档案再落库**，建档失败则不落库（避免表改了但计算没生效）。
+        val today = com.schedulecalendar.app.domain.util.DateFormats.date(java.time.LocalDate.now())
+        val profileOk = runCatching {
+            profileRepo.createDerivedProfile(
+                effectiveFrom = today,
+                name = "${today.take(7)} 时段调整",
+                breaks = newBreaks
+            )
+        }.onFailure {
+            android.util.Log.w("ShiftsViewModel", "create profile for breaks failed", it)
+        }.isSuccess
+        if (!profileOk) {
+            _uiEvent.send(ShiftsUiEvent.ShowError("保存失败：无法生成新口径，本次修改已撤销"))
+            return@launch
+        }
         if (isEdit) {
             breakRepo.archive(existing.id)
         }
@@ -207,10 +228,29 @@ class ShiftsViewModel @Inject constructor(
             prefs.saveBreakOrder(newOrder)
         }
         backupManager.autoBackupShiftConfig()
+        _uiEvent.send(ShiftsUiEvent.ShowMessage("已生成新口径（自 $today 起生效），历史月份仍按原时段计算"))
     }
     fun deleteBreak(id: String) = viewModelScope.launch {
+        val current = breakRepo.getAll()
+        val newBreaks = current.filter { it.id != id }
+        val today = com.schedulecalendar.app.domain.util.DateFormats.date(java.time.LocalDate.now())
+        // 同样先建档案（时段集合少了这一条），失败则不删
+        val profileOk = runCatching {
+            profileRepo.createDerivedProfile(
+                effectiveFrom = today,
+                name = "${today.take(7)} 时段调整",
+                breaks = newBreaks
+            )
+        }.onFailure {
+            android.util.Log.w("ShiftsViewModel", "create profile for breaks failed", it)
+        }.isSuccess
+        if (!profileOk) {
+            _uiEvent.send(ShiftsUiEvent.ShowError("删除失败：无法生成新口径，本次删除已撤销"))
+            return@launch
+        }
         breakRepo.archive(id)
         backupManager.autoBackupShiftConfig()
+        _uiEvent.send(ShiftsUiEvent.ShowMessage("已生成新口径（自 $today 起生效），历史月份仍按原时段计算"))
     }
 
     // ── 状态类型 CRUD ──────────────────────────────────────────────

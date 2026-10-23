@@ -157,6 +157,9 @@ class CalcProfileRepository @Inject constructor(
         return true
     }
 
+    /** 清空全部口径档案（清库时用；清库后计算回退到当前现值） */
+    suspend fun deleteAll() { dao.deleteAll() }
+
     /** 整表替换（备份恢复用） */
     suspend fun replaceAll(profiles: List<CalcProfile>) {
         dao.deleteAll()

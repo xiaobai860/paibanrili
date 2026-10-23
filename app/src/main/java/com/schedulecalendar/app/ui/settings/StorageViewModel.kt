@@ -86,7 +86,8 @@ class StorageViewModel @Inject constructor(
     private val statusRepo:   ShiftStatusRepository,
     private val extraRepo:    ExtraItemRepository,
     private val prefs: AppPreferences,
-    private val db: AppDatabase
+    private val db: AppDatabase,
+    private val calcProfileRepo: CalcProfileRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(StorageUiState())
@@ -264,6 +265,7 @@ class StorageViewModel @Inject constructor(
                     breakRepo.deleteAll()
                     statusRepo.deleteAllUserDefined()
                 }
+                calcProfileRepo.deleteAll()
                 prefs.clearAll()
             }
             _uiEvent.send(StorageUiEvent.ShowMessage("数据已清空"))
