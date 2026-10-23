@@ -60,6 +60,14 @@ private fun AttendConfigSection(
 
     Column(modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // ── 影响提示：这些参数参与历史工时/薪资计算 ──
+        Text(
+            "ⓘ 修改会立即生效，并追溯影响历史月份的工时与薪资（历史排班会按新参数重新计算）。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+        )
+
         // ── 加班粒度：单选按钮组 ──
         Text("加班粒度", style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)

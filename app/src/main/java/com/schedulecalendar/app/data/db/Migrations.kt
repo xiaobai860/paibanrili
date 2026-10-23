@@ -43,6 +43,29 @@ object Migrations {
         }
     }
 
+    /** 5 → 6：新增计算口径档案表（薪资/考勤/休息时段的带生效日快照） */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `calc_profiles` (
+                    `id` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `salaryJson` TEXT NOT NULL,
+                    `attendJson` TEXT NOT NULL,
+                    `breaksJson` TEXT NOT NULL,
+                    `effectiveFrom` TEXT NOT NULL,
+                    `effectiveTo` TEXT,
+                    `note` TEXT,
+                    `createdAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `idx_calc_profiles_from` ON `calc_profiles` (`effectiveFrom`)")
+        }
+    }
+
     /** 全部迁移，按版本顺序注册 */
-    val ALL = arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+    val ALL = arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 }

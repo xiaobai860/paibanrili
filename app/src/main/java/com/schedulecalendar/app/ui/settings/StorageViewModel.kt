@@ -287,8 +287,9 @@ class StorageViewModel @Inject constructor(
             // 必须用含归档集合：这里正是要筛「已归档且无引用」的项，用仅有效集合永远扫不到
             val archivedStatuses = statusRepo.getAllIncludingArchivedWithBuiltin().filter { it.archivedAt != null && it.id !in referencedStatusIds }
             val archivedExtras = extraRepo.getAll().filter { it.archivedAt != null && it.id !in referencedExtraIds }
-            // 不计入时段为全局生效，已归档的即为废弃
-            val archivedBreaks = breakRepo.getAllWithArchived().filter { it.archivedAt != null }
+            // 全局休息时段**不参与**废弃数据清理：它是「全局生效」配置（不挂在任何排班上），
+            // 没有「是否被引用」的判定；清理它会直接改变所有历史日期的工时口径。
+            val archivedBreaks = emptyList<com.schedulecalendar.app.domain.model.ShiftBreak>()
 
             _state.update {
                 it.copy(
@@ -326,7 +327,8 @@ class StorageViewModel @Inject constructor(
             // 必须用含归档集合：这里正是要筛「已归档且无引用」的项，用仅有效集合永远扫不到
             val archivedStatuses = statusRepo.getAllIncludingArchivedWithBuiltin().filter { it.archivedAt != null && it.id !in referencedStatusIds }
             val archivedExtras = extraRepo.getAll().filter { it.archivedAt != null && it.id !in referencedExtraIds }
-            val archivedBreaks = breakRepo.getAllWithArchived().filter { it.archivedAt != null }
+            // 全局休息时段不清理（全局生效、无引用概念，删它=改所有历史口径）
+            val archivedBreaks = emptyList<com.schedulecalendar.app.domain.model.ShiftBreak>()
 
             // 整个清理放进单事务：原先逐条物理删除，中途失败会留下「删一半」且不可回滚的状态。
             // 事务成功后计数必然与实际一致（原先逐条累加，异常时提示的数字与实际不符）
@@ -334,7 +336,6 @@ class StorageViewModel @Inject constructor(
                 archivedShifts.forEach { shiftRepo.delete(it.id) }
                 archivedStatuses.filter { !it.builtIn }.forEach { statusRepo.delete(it.id) }
                 archivedExtras.forEach { extraRepo.delete(it.id) }
-                archivedBreaks.forEach { breakRepo.delete(it.id) }
             }
             val deletedCount = archivedShifts.size +
                 archivedStatuses.count { !it.builtIn } +

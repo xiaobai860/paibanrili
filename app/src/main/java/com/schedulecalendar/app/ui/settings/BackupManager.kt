@@ -37,6 +37,7 @@ class BackupManager @Inject constructor(
     private val breakRepo:    ShiftBreakRepository,
     private val statusRepo:   ShiftStatusRepository,
     private val extraRepo:    ExtraItemRepository,
+    private val calcProfileRepo: CalcProfileRepository,
     private val prefs:        AppPreferences
 ) {
     private val gson = Gson()
@@ -440,7 +441,7 @@ class BackupManager @Inject constructor(
         // 全量备份：导出所有排班记录（含历史与未来），不再仅限最近 12 个月，避免恢复后更早数据丢失
         val allRecords = scheduleRepo.getAll()
         val backup = AppDataBackup(
-            version = 3, exportTime = now,
+            version = 4, exportTime = now,
             scheduleRecords = allRecords,
             shifts = shiftRepo.getAll().filter { !it.builtIn },
             globalBreaks = breakRepo.getAll(),
@@ -453,6 +454,8 @@ class BackupManager @Inject constructor(
             disabledAccountIds = prefs.getDisabledAccountIds().toList(),
             accountCategories = prefs.getAccountCategories(),
             accountsInitialized = prefs.isAccountsInitialized(),
+            // 计算口径档案（v4）：不导出则恢复后历史口径会丢失
+            calcProfiles = calcProfileRepo.getAll(),
             // ── 提醒设置 ──
             reminderEnabled = prefs.getReminderEnabled(),
             reminderMethod = prefs.getReminderMethod(),
@@ -525,6 +528,9 @@ class BackupManager @Inject constructor(
                 extraRepo.deleteAll()
                 backup.extraItems.forEach { extraRepo.save(it) }
             }
+            // 计算口径档案（v4）：整表替换，保证恢复后历史日期用的口径与备份时完全一致。
+            // 旧备份没有该字段时保持现状（不删已有档案）。
+            backup.calcProfiles?.let { calcProfileRepo.replaceAll(it) }
         }
 
         // 偏好设置在 DB 事务成功后再写（避免 DB 回滚后偏好仍被改）
@@ -720,6 +726,9 @@ private data class AppDataBackup(
     val reminderClockInMinutes: Int? = null,
     val reminderClockOutMinutes: Int? = null,
     val reminderNotifyBar: Boolean? = null,
+    // ── v4 新增：计算口径档案（薪资/考勤/休息时段的带生效日快照）──
+    // 可空：旧备份没有该字段时保持现状（不强制建档案），恢复后由 ensureInitialProfile 兜底
+    val calcProfiles: List<com.schedulecalendar.app.domain.model.CalcProfile>? = null,
     val shiftOrder: List<String>? = null,
     val statusOrder: List<String>? = null,
     val extraOrder: List<String>? = null,

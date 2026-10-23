@@ -55,7 +55,9 @@ object CalcUtils {
         val breaksFp: Long,
         val extraFp: Long,
         val salaryFp: Long,
-        val attendFp: Long
+        val attendFp: Long,
+        /** 按日取口径版的档案集合指纹（固定版传 0，两者缓存互不串味） */
+        val inputsFp: Long = 0L
     )
     private val monthDetailsCache = object : LinkedHashMap<MonthDetailsKey, List<DayScheduleDetail>>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<MonthDetailsKey, List<DayScheduleDetail>>): Boolean = size > 16
@@ -352,6 +354,7 @@ object CalcUtils {
 
     // ── 月工时统计 ────────────────────────────────────────────────────
 
+    /** 固定配置版：全部日期使用同一套参数（等价于改造前行为） */
     fun calcMonthHours(
         year: Int, month: Int,
         schedules: Map<String, ScheduleRecord>,
@@ -359,6 +362,38 @@ object CalcUtils {
         breaks: List<ShiftBreak>,
         shiftStatuses: List<ShiftStatus>,
         attendConfig: AttendConfig,
+        dateFilter: ((String) -> Boolean)? = null
+    ): HoursSummary = calcMonthHoursInternal(
+        year, month, schedules, shifts, shiftStatuses,
+        { breaks }, { attendConfig }, dateFilter
+    )
+
+    /**
+     * 按日取配置版：配置档案按生效日分段时使用（每天用当天生效的口径）。
+     *
+     * 与固定配置版在同一配置下结果**逐分相同**（由 CalcUtilsProfileTest 守护）。
+     */
+    fun calcMonthHoursByDate(
+        year: Int, month: Int,
+        schedules: Map<String, ScheduleRecord>,
+        shifts: List<Shift>,
+        shiftStatuses: List<ShiftStatus>,
+        inputsFor: (String) -> CalcInputs,
+        dateFilter: ((String) -> Boolean)? = null
+    ): HoursSummary = calcMonthHoursInternal(
+        year, month, schedules, shifts, shiftStatuses,
+        { date -> inputsFor(date).breaks },
+        { date -> inputsFor(date).attend },
+        dateFilter
+    )
+
+    private fun calcMonthHoursInternal(
+        year: Int, month: Int,
+        schedules: Map<String, ScheduleRecord>,
+        shifts: List<Shift>,
+        shiftStatuses: List<ShiftStatus>,
+        breaksFor: (String) -> List<ShiftBreak>,
+        attendFor: (String) -> AttendConfig,
         dateFilter: ((String) -> Boolean)? = null
     ): HoursSummary {
         val mStr   = "%02d".format(month)
@@ -369,7 +404,10 @@ object CalcUtils {
         var leaveDaysCount = 0; var swapDays = 0; var restDays = 0
         var lateCount = 0; var earlyLeaveCount = 0
         var leaveStatusHours = 0.0; var swapStatusHours = 0.0
-        val stdH = if (attendConfig.normalWorkHoursPerDay > 0) attendConfig.normalWorkHoursPerDay else 8.0
+        // 请假折算的统一基准：取区间首日生效的标准工时。
+        // 跨档案（考勤配置在月中变更）时按「月初口径」折算，保证折算基准稳定可预测。
+        val foldStdH = attendFor(DateFormats.date(year, month, 1)).normalWorkHoursPerDay
+            .let { if (it > 0) it else 8.0 }
 
         for ((date, record) in schedules) {
             if (!date.startsWith(prefix)) continue
@@ -377,10 +415,14 @@ object CalcUtils {
 
             val effectiveType = effectiveScheduleType(record)
 
+            // 当天的口径（配置档案按生效日分段时，配置可能与其它日期不同）
+            val attend = attendFor(date)
+            val stdH = attend.normalWorkHoursPerDay.let { if (it > 0) it else 8.0 }
+
             if (effectiveType == ScheduleType.SHIFT
                 || effectiveType == ScheduleType.REST
                 || effectiveType == ScheduleType.SWAP) {
-                val hours = calcDayHours(record, date, shifts, breaks, attendConfig)
+                val hours = calcDayHours(record, date, shifts, breaksFor(date), attend)
                 val totalH = hours.normal + hours.overtime + hours.weekend + hours.holiday
                 // 休息/调休且无工时：计入休息/调休天数
                 if (effectiveType != ScheduleType.SHIFT && totalH <= 0.0) {
@@ -440,7 +482,7 @@ object CalcUtils {
                         h = stdH
                     } else {
                         val rawH   = calcHourDiff(ast.startTime, ast.endTime)
-                        val breakH = calcGlobalBreakHours(ast.startTime, ast.endTime, breaks)
+                        val breakH = calcGlobalBreakHours(ast.startTime, ast.endTime, breaksFor(date))
                         h = roundD2(max(0.0, rawH - breakH))
                     }
                 }
@@ -452,9 +494,9 @@ object CalcUtils {
         }
 
         // 请假折算：完整请假天 × 标准工时 + 附加状态请假小时 → 按标准工时折算天数
-        val totalLeaveHours = leaveDaysCount * stdH + leaveStatusHours
-        val leaveDays = if (stdH > 0) (totalLeaveHours / stdH).toInt() else 0
-        val leaveHoursRemainder = roundD2(totalLeaveHours - leaveDays * stdH)
+        val totalLeaveHours = leaveDaysCount * foldStdH + leaveStatusHours
+        val leaveDays = if (foldStdH > 0) (totalLeaveHours / foldStdH).toInt() else 0
+        val leaveHoursRemainder = roundD2(totalLeaveHours - leaveDays * foldStdH)
 
         val total = normalHours + overtimeHours + weekendHours + holidayHours
         return HoursSummary(
@@ -485,6 +527,39 @@ object CalcUtils {
         salaryConfig: SalaryConfig,
         attendConfig: AttendConfig,
         dateFilter: ((String) -> Boolean)? = null
+    ): SalarySummary = calcMonthSalaryInternal(
+        year, month, schedules, shifts, extraItems,
+        { breaks }, { attendConfig }, { salaryConfig }, dateFilter
+    )
+
+    /**
+     * 按日取配置版：薪资 / 考勤 / 休息时段随「配置档案」按生效日分段。
+     * 与固定配置版在同一配置下结果完全相同（由 CalcUtilsProfileTest 守护）。
+     */
+    fun calcMonthSalaryByDate(
+        year: Int, month: Int,
+        schedules: Map<String, ScheduleRecord>,
+        shifts: List<Shift>,
+        extraItems: List<ExtraItem>,
+        inputsFor: (String) -> CalcInputs,
+        dateFilter: ((String) -> Boolean)? = null
+    ): SalarySummary = calcMonthSalaryInternal(
+        year, month, schedules, shifts, extraItems,
+        { date -> inputsFor(date).breaks },
+        { date -> inputsFor(date).attend },
+        { date -> inputsFor(date).salary },
+        dateFilter
+    )
+
+    private fun calcMonthSalaryInternal(
+        year: Int, month: Int,
+        schedules: Map<String, ScheduleRecord>,
+        shifts: List<Shift>,
+        extraItems: List<ExtraItem>,
+        breaksFor: (String) -> List<ShiftBreak>,
+        attendFor: (String) -> AttendConfig,
+        salaryFor: (String) -> SalaryConfig,
+        dateFilter: ((String) -> Boolean)? = null
     ): SalarySummary {
         val mStr   = "%02d".format(month)
         val prefix = "$year-$mStr"
@@ -492,9 +567,16 @@ object CalcUtils {
         var normalSalary = 0.0; var overtimeSalary = 0.0
         var weekendSalary = 0.0; var holidaySalary = 0.0
         var totalSubsidy = 0.0; var totalDeduction = 0.0
-        // 迟到/早退要按「第几次」分档扣款，故先按日期收集分钟数，循环外再统一计算
-        val lateMinutesList  = mutableListOf<Pair<String, Int>>()
-        val earlyMinutesList = mutableListOf<Pair<String, Int>>()
+        // 当天的完整口径（供循环内统一取用）
+        val inputsFor: (String) -> CalcInputs = { date ->
+            CalcInputs(salaryFor(date), attendFor(date), breaksFor(date))
+        }
+        // 迟到/早退要按「第几次」分档扣款，故先按日期收集分钟数，循环外再统一计算。
+        // 每条同时带上**当天生效的考勤配置**：跨档案时规则按当天取值（第几次仍按全月连续计数）。
+        val lateEntries  = mutableListOf<Triple<String, Int, AttendConfig>>()
+        val earlyEntries = mutableListOf<Triple<String, Int, AttendConfig>>()
+        // 月度固定项（底薪/绩效/社保/公积金）取区间首日口径，保证月度合计基准稳定
+        val foldSalary = salaryFor(DateFormats.date(year, month, 1))
 
         for ((date, record) in schedules) {
             if (!date.startsWith(prefix)) continue
@@ -505,8 +587,9 @@ object CalcUtils {
                 && effectiveType != ScheduleType.REST
                 && effectiveType != ScheduleType.SWAP) continue
 
-            val hours = calcDayHours(record, date, shifts, breaks, attendConfig)
-            val parts = calcDaySalaryParts(hours, salaryConfig)
+            val inputs = inputsFor(date)
+            val hours = calcDayHours(record, date, shifts, inputs.breaks, inputs.attend)
+            val parts = calcDaySalaryParts(hours, inputs.salary)
 
             normalSalary   += parts.normal
             overtimeSalary += parts.overtime
@@ -525,42 +608,45 @@ object CalcUtils {
             if (shift != null && shift.startTime.isNotEmpty() && shift.endTime.isNotEmpty()) {
                 if (!record.actualStartTime.isNullOrEmpty()) {
                     val lateMin = timeToMin(record.actualStartTime) - timeToMin(shift.startTime)
-                    if (lateMin > 0) lateMinutesList += date to lateMin
+                    if (lateMin > 0) lateEntries += Triple(date, lateMin, inputs.attend)
                 }
                 if (!record.actualEndTime.isNullOrEmpty()) {
                     val sS = timeToMin(shift.startTime)
                     val (_, normSE) = normRange(sS, timeToMin(shift.endTime))
                     val (_, normAE) = normRange(sS, timeToMin(record.actualEndTime))
                     val earlyMin = normSE - normAE
-                    if (earlyMin > 0) earlyMinutesList += date to earlyMin
+                    if (earlyMin > 0) earlyEntries += Triple(date, earlyMin, inputs.attend)
                 }
             }
         }
 
-        // 迟到/早退扣款：按日期顺序判断「第几次」——允许次数内只扣超出容许时长的部分，超出后扣全部时长
+        // 迟到/早退扣款：按日期顺序判断「第几次」——允许次数内只扣超出容许时长的部分，超出后扣全部时长。
+        // 序号按全月连续累计；每条使用的容许时长/允许次数/单价取**该条当天的配置**。
         totalDeduction += attendanceDeduction(
-            lateMinutesList, attendConfig.lateToleranceMin, attendConfig.lateAlertCount, attendConfig.lateDeductionPerMin
+            lateEntries,
+            { it.lateToleranceMin }, { it.lateAlertCount }, { it.lateDeductionPerMin }
         )
         totalDeduction += attendanceDeduction(
-            earlyMinutesList, attendConfig.earlyLeaveToleranceMin, attendConfig.earlyLeaveAlertCount, attendConfig.earlyLeaveDeductionPerMin
+            earlyEntries,
+            { it.earlyLeaveToleranceMin }, { it.earlyLeaveAlertCount }, { it.earlyLeaveDeductionPerMin }
         )
 
-        val totalSalary = salaryConfig.baseSalary + salaryConfig.basePerformance +
+        val totalSalary = foldSalary.baseSalary + foldSalary.basePerformance +
                 normalSalary + overtimeSalary + weekendSalary + holidaySalary +
                 totalSubsidy - totalDeduction -
-                salaryConfig.socialInsurance - salaryConfig.housingFundDeduction
+                foldSalary.socialInsurance - foldSalary.housingFundDeduction
 
         return SalarySummary(
-            baseSalary      = salaryConfig.baseSalary,
-            basePerformance = salaryConfig.basePerformance,
+            baseSalary      = foldSalary.baseSalary,
+            basePerformance = foldSalary.basePerformance,
             normalSalary    = roundD2(normalSalary),
             overtimeSalary  = roundD2(overtimeSalary),
             weekendSalary   = roundD2(weekendSalary),
             holidaySalary   = roundD2(holidaySalary),
             totalSubsidy    = roundD2(totalSubsidy),
             totalDeduction  = roundD2(totalDeduction),
-            socialInsurance = salaryConfig.socialInsurance,
-            housingFundDeduction = salaryConfig.housingFundDeduction,
+            socialInsurance = foldSalary.socialInsurance,
+            housingFundDeduction = foldSalary.housingFundDeduction,
             totalSalary     = roundD2(totalSalary)
         )
     }
@@ -574,18 +660,21 @@ object CalcUtils {
      * 因为要判断「第几次」是第几次，必须按**日期升序**累计（[entries] 的 first 为 `yyyy-MM-dd`）。
      */
     private fun attendanceDeduction(
-        entries: List<Pair<String, Int>>,   // (日期, 迟到/早退分钟)
-        toleranceMin: Int,
-        allowedCount: Int,
-        ratePerMin: Double
+        entries: List<Triple<String, Int, AttendConfig>>,   // (日期, 迟到/早退分钟, 当天考勤配置)
+        toleranceOf: (AttendConfig) -> Int,
+        allowedOf: (AttendConfig) -> Int,
+        rateOf: (AttendConfig) -> Double
     ): Double {
-        if (ratePerMin <= 0.0) return 0.0
+        if (entries.isEmpty()) return 0.0
         var total = 0.0
-        entries.sortedBy { it.first }.forEachIndexed { index, (_, minutes) ->
-            val occurrence = index + 1                       // 第几次（1-based）
-            val chargeable = if (occurrence > allowedCount) minutes
-                             else max(0, minutes - toleranceMin)
-            total += chargeable * ratePerMin
+        entries.sortedBy { it.first }.forEachIndexed { index, (_, minutes, cfg) ->
+            val rate = rateOf(cfg)
+            if (rate <= 0.0) return@forEachIndexed
+            val occurrence = index + 1                       // 第几次（1-based，全月连续累计）
+            val allowed = allowedOf(cfg)
+            val chargeable = if (occurrence > allowed) minutes
+                             else max(0, minutes - toleranceOf(cfg))
+            total += chargeable * rate
         }
         return total
     }
@@ -619,15 +708,44 @@ object CalcUtils {
         extraItems: List<ExtraItem>,
         salaryConfig: SalaryConfig,
         attendConfig: AttendConfig
+    ): List<DayScheduleDetail> = getMonthScheduleDetailsInternal(
+        year, month, schedules, shifts, extraItems,
+        { date -> CalcInputs(salaryConfig, attendConfig, breaks) },
+        contentFingerprint(listOf(breaks, salaryConfig, attendConfig))
+    )
+
+    /**
+     * 按日取配置版：逐日用当天生效的口径计算明细（配置档案按生效日分段时使用）。
+     * [inputsFp] 为口径集合指纹，参与月度缓存 key —— 档案变了必须重算，否则会命中旧值。
+     */
+    fun getMonthScheduleDetailsByDate(
+        year: Int, month: Int,
+        schedules: Map<String, ScheduleRecord>,
+        shifts: List<Shift>,
+        extraItems: List<ExtraItem>,
+        inputsFor: (String) -> CalcInputs,
+        inputsFp: Long
+    ): List<DayScheduleDetail> = getMonthScheduleDetailsInternal(
+        year, month, schedules, shifts, extraItems, inputsFor, inputsFp
+    )
+
+    private fun getMonthScheduleDetailsInternal(
+        year: Int, month: Int,
+        schedules: Map<String, ScheduleRecord>,
+        shifts: List<Shift>,
+        extraItems: List<ExtraItem>,
+        inputsFor: (String) -> CalcInputs,
+        inputsFp: Long
     ): List<DayScheduleDetail> {
         val key = MonthDetailsKey(
             year = year, month = month,
             schedulesFp = contentFingerprint(schedules),
             shiftsFp = contentFingerprint(shifts),
-            breaksFp = contentFingerprint(breaks),
+            breaksFp = 0L,
             extraFp = contentFingerprint(extraItems),
-            salaryFp = contentFingerprint(salaryConfig),
-            attendFp = contentFingerprint(attendConfig)
+            salaryFp = 0L,
+            attendFp = 0L,
+            inputsFp = inputsFp
         )
         // 该缓存被主线程与后台计算线程并发访问，需同步保护（计算在锁外执行，仅锁缓存读写）
         synchronized(monthDetailsCache) {
@@ -640,10 +758,11 @@ object CalcUtils {
             val dateStr = DateFormats.date(year, month, d)
             val record  = schedules[dateStr]
             val shift   = record?.shiftId?.let { id -> shifts.find { it.id == id } }
-            val hours   = if (record != null) calcDayHours(record, dateStr, shifts, breaks, attendConfig)
+            val inputs  = inputsFor(dateStr)
+            val hours   = if (record != null) calcDayHours(record, dateStr, shifts, inputs.breaks, inputs.attend)
                           else DayHours()
             // 三档计薪唯一实现：工作日→加班时薪、周末→周末时薪、节假日→节假日时薪
-            val parts   = calcDaySalaryParts(hours, salaryConfig)
+            val parts   = calcDaySalaryParts(hours, inputs.salary)
             val extras  = record?.extraItemIds?.mapNotNull { id -> extraItems.find { it.id == id } } ?: emptyList()
             // 当日补贴/扣款合计
             val extrasTotal = extras.sumOf { if (it.type == "allowance") it.amount else -it.amount }

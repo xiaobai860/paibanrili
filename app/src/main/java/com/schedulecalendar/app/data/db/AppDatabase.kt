@@ -4,11 +4,13 @@ package com.schedulecalendar.app.data.db
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.schedulecalendar.app.data.db.dao.CalcProfileDao
 import com.schedulecalendar.app.data.db.dao.ExtraItemDao
 import com.schedulecalendar.app.data.db.dao.ScheduleRecordDao
 import com.schedulecalendar.app.data.db.dao.ShiftBreakDao
 import com.schedulecalendar.app.data.db.dao.ShiftDao
 import com.schedulecalendar.app.data.db.dao.ShiftStatusDao
+import com.schedulecalendar.app.data.db.entity.CalcProfileEntity
 import com.schedulecalendar.app.data.db.entity.ExtraItemEntity
 import com.schedulecalendar.app.data.db.entity.ScheduleRecordEntity
 import com.schedulecalendar.app.data.db.entity.ShiftBreakEntity
@@ -21,9 +23,10 @@ import com.schedulecalendar.app.data.db.entity.ShiftStatusEntity
         ScheduleRecordEntity::class,
         ExtraItemEntity::class,
         ShiftBreakEntity::class,
-        ShiftStatusEntity::class
+        ShiftStatusEntity::class,
+        CalcProfileEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true   // 导出 schema 至 app/schemas/，便于版本迁移追踪
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -32,6 +35,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun extraItemDao(): ExtraItemDao
     abstract fun shiftBreakDao(): ShiftBreakDao
     abstract fun shiftStatusDao(): ShiftStatusDao
+    abstract fun calcProfileDao(): CalcProfileDao
 
     companion object {
         /**

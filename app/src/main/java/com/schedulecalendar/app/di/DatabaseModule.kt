@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.schedulecalendar.app.data.db.AppDatabase
 import com.schedulecalendar.app.data.db.Migrations
+import com.schedulecalendar.app.data.db.dao.CalcProfileDao
 import com.schedulecalendar.app.data.db.dao.ExtraItemDao
 import com.schedulecalendar.app.data.db.dao.ScheduleRecordDao
 import com.schedulecalendar.app.data.db.dao.ShiftBreakDao
@@ -41,4 +42,5 @@ object DatabaseModule {
     @Provides fun provideExtraItemDao(db: AppDatabase): ExtraItemDao = db.extraItemDao()
     @Provides fun provideShiftBreakDao(db: AppDatabase): ShiftBreakDao = db.shiftBreakDao()
     @Provides fun provideShiftStatusDao(db: AppDatabase): ShiftStatusDao = db.shiftStatusDao()
+    @Provides fun provideCalcProfileDao(db: AppDatabase): CalcProfileDao = db.calcProfileDao()
 }

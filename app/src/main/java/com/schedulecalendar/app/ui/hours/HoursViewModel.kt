@@ -6,6 +6,7 @@ import com.schedulecalendar.app.domain.util.DateFormats
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.schedulecalendar.app.data.prefs.AppPreferences
+import com.schedulecalendar.app.data.repository.CalcInputResolver
 import com.schedulecalendar.app.data.repository.ExtraItemRepository
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftBreakRepository
@@ -63,7 +64,8 @@ class HoursViewModel @Inject constructor(
     private val breakRepo: ShiftBreakRepository,
     private val statusRepo: ShiftStatusRepository,
     private val extraRepo: ExtraItemRepository,
-    private val prefs: AppPreferences
+    private val prefs: AppPreferences,
+    private val calcInputs: CalcInputResolver
 ) : ViewModel() {
 
     private val _state   = MutableStateFlow(HoursUiState())
@@ -111,18 +113,27 @@ class HoursViewModel @Inject constructor(
 
                 val today    = LocalDate.now()
                 val todayStr = DateFormats.date(today)
+
+                // 计算口径（薪资/考勤/休息时段）按**生效日**取：配置档案按生效日分段，
+                // 一个月内可能存在多套口径。区间内只查一次档案（避免逐日查库），
+                // 无档案时回退当前现值 → 结果与改造前完全一致。
+                val monthFrom = DateFormats.monthStart(year, month)
+                val monthTo   = DateFormats.date(year, month, java.time.YearMonth.of(year, month).lengthOfMonth())
+                val segments  = calcInputs.segmentsInRange(monthFrom, monthTo)
+                val inputsFor = segments.inputsLookup(calcInputs.fallbackInputs())
+                val inputsFp  = segments.inputsFingerprint()
                 val isCurrentMonth = year == today.year && month == today.monthValue
                 val isFutureMonth  = year > today.year ||
                     (year == today.year && month > today.monthValue)
 
                 // 全月工时（基础计算，actual/future 复用，避免重复整月重算）
                 val fullSummary = if (isCurrentMonth) null
-                    else CalcUtils.calcMonthHours(year, month, schedules, shifts, breaks, statuses, attendConf)
+                    else CalcUtils.calcMonthHoursByDate(year, month, schedules, shifts, statuses, inputsFor)
 
                 // 实际：历史月=全月，当前月=≤今天，未来月=空
                 val actual = when {
                     isFutureMonth -> HoursSummary()
-                    isCurrentMonth -> CalcUtils.calcMonthHours(year, month, schedules, shifts, breaks, statuses, attendConf) {
+                    isCurrentMonth -> CalcUtils.calcMonthHoursByDate(year, month, schedules, shifts, statuses, inputsFor) {
                         it <= todayStr
                     }
                     else -> fullSummary ?: HoursSummary()   // 历史月实际 = 全月
@@ -131,11 +142,13 @@ class HoursViewModel @Inject constructor(
                 val future = when {
                     !isCurrentMonth && !isFutureMonth -> null
                     isFutureMonth -> fullSummary   // 未来月预计 = 全月
-                    else -> CalcUtils.calcMonthHours(year, month, schedules, shifts, breaks, statuses, attendConf) { it > todayStr }
+                    else -> CalcUtils.calcMonthHoursByDate(year, month, schedules, shifts, statuses, inputsFor) { it > todayStr }
                 }
 
                 // 每日明细
-                val details = CalcUtils.getMonthScheduleDetails(year, month, schedules, shifts, breaks, extraItems, salaryConf, attendConf)
+                val details = CalcUtils.getMonthScheduleDetailsByDate(
+                    year, month, schedules, shifts, extraItems, inputsFor, inputsFp
+                )
 
                 // 最近14天每日明细（供图表使用，跨月）
                 val recentDetails = buildRecentDetails(

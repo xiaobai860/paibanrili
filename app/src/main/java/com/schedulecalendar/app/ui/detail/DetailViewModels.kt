@@ -79,9 +79,11 @@ class ScheduleDetailViewModel @Inject constructor(
         val extras    = extraRepo.getAll()
         val breaks    = breakRepo.getAll()
         val record    = scheduleRepo.getByDate(date)
-        // 过滤已归档的班次和状态，仅保留有效项
-        val activeShifts   = rawShifts.filter { it.archivedAt == null }
-        val activeStatuses = rawStatuses.filter { it.archivedAt == null }
+        // 与月汇总口径保持一致：使用**含归档**的班次/状态集合。
+        // 归档只表示「不再是当前可选项」，历史排班仍引用它（引用即版本），
+        // 若这里过滤掉归档项，详情页工时会变 0，与统计页数字打架。
+        val activeShifts   = rawShifts
+        val activeStatuses = rawStatuses
         // 按用户自定义排序（与 ShiftsScreen / CalendarScreen 保持一致）
         val shiftOrder = prefs.getShiftOrder()
         val statusOrder = prefs.getStatusOrder()

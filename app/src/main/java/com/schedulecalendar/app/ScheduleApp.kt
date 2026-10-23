@@ -14,6 +14,7 @@ import com.schedulecalendar.app.widget.syncAllWidgets
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -29,6 +30,9 @@ import kotlinx.coroutines.launch
 class ScheduleApp : Application() {
 
     internal val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** 计算口径档案仓库（迁移后幂等创建初始档案） */
+    @Inject lateinit var calcProfileRepository: com.schedulecalendar.app.data.repository.CalcProfileRepository
 
     /** 前台 Activity 计数：归零表示应用已完全退到后台（桌面可见） */
     private var foregroundCount = 0
@@ -47,6 +51,11 @@ class ScheduleApp : Application() {
         widgetRefreshScheduler = ep.widgetRefreshScheduler()
         // 小组件周期刷新兜底：事件驱动为主，WorkManager 15min 周期兜底
         scheduleWidgetPeriodicRefresh()
+        // 计算口径档案：首次启动（含 v5→v6 迁移后）幂等创建初始档案，
+        // 内容取迁移时刻的现值（薪资/考勤/休息时段）→ 保证历史月份计算结果逐分不变
+        appScope.launch {
+            runSafely("ensureInitialProfile") { calcProfileRepository.ensureInitialProfile() }
+        }
         // 核心：任何排班/班次/附加状态数据变更 → 自动重新计算并刷新全部小组件（事件驱动，无需手动刷新）
         observeDataChangesForWidgetSync()
         // 关键：App 退到后台（桌面可见）后再同步一次——部分 OEM 桌面会丢弃 App 前台期间的组件更新，
