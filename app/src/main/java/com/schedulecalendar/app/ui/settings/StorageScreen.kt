@@ -3,6 +3,8 @@ package com.schedulecalendar.app.ui.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -40,16 +42,27 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
     val state   by vm.state.collectAsStateWithLifecycle()
     val context  = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
+    // 导入/授权回调不在组合上下文中，需要自己的作用域来弹提示
+    val importScope = rememberCoroutineScope()
 
     // SAF 导入
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val json = runCatching {
+        runCatching {
             context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
-        }.getOrNull() ?: return@rememberLauncherForActivityResult
-        vm.importFromJson(json)
+        }.onSuccess { json ->
+            // 读取失败/内容为空必须提示，否则用户选完文件后界面毫无反应
+            if (json.isNullOrBlank()) {
+                importScope.launch { snackbar.showSnackbar("备份文件为空或无法读取") }
+            } else {
+                vm.importFromJson(json)
+            }
+        }.onFailure { e ->
+            android.util.Log.w("StorageScreen", "import failed", e)
+            importScope.launch { snackbar.showSnackbar("读取备份失败：${e.message ?: "未知错误"}") }
+        }
     }
 
     // 恢复确认
@@ -68,13 +81,19 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        // 持久化 URI 读写权限，确保重启后仍可访问
-        runCatching {
+        // 持久化 URI 读写权限，确保重启后仍可访问；失败要提示，否则备份会静默写不进去
+        val persisted = runCatching {
             val activity = context as? android.app.Activity
-            activity?.contentResolver?.takePersistableUriPermission(
+            checkNotNull(activity) { "no activity" }
+            activity.contentResolver.takePersistableUriPermission(
                 uri,
                 android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
+        }.onFailure {
+            android.util.Log.w("StorageScreen", "takePersistableUriPermission failed", it)
+        }.isSuccess
+        if (!persisted) {
+            importScope.launch { snackbar.showSnackbar("未获得该目录的长期访问权限，备份可能无法写入") }
         }
         // 保存完整 URI 字符串，以便 BackupManager 解析为真实文件系统路径
         vm.updateCustomPath(uri.toString())

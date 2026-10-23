@@ -307,6 +307,9 @@ private fun TodoTab(
                 sortTodosByDateDesc(filledTodos).groupBy { it.date }
                     .toSortedMap(compareByDescending { it })
             }
+                    // 转为稳定的 List，供 LazyListScope.items(..., key=) 懒加载使用
+                    val missedEntries = remember(missedByDate) { missedByDate.toList() }
+                    val filledEntries = remember(filledByDate) { filledByDate.toList() }
                     val sortedPendingOT = remember(pendingOTTodos) { sortTodosByDateDesc(pendingOTTodos) }
                     val sortedConfirmed = remember(confirmedOTTodos) { sortTodosByDateDesc(confirmedOTTodos) }
                     val sortedIgnored = remember(ignoredOTTodos) { sortTodosByDateDesc(ignoredOTTodos) }
@@ -359,20 +362,24 @@ private fun TodoTab(
                 count = missedTodos.size, expanded = missedExpanded,
                 onToggle = onMissedToggle,
                 iconTint = MaterialTheme.colorScheme.error
-            ) {
-                missedByDate.forEach { (date, items) ->
-                    MergedClockRow(
-                        date = date, items = items,
-                        onAction = { todo, isClockIn ->
-                            onFillMissedClock(todo.date, isClockIn, todo.shiftTime, todo.statusLabel)
-                        },
-                        actionLabel = "补录"
-                    )
+            )
+            }
+            // 展开内容提升为外层 items（带 key）：此前在卡片内 forEach 一次性组合全部行，待办多时会卡顿
+            if (missedExpanded) {
+                items(missedEntries, key = { "missed_${it.first}" }) { (date, dayItems) ->
+                    TodoRowCard {
+                        MergedClockRow(
+                            date = date, items = dayItems,
+                            onAction = { todo, isClockIn ->
+                                onFillMissedClock(todo.date, isClockIn, todo.shiftTime, todo.statusLabel)
+                            },
+                            actionLabel = "补录"
+                        )
+                    }
                 }
             }
 
             // ── 已补录（同一天上班/下班合并显示） ────────────────────────────────
-            }
             item(key = "filled") {
             TodoCardSection(
                 icon = Icons.Default.CheckCircle, title = "已补录",
@@ -380,21 +387,24 @@ private fun TodoTab(
                 count = filledTodos.size, expanded = filledExpanded,
                 onToggle = onFilledToggle,
                 iconTint = MaterialTheme.colorScheme.primary
-            ) {
-                filledByDate.forEach { (date, items) ->
-                    MergedClockRow(
-                        date = date, items = items,
-                        onAction = { todo, isClockIn ->
-                            if (isClockIn) vm.unfillMissedClockIn(todo.date)
-                            else vm.unfillMissedClockOut(todo.date)
-                        },
-                        actionIcon = Icons.AutoMirrored.Filled.Undo
-                    )
+            )
+            }
+            if (filledExpanded) {
+                items(filledEntries, key = { "filled_${it.first}" }) { (date, dayItems) ->
+                    TodoRowCard {
+                        MergedClockRow(
+                            date = date, items = dayItems,
+                            onAction = { todo, isClockIn ->
+                                if (isClockIn) vm.unfillMissedClockIn(todo.date)
+                                else vm.unfillMissedClockOut(todo.date)
+                            },
+                            actionIcon = Icons.AutoMirrored.Filled.Undo
+                        )
+                    }
                 }
             }
 
             // ── 疑似加班待确认（合并早到+晚退） ────────────────────────
-            }
             item(key = "ot_pending") {
             TodoCardSection(
                 icon = Icons.Default.Schedule, title = "疑似加班待确认",
@@ -402,19 +412,22 @@ private fun TodoTab(
                 count = pendingOTTodos.size, expanded = otPendingExpanded,
                 onToggle = onOtPendingToggle,
                 iconTint = MaterialTheme.colorScheme.tertiary
-            ) {
-                sortedPendingOT.forEach { todo ->
-                    val isEarly = todo.type == TodoType.PENDING_EARLY_OT
-                    UnifiedTodoRow(
-                        todo = todo, isClockIn = isEarly,
-                        onAction = { onOvertimeAction(todo.date, isEarly) },
-                        actionLabel = "确认"
-                    )
+            )
+            }
+            if (otPendingExpanded) {
+                items(sortedPendingOT, key = { "ot_pending_${it.date}_${it.type}" }) { todo ->
+                    TodoRowCard {
+                        val isEarly = todo.type == TodoType.PENDING_EARLY_OT
+                        UnifiedTodoRow(
+                            todo = todo, isClockIn = isEarly,
+                            onAction = { onOvertimeAction(todo.date, isEarly) },
+                            actionLabel = "确认"
+                        )
+                    }
                 }
             }
 
             // ── 是加班（内联展开列表） ──────────────────────────────
-            }
             item(key = "ot_confirmed") {
             TodoCardSection(
                 icon = Icons.Default.CheckCircle, title = "是加班",
@@ -422,22 +435,25 @@ private fun TodoTab(
                 count = confirmedOTTodos.size, expanded = otConfirmedExpanded,
                 onToggle = onOtConfirmedToggle,
                 iconTint = AllowanceGreen
-            ) {
-                sortedConfirmed.forEach { todo ->
-                    val isEarly = todo.type == TodoType.CONFIRMED_EARLY_OT
-                    UnifiedTodoRow(
-                        todo = todo, isClockIn = isEarly,
-                        onAction = {
-                            if (isEarly) vm.unconfirmEarlyOvertime(todo.date)
-                            else vm.unconfirmLateOvertime(todo.date)
-                        },
-                        actionIcon = Icons.AutoMirrored.Filled.Undo
-                    )
+            )
+            }
+            if (otConfirmedExpanded) {
+                items(sortedConfirmed, key = { "ot_confirmed_${it.date}_${it.type}" }) { todo ->
+                    TodoRowCard {
+                        val isEarly = todo.type == TodoType.CONFIRMED_EARLY_OT
+                        UnifiedTodoRow(
+                            todo = todo, isClockIn = isEarly,
+                            onAction = {
+                                if (isEarly) vm.unconfirmEarlyOvertime(todo.date)
+                                else vm.unconfirmLateOvertime(todo.date)
+                            },
+                            actionIcon = Icons.AutoMirrored.Filled.Undo
+                        )
+                    }
                 }
             }
 
             // ── 不是加班（内联展开列表） ──────────────────────────────
-            }
             item(key = "ot_ignored") {
             TodoCardSection(
                 icon = Icons.Default.Cancel, title = "不是加班",
@@ -445,20 +461,23 @@ private fun TodoTab(
                 count = ignoredOTTodos.size, expanded = otIgnoredExpanded,
                 onToggle = onOtIgnoredToggle,
                 iconTint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
-            ) {
-                sortedIgnored.forEach { todo ->
-                    val isEarly = todo.type == TodoType.IGNORED_EARLY_OT
-                    UnifiedTodoRow(
-                        todo = todo, isClockIn = isEarly,
-                        onAction = {
-                            if (isEarly) vm.unignoreEarlyArrival(todo.date)
-                            else vm.unignoreLateLeave(todo.date)
-                        },
-                        actionIcon = Icons.AutoMirrored.Filled.Undo
-                    )
+            )
+            }
+            if (otIgnoredExpanded) {
+                items(sortedIgnored, key = { "ot_ignored_${it.date}_${it.type}" }) { todo ->
+                    TodoRowCard {
+                        val isEarly = todo.type == TodoType.IGNORED_EARLY_OT
+                        UnifiedTodoRow(
+                            todo = todo, isClockIn = isEarly,
+                            onAction = {
+                                if (isEarly) vm.unignoreEarlyArrival(todo.date)
+                                else vm.unignoreLateLeave(todo.date)
+                            },
+                            actionIcon = Icons.AutoMirrored.Filled.Undo
+                        )
+                    }
                 }
             }
-            } // end ot_ignored item
             } // end else (有数据时显示分类卡片)
         } // end LazyColumn
     } // end outer Column
@@ -474,8 +493,7 @@ private fun TodoCardSection(
     subtitle: String,
     count: Int,
     expanded: Boolean,
-    onToggle: () -> Unit,
-    content: @Composable ColumnScope.() -> Unit
+    onToggle: () -> Unit
 ) {
     // 与节假日行一致的卡片语言：10dp 圆角 + surfaceVariant 半透明底（展开时转不透明防内容透出）
     Surface(
@@ -535,23 +553,21 @@ private fun TodoCardSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            // 展开的内容（用条件渲染替代 AnimatedVisibility：展开/收起动画在部分 ColorOS 上
-            // 会触发「内容透明 + 叠加覆盖下一项」的渲染 bug）
-            if (expanded && count > 0) {
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
-                    modifier = Modifier.padding(horizontal = 14.dp)
-                )
-                Column(
-                    Modifier.padding(horizontal = 10.dp, vertical = 0.dp)
-                        .padding(bottom = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    content()
-                }
-            }
         }
     }
+}
+
+/**
+ * 待办行卡片：行内容已提升为外层 LazyColumn 的 items（真正懒加载 + key），
+ * 因此每行自带与区块头部一致的卡片背景，避免行「浮在透明背景上」。
+ */
+@Composable
+private fun TodoRowCard(content: @Composable () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) { content() }
 }
 
 // ── 待办排序工具：按日期降序，同日期上班在前 ────────────────────────
@@ -985,15 +1001,25 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
         else -> {
             // 缓存分组结果，避免每次重组重复计算（性能优化）
             val locale = currentLocale()
-            val grouped = remember(eventState.events, locale) {
+            // 格式化器只创建一次：原写法在 groupBy 闭包里为每个事件 new 一个 SimpleDateFormat
+            val dayFormat = remember(locale) { SimpleDateFormat("yyyy-MM-dd", locale) }
+            val grouped = remember(eventState.events, dayFormat) {
                 eventState.events.groupBy { event ->
                     try {
-                        val sdf = SimpleDateFormat("yyyy-MM-dd", locale)
-                        sdf.format(Date(event.dtStart))
+                        dayFormat.format(Date(event.dtStart))
                     } catch (_: Exception) { "未知日期" }
                 }
             }
             val sortedDates = remember(grouped) { grouped.keys.sorted() }
+            // 日期显示串预计算：避免在 LazyListScope 内对每个日期重复 split + toInt
+            val displayDates = remember(sortedDates) {
+                sortedDates.associateWith { ds ->
+                    try {
+                        val parts = ds.split("-")
+                        if (parts.size == 3) "${parts[0].toInt()}年${parts[1].toInt()}月${parts[2].toInt()}日" else ds
+                    } catch (_: Exception) { ds }
+                }
+            }
 
             // 首次组合即定位到「距离今天最近」的有数据日期（含 stickyHeader 偏移）：
             // 用 rememberLazyListState 初始位置参数，列表第一帧直接渲染在目标位置，无跳动动画
@@ -1029,10 +1055,7 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
             ) {
                 for (dateStr in sortedDates) {
                     val dayEvents = grouped[dateStr] ?: continue
-                    val displayDate = try {
-                        val parts = dateStr.split("-")
-                        if (parts.size == 3) "${parts[0].toInt()}年${parts[1].toInt()}月${parts[2].toInt()}日" else dateStr
-                    } catch (_: Exception) { dateStr }
+                    val displayDate = displayDates[dateStr] ?: dateStr
 
                     stickyHeader {
                         Surface(
@@ -1341,10 +1364,12 @@ private fun AnniversaryRow(
     onLongClick: () -> Unit
 ) {
     val locale = currentLocale()
-    val dateText = try {
-        val sdf = SimpleDateFormat("MM月dd日", locale)
-        sdf.format(Date(event.dtStart))
-    } catch (_: Exception) { "未知日期" }
+    val dateFormat = remember(locale) { SimpleDateFormat("MM月dd日", locale) }
+    val dateText = remember(event.dtStart, dateFormat) {
+        try {
+            dateFormat.format(Date(event.dtStart))
+        } catch (_: Exception) { "未知日期" }
+    }
     val displayName = event.title.removePrefix("纪念日: ")
 
     Surface(
@@ -1580,7 +1605,10 @@ private fun generateHolidaysForYear(year: Int): List<HolidayListItem> {
                 if (hn != null && !hn.contains("补班")) {
                     allHolidayNames[ds] = hn
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                // 静默吞掉会让「节假日名称缺失」无从排查，这里记日志后继续扫描下一天
+                android.util.Log.w("TodoScreen", "holiday name resolve failed: $year-$m-$d", e)
+            }
         }
     }
     // 取每个假期最早的那天

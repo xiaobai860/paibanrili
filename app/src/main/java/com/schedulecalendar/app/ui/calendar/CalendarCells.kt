@@ -139,7 +139,7 @@ internal fun DayCell(
 
     // ── 无障碍描述 ──────────────────────────────────────────────
     // dateParts/lunarText 仅依赖 dateStr，用 remember 缓存，避免每次重组重复解析+农历换算
-    val dateParts = dateStr.split("-")
+    val dateParts = remember(dateStr) { dateStr.split("-") }
     val lunarText = remember(dateStr) {
         val y = dateParts.getOrNull(0)?.toIntOrNull() ?: LocalDate.now().year
         val m = dateParts.getOrNull(1)?.toIntOrNull() ?: LocalDate.now().monthValue
@@ -192,11 +192,16 @@ internal fun DayCell(
     // ── 班次/状态标签颜色 ──────────────────────────────────────
     val appliedSt = record?.appliedStatus?.let { ast -> shiftStatuses.find { it.id == ast.statusId } }
     // 仅当方案数据行中配置了 SHIFT/STATUS 时才显示对应标签
-    val schemeHasShiftItem = displayScheme.dataRows.any { row ->
-        row.items.filterNotNull().any { it == DisplayItemType.SHIFT }
+    // 只依赖显示方案，用 remember 缓存：否则 42 个格子 × 每次重组都会重复扫描全部数据行
+    val schemeHasShiftItem = remember(displayScheme) {
+        displayScheme.dataRows.any { row ->
+            row.items.filterNotNull().any { it == DisplayItemType.SHIFT }
+        }
     }
-    val schemeHasStatusItem = displayScheme.dataRows.any { row ->
-        row.items.filterNotNull().any { it == DisplayItemType.STATUS }
+    val schemeHasStatusItem = remember(displayScheme) {
+        displayScheme.dataRows.any { row ->
+            row.items.filterNotNull().any { it == DisplayItemType.STATUS }
+        }
     }
     val hasShift = shift != null && schemeHasShiftItem
     val hasStatus = appliedSt != null && schemeHasStatusItem

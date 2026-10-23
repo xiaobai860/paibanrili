@@ -68,6 +68,17 @@ class ReminderScheduler @Inject constructor(
         /** 日历提醒事件保留窗口：前 3 天 ~ 后 7 天 */
         private const val REMINDER_PAST_DAYS = 3
         private const val REMINDER_FUTURE_DAYS = 7
+
+        /**
+         * force 重排的最小间隔（毫秒）。
+         *
+         * 自愈路径（WidgetRefreshWorker 15 分钟周期、WidgetRefreshReceiver 闹钟）会以 force=true
+         * 调用，若每次都全量重排：日历模式下会对 CalendarProvider 做「删全部 + 重建」写风暴
+         * （耗电、易超时、删与重建之间被杀会丢事件）；闹钟模式下也会反复 cancel/rebuild 用户闹钟。
+         * 因此这里做时间节流：距上次成功 force 不足该值则降级为「按签名判断」，
+         * 签名未变直接跳过。真正的即时需求（开机/时区/设置变更）由调用方保证间隔足够或首次必然执行。
+         */
+        private const val MIN_FORCE_INTERVAL_MILLIS = 30 * 60 * 1000L // 30 分钟
     }
 
     private val alarmManager: AlarmManager by lazy {
@@ -87,6 +98,9 @@ class ReminderScheduler @Inject constructor(
      * 进程因重启/更新而重建时此值为 null，自然触发一次全量重排。
      */
     private var lastScheduledSignature: String? = null
+
+    /** 上次成功执行 force 重排的时刻（用于 [MIN_FORCE_INTERVAL_MILLIS] 节流） */
+    private var lastForceScheduleAt: Long = 0L
 
     init {
         createNotificationChannel()
@@ -128,8 +142,13 @@ class ReminderScheduler @Inject constructor(
             // 同一会话内、设置与窗口内排班均不变时跳过整轮重排；
             // 跨时区/改时间/重启等需要重排的场景由调用方以 force=true 强制，或进程重启后签名置空自然重排。
             val signature = computeScheduleSignature()
-            if (!force && signature == lastScheduledSignature) return@withLock
+            val now = System.currentTimeMillis()
+            // force 节流：自愈路径高频 force 时，距上次成功 force 过近则降级为按签名判断，
+            // 避免日历模式 15 分钟一次「删全部+重建」写风暴、闹钟模式反复 cancel/rebuild。
+            val effectiveForce = force && (now - lastForceScheduleAt) >= MIN_FORCE_INTERVAL_MILLIS
+            if (!effectiveForce && signature == lastScheduledSignature) return@withLock
             lastScheduledSignature = signature
+            if (effectiveForce) lastForceScheduleAt = now
 
             // 旧版「仅通知栏」方式已移除：一次性清理其遗留的独立精确闹钟（requestCode 基线 3/4），
             // 否则这些残留闹钟会按旧的提前分钟数继续触发，造成时间不准的重复通知。
@@ -137,7 +156,7 @@ class ReminderScheduler @Inject constructor(
 
             val enabled = prefs.getReminderEnabled()
             if (!enabled) {
-                cancelAllReminders()
+                cancelAllRemindersLocked()
                 cleanupCalendarReminders()
                 return@withLock
             }
@@ -190,7 +209,7 @@ class ReminderScheduler @Inject constructor(
     private suspend fun scheduleFixedReminders() {
         val enabled = prefs.getReminderEnabled()
         if (!enabled) {
-            cancelAllReminders()
+            cancelAllRemindersLocked()
             cleanupCalendarReminders()
             return
         }
@@ -202,7 +221,7 @@ class ReminderScheduler @Inject constructor(
         val clockOutMinutes = prefs.getReminderClockOutMinutes()
 
         if (!clockInEnabled && !clockOutEnabled) {
-            cancelAllReminders()
+            cancelAllRemindersLocked()
             cleanupCalendarReminders()
             return
         }
@@ -212,7 +231,7 @@ class ReminderScheduler @Inject constructor(
         if (method == "calendar") {
             // 日历提醒模式：创建系统日历事件并设置提醒
             // 先取消所有 AlarmManager 闹钟（以防切换模式后残留）
-            cancelAllReminders()
+            cancelAllRemindersLocked()
             // 清理窗口外的旧日历事件
             cleanupCalendarReminders()
             // 创建今天-3天 到 今天+7天 的日历提醒事件
@@ -257,7 +276,7 @@ class ReminderScheduler @Inject constructor(
             // 必须先取消窗口内所有旧闹钟再重建：相同 requestCode 才会互相覆盖，
             // 若某日期不再有排班（删除/改为休息/调休）、或关闭了上/下班其中一个开关，
             // 旧闹钟不会被覆盖而残留，并按旧时刻触发造成多余通知。
-            cancelAllReminders()
+            cancelAllRemindersLocked()
             // 清理可能残留的日历提醒事件
             cleanupCalendarReminders()
             for (dayOffset in -REMINDER_PAST_DAYS..REMINDER_FUTURE_DAYS) {
@@ -441,9 +460,13 @@ class ReminderScheduler @Inject constructor(
     }
 
     /**
-     * 取消所有 AlarmManager 提醒
+     * 取消所有 AlarmManager 提醒（**调用方必须已持有 [scheduleMutex]**）。
+     *
+     * ⚠️ 并发风险：若在锁外调用，与 [scheduleActiveReminders] 的「取消+重建」交错时可能出现
+     * 「A 取消 → B 重建 → A 又取消」，导致窗口内闹钟缺失。
+     * 外部调用请使用 [cancelAllRemindersSafely]（内部自动加锁）。
      */
-    fun cancelAllReminders() {
+    private fun cancelAllRemindersLocked() {
         val today = LocalDate.now()
         // 注册窗口严格为 [-PAST .. +FUTURE]，跨午夜下班提醒会推后一天故上限 +1；无需更宽的范围
         for (dayOffset in -REMINDER_PAST_DAYS..(REMINDER_FUTURE_DAYS + 1)) {
@@ -458,6 +481,11 @@ class ReminderScheduler @Inject constructor(
                 alarmManager.cancel(pendingIntent)
             }
         }
+    }
+
+    /** 带锁的「取消所有提醒」入口，供外部（如 BootReceiver）安全调用 */
+    suspend fun cancelAllRemindersSafely() {
+        scheduleMutex.withLock { cancelAllRemindersLocked() }
     }
 
     /**
@@ -535,8 +563,8 @@ class ReminderScheduler @Inject constructor(
 
             val description = "日期：$dateStr\n班次：$shiftName\n时间：$timeStr\n提前${advanceMinutes}分钟提醒"
 
-            // 始终写入 Reminders 提醒记录（提醒必须弹通知；关闭「通知栏提醒」的过滤由 AlarmReceiver 负责，
-            // 日历方式则由系统日历自行触发，此处不做区分）
+            // 始终写入 Reminders 提醒记录：提醒一定会弹通知，由总开关控制是否调度，
+            // 不再按「通知栏提醒」开关区分（该开关已无 UI 入口，仅保留历史兼容）
             val reminderMinutes: Int = advanceMinutes
 
             calendarRepo.createEvent(
@@ -577,44 +605,5 @@ class ReminderScheduler @Inject constructor(
         } catch (e: Exception) {
             // silently handle error
         }
-    }
-
-    /**
-     * 显示提醒通知（由 AlarmReceiver 调用）
-     */
-    fun showReminderNotification(
-        isClockIn: Boolean,
-        date: String,
-        time: String,
-        shiftName: String
-    ) {
-        val typeLabel = if (isClockIn) "上班" else "下班"
-        val title = if (shiftName.isNotEmpty()) "$shiftName - ${typeLabel}提醒" else "${typeLabel}提醒"
-        val body = "今天${typeLabel}时间：$time"
-
-        val notificationId = if (isClockIn) NOTIFICATION_ID_CLOCK_IN else NOTIFICATION_ID_CLOCK_OUT
-
-        // 点击通知后打开应用并触发对应打卡动作
-        val action = if (isClockIn) MainActivity.ACTION_CLOCK_IN else MainActivity.ACTION_CLOCK_OUT
-        val tapIntent = Intent(context, MainActivity::class.java).apply {
-            this.action = action
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
-        val tapPending = PendingIntent.getActivity(
-            context, notificationId, tapIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(tapPending)
-            .setAutoCancel(true)
-            .build()
-
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(notificationId, notification)
     }
 }

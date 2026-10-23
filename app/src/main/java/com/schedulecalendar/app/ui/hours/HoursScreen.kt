@@ -411,19 +411,7 @@ private fun HoursChartCard(
             val monthlyMax = remember(trend) {
                 if (trend.isEmpty()) 1.0 else trend.maxOf { it.total }.coerceAtLeast(1.0)
             }
-            val dailyChartH = remember(dailyMax) {
-                val barArea = (minBarH + (maxBarH - minBarH) * (dailyMax / refDailyMax).coerceIn(0.3, 1.0).toFloat())
-                topLabelH + bottomLabelH + barArea
-            }
-            val monthlyChartH = remember(monthlyMax) {
-                val barArea = (minBarH + (maxBarH - minBarH) * (monthlyMax / refMonthlyMax).coerceIn(0.3, 1.0).toFloat())
-                topLabelH + bottomLabelH + barArea
-            }
-            val unifiedChartH = remember(dailyChartH, monthlyChartH) {
-                maxOf(dailyChartH, monthlyChartH)
-            }
-
-            // 共享图例：日工时 / 月工时图表使用同一组颜色 + 文字标注（确保图例统一）
+            // 共享图例
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf(Color(0xFF059669) to "正常", Color(0xFFDC2626) to "加班(含周末/法定)").forEach { (c, l) ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -457,7 +445,8 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
     val textMeasurer = rememberTextMeasurer()
 
     Canvas(Modifier.fillMaxWidth().height(130.dp)) {
-        val n = chartDays.size
+        // 空列表时 n 为 0 会得到 Infinity/NaN 坐标，这里兜底为 1
+        val n = chartDays.size.coerceAtLeast(1)
         val colW = size.width / n
         val barW = colW * 0.6f
         val topLabelPx = 14.dp.toPx()
@@ -519,11 +508,12 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
 
 @Composable
 private fun MonthlyHoursBar(trend: List<MonthlyHoursTrend>) {
-    val maxH = trend.maxOf { it.total }.coerceAtLeast(1.0)
+    // 空列表时 maxOf 会抛 NoSuchElementException，改用 maxOfOrNull
+    val maxH = (trend.maxOfOrNull { it.total } ?: 0.0).coerceAtLeast(1.0)
     val textMeasurer = rememberTextMeasurer()
 
     Canvas(Modifier.fillMaxWidth().height(130.dp)) {
-        val n = trend.size
+        val n = trend.size.coerceAtLeast(1)   // 空列表兜底，避免除零得到 NaN 坐标
         val colW = size.width / n
         val barW = colW * 0.6f
         val topLabelPx = 14.dp.toPx()

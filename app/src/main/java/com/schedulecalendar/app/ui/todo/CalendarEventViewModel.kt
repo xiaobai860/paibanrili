@@ -14,6 +14,8 @@ import com.schedulecalendar.app.data.prefs.AppPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -48,6 +50,11 @@ class CalendarEventViewModel @Inject constructor(
     private val calendarRepo: CalendarEventRepository,
     val prefs: AppPreferences
 ) : ViewModel() {
+
+    /** 系统日历变更去抖窗口（毫秒）：合并连发的 onChange，避免重复全量重载 */
+    private val CALENDAR_CHANGE_DEBOUNCE_MS = 400L
+    /** ContentObserver 触发的重载任务（去抖用，新的触发会取消旧的） */
+    private var reloadJob: Job? = null
 
     private val _state = MutableStateFlow(CalendarEventState())
     val state: StateFlow<CalendarEventState> = _state.asStateFlow()
@@ -282,9 +289,14 @@ class CalendarEventViewModel @Inject constructor(
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         observer = object : android.database.ContentObserver(handler) {
             override fun onChange(selfChange: Boolean) {
-                // 系统日历变化：先失效缓存再重新加载，确保拿到最新事件
-                calendarRepo.invalidateEventsCache()
-                loadEvents()
+                // 系统日历变化：onChange 在批量写入/同步时会高频连发，每次都全量重载会造成
+                // 卡顿与无谓 IO。这里做去抖：只保留最后一次触发，合并成一次重新加载。
+                reloadJob?.cancel()
+                reloadJob = viewModelScope.launch {
+                    delay(CALENDAR_CHANGE_DEBOUNCE_MS)
+                    calendarRepo.invalidateEventsCache()
+                    loadEvents()
+                }
             }
         }
         context.contentResolver.registerContentObserver(

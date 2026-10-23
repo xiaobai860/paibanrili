@@ -47,6 +47,22 @@ data class CalendarEventInfo(
 class CalendarEventRepository @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
+    /**
+     * 提醒专用日历 ID 缓存。
+     *
+     * `getOrCreateReminderCalendarId()` 内部有 1 次 Provider query，账户不存在时还会触发
+     * `addAccountExplicitly` + insert。而 `findEventsByTitlePrefix` / `findEventByDateAndTitle`
+     * 每次调用都会走一遍，ReminderScheduler 逐条创建提醒时会反复执行。
+     * 这里按进程缓存，写入/删除事件后由调用方按需调用 [invalidateReminderCalendarCache]。
+     */
+    @Volatile
+    private var cachedReminderCalendarId: Long? = null
+
+    /** 使提醒日历 ID 缓存失效（删除事件/清理后调用，保证下次重新解析） */
+    fun invalidateReminderCalendarCache() {
+        cachedReminderCalendarId = null
+    }
+
     companion object {
         /** 自定义账户类型，与应用包名一致，对应 authenticator.xml 中的 accountType */
         const val ACCOUNT_TYPE = "com.schedulecalendar.app"
@@ -86,21 +102,35 @@ class CalendarEventRepository @Inject constructor(
             CalendarContract.Calendars._ID,
             CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
             CalendarContract.Calendars.ACCOUNT_NAME,
-            CalendarContract.Calendars.ACCOUNT_TYPE
+            CalendarContract.Calendars.ACCOUNT_TYPE,
+            CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,
+            CalendarContract.Calendars.VISIBLE
         )
+        // 只返回「可写且可见」的日历：只读/隐藏日历出现在选择列表里，选中后写入必然失败
+        val selection = "${CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL} >= ? " +
+            "AND ${CalendarContract.Calendars.VISIBLE} = 1"
+        val selectionArgs = arrayOf(CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR.toString())
     
-        context.contentResolver.query(
-            CalendarContract.Calendars.CONTENT_URI,
-            projection,
-            null, null, null
-        )?.use { cursor ->
+        // Provider 在权限被单独撤销 / ROM 定制异常时会抛 SQLiteException、IllegalStateException，
+        // 与同类方法保持一致加 try 保护，避免异常直接抛给调用方
+        val cursor = try {
+            context.contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI,
+                projection,
+                selection, selectionArgs, null
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("CalendarEventRepo", "getAllAccounts query failed", e)
+            null
+        }
+        cursor?.use {
             // 所有日历都按单个日历拆分为独立条目
-            while (cursor.moveToNext()) {
-                val calId = cursor.getLong(0)
-                val rawDisplayName = cursor.getString(1)
-                val rawAccountName = cursor.getString(2)
-                val accountType = cursor.getString(3) ?: ""
-    
+            while (it.moveToNext()) {
+                val calId = it.getLong(0)
+                val rawDisplayName = it.getString(1)
+                val rawAccountName = it.getString(2)
+                val accountType = it.getString(3) ?: ""
+
                 val calDisplayName = rawDisplayName?.trim()?.takeIf { it.isNotBlank() } ?: ""
                 val accountName = rawAccountName?.trim()?.takeIf { it.isNotBlank() } ?: ""
                 val displayName = calDisplayName.ifEmpty { accountName.ifEmpty { "未知日历" } }
@@ -292,7 +322,10 @@ class CalendarEventRepository @Inject constructor(
                     )
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            // 静默返回空 Map 会让所有事件的日历名变空且无从排查，这里记日志
+            android.util.Log.w("CalendarEventRepo", "loadAllCalendarInfo failed", e)
+        }
         return map
     }
 
@@ -341,7 +374,10 @@ class CalendarEventRepository @Inject constructor(
                     try {
                         val colorInt = colorHex.toColorInt()
                         put(CalendarContract.Events.EVENT_COLOR, colorInt)
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        // 颜色解析失败不阻断事件创建，但需留痕，否则用户设的颜色被静默丢弃
+                        android.util.Log.w("CalendarEventRepo", "bad event color: $colorHex", e)
+                    }
                 }
                 // 设置 HAS_ALARM 标志，通知系统此事件有提醒
                 if (hasReminder) {
@@ -353,11 +389,20 @@ class CalendarEventRepository @Inject constructor(
 
             // 添加提醒
             if (hasReminder) {
-                addReminder(eventId, reminderMinutes)
+                val reminderId = addReminder(eventId, reminderMinutes)
                 // 国产 ROM 兼容：通过 ExtendedProperties 设置 need_alarm 标志
                 // 国产 ROM（小米/华为/OPPO/vivo）不使用标准 hasAlarm 字段，
                 // 而是通过此扩展属性判断是否触发闹钟提醒
-                addExtendedProperty(eventId, "{\"need_alarm\":true}")
+                val propId = addExtendedProperty(eventId, "{\"need_alarm\":true}")
+                // 提醒写入失败必须回滚：否则留下「HAS_ALARM=1 但无 reminder 行」的僵尸事件，
+                // 用户以为设了提醒实际不响，且部分日历 App 会显示异常。
+                if (reminderId == null) {
+                    runCatching { deleteEvent(eventId) }
+                    return -1L
+                }
+                if (propId == null) {
+                    android.util.Log.w("CalendarEventRepo", "extended property write failed for $eventId")
+                }
             }
 
             eventId
@@ -452,20 +497,24 @@ class CalendarEventRepository @Inject constructor(
         }
         val scheduleDisplayName = "$appName$SCHEDULE_SUFFIX"
         return try {
+            // 0. 权限前置校验：无写权限时任何账户/日历操作都会失败，直接返回
+            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_CALENDAR)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                return null
+            }
             // 0. 先确保 AccountManager 账户存在
             val accountManager = AccountManager.get(context)
             val account = Account(ACCOUNT_NAME, ACCOUNT_TYPE)
             val existingAccounts = accountManager.getAccountsByType(ACCOUNT_TYPE)
             val accountExists = existingAccounts.isNotEmpty()
+            // 记录本次是否新建了账户，便于后续失败时回滚清理，避免系统账户列表残留空账户
+            var accountAddedNow = false
 
             if (!accountExists) {
-                val hasWritePermission = android.content.pm.PackageManager.PERMISSION_GRANTED ==
-                    ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_CALENDAR)
-                if (!hasWritePermission) {
-                    return null
-                }
                 val added = accountManager.addAccountExplicitly(account, null, null)
                 if (added) {
+                    accountAddedNow = true
                     android.content.ContentResolver.setIsSyncable(account, CalendarContract.AUTHORITY, 1)
                     android.content.ContentResolver.setSyncAutomatically(account, CalendarContract.AUTHORITY, true)
                 } else {
@@ -538,6 +587,10 @@ class CalendarEventRepository @Inject constructor(
                 values
             )
             val newCalId = uri?.let { ContentUris.parseId(it) }
+            // 日历创建失败：回滚本次新建的账户，避免系统账户列表残留空账户
+            if (newCalId == null && accountAddedNow) {
+                runCatching { accountManager.removeAccountExplicitly(account) }
+            }
             newCalId
         } catch (e: Exception) {
             null
@@ -552,6 +605,8 @@ class CalendarEventRepository @Inject constructor(
      * @return 提醒日历ID，失败返回null
      */
     fun getOrCreateReminderCalendarId(): Long? {
+        // 进程内缓存命中直接返回，省去一次 Provider query（高频调用路径）
+        cachedReminderCalendarId?.let { return it }
         val appName = try {
             context.getString(context.applicationInfo.labelRes)
         } catch (_: Exception) {
@@ -572,7 +627,10 @@ class CalendarEventRepository @Inject constructor(
                     existingCalId = cursor.getLong(0)
                 }
             }
-            if (existingCalId != null) return existingCalId
+            if (existingCalId != null) {
+                cachedReminderCalendarId = existingCalId
+                return existingCalId
+            }
 
             // 确保账户存在
             getOrCreateLocalCalendarId() ?: return null
@@ -603,6 +661,7 @@ class CalendarEventRepository @Inject constructor(
                 values
             )
             val newCalId = uri?.let { ContentUris.parseId(it) }
+            if (newCalId != null) cachedReminderCalendarId = newCalId
             newCalId
         } catch (e: Exception) {
             null
@@ -675,6 +734,10 @@ class CalendarEventRepository @Inject constructor(
 
     /**
      * 更新日历事件
+     *
+     * ⚠️ 必须同步 EVENT_TIMEZONE：全天事件的 dtStart/dtEnd 以 **UTC 毫秒** 存储，
+     * 若保留旧的 "UTC" 而调用方用本地毫秒计算，UTC+8 用户保存后事件会整体偏移一天。
+     * 因此这里按 [CalendarEventInfo.allDay] 显式写入正确的时区，与 [createEvent] 口径一致。
      */
     fun updateEvent(event: CalendarEventInfo): Boolean {
         return try {
@@ -686,14 +749,37 @@ class CalendarEventRepository @Inject constructor(
                 put(CalendarContract.Events.ALL_DAY, if (event.allDay) 1 else 0)
                 put(CalendarContract.Events.EVENT_LOCATION, event.eventLocation)
                 put(CalendarContract.Events.RRULE, event.rrule)
+                // 与 createEvent 保持一致：全天事件用 UTC，定时事件用系统默认时区
+                put(
+                    CalendarContract.Events.EVENT_TIMEZONE,
+                    if (event.allDay) "UTC" else java.util.TimeZone.getDefault().id
+                )
             }
             val rows = context.contentResolver.update(
                 ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, event.id),
                 values, null, null
             )
+            // 更新 DTSTART/DTEND/RRULE 后，旧 reminder 行仍指向原时间，需删除让用户按需重建；
+            // 否则会出现「事件时间已改、提醒还在旧时刻」的错位。
+            if (rows > 0) {
+                runCatching { deleteRemindersForEvent(event.id) }
+            }
             rows > 0
         } catch (e: Exception) {
             false
+        }
+    }
+
+    /** 删除某事件的所有提醒行（Reminders 表） */
+    fun deleteRemindersForEvent(eventId: Long): Int {
+        return try {
+            context.contentResolver.delete(
+                CalendarContract.Reminders.CONTENT_URI,
+                "${CalendarContract.Reminders.EVENT_ID} = ?",
+                arrayOf(eventId.toString())
+            )
+        } catch (e: Exception) {
+            0
         }
     }
 
@@ -721,6 +807,7 @@ class CalendarEventRepository @Inject constructor(
     fun findEventsByTitlePrefix(titlePrefix: String): List<Long> {
         val eventIds = mutableListOf<Long>()
         val calId = getOrCreateReminderCalendarId() ?: return eventIds
+        // 注意：本函数仅查询，不修改日历结构，无需失效缓存
         return try {
             context.contentResolver.query(
                 CalendarContract.Events.CONTENT_URI,
@@ -740,15 +827,29 @@ class CalendarEventRepository @Inject constructor(
     }
 
     /**
-     * 批量删除事件
+     * 批量删除事件（单次 IPC，避免逐条 delete 的 N 次跨进程调用）
      * @return 删除的事件数
      */
     fun deleteEvents(eventIds: List<Long>): Int {
-        var deleted = 0
-        for (id in eventIds) {
-            if (deleteEvent(id)) deleted++
+        if (eventIds.isEmpty()) return 0
+        return try {
+            val placeholders = eventIds.joinToString(",") { "?" }
+            val rows = context.contentResolver.delete(
+                CalendarContract.Events.CONTENT_URI,
+                "${CalendarContract.Events._ID} IN ($placeholders)",
+                eventIds.map { it.toString() }.toTypedArray()
+            )
+            // 顺带清理这些事件的提醒行，避免 Reminders 表残留孤儿数据
+            eventIds.forEach { runCatching { deleteRemindersForEvent(it) } }
+            rows
+        } catch (e: Exception) {
+            // 批量失败时退化为逐条删除
+            var deleted = 0
+            for (id in eventIds) {
+                if (deleteEvent(id)) deleted++
+            }
+            deleted
         }
-        return deleted
     }
 
     /**
@@ -819,27 +920,34 @@ class CalendarEventRepository @Inject constructor(
         val selectionArgs = arrayOf(rangeStartMs.toString(), rangeEndMs.toString())
 
         val calendarInfoMap = loadAllCalendarInfo()
-        context.contentResolver.query(
-            CalendarContract.Events.CONTENT_URI,
-            projection, selection, selectionArgs,
-            "${CalendarContract.Events.DTSTART} ASC"
-        )?.use { cursor ->
-            while (cursor.moveToNext()) {
-                val eventId = cursor.getLong(0)
-                val calendarId = cursor.getLong(1)
+        // Provider 异常（权限撤销 / ROM 定制）时与同类方法一致加 try 保护
+        val cursor = try {
+            context.contentResolver.query(
+                CalendarContract.Events.CONTENT_URI,
+                projection, selection, selectionArgs,
+                "${CalendarContract.Events.DTSTART} ASC"
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("CalendarEventRepo", "getAllEventsInRange query failed", e)
+            null
+        }
+        cursor?.use {
+            while (it.moveToNext()) {
+                val eventId = it.getLong(0)
+                val calendarId = it.getLong(1)
                 val calInfo = calendarInfoMap[calendarId]
                 events.add(
                     CalendarEventInfo(
                         id = eventId, calendarId = calendarId,
-                        title = cursor.getString(2) ?: "无标题",
-                        description = cursor.getString(3),
-                        dtStart = cursor.getLong(4),
-                        dtEnd = cursor.getLong(5),
-                        allDay = cursor.getInt(6) == 1,
-                        eventLocation = cursor.getString(7),
+                        title = it.getString(2) ?: "无标题",
+                        description = it.getString(3),
+                        dtStart = it.getLong(4),
+                        dtEnd = it.getLong(5),
+                        allDay = it.getInt(6) == 1,
+                        eventLocation = it.getString(7),
                         accountName = calInfo?.accountName ?: "",
                         calendarDisplayName = calInfo?.displayName ?: "",
-                        rrule = cursor.getString(8)
+                        rrule = it.getString(8)
                     )
                 )
             }
@@ -847,10 +955,34 @@ class CalendarEventRepository @Inject constructor(
         return events
     }
 
+    /** 是否为年度重复事件（RRULE 含 FREQ=YEARLY） */
+    fun isYearlyRecurring(event: CalendarEventInfo): Boolean =
+        event.rrule?.contains("FREQ=YEARLY", ignoreCase = true) == true
+
+    /**
+     * 计算年度重复事件在指定年份的发生日；非年度重复或日期非法返回 null。
+     * 用于 RRULE 展开（CalendarProvider 自身不展开 RRULE）。
+     */
+    fun yearlyOccurrenceInYear(
+        event: CalendarEventInfo,
+        year: Int
+    ): java.time.LocalDate? {
+        if (!isYearlyRecurring(event)) return null
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+        cal.timeInMillis = event.dtStart
+        return runCatching {
+            java.time.LocalDate.of(year, cal.get(java.util.Calendar.MONTH) + 1, cal.get(java.util.Calendar.DAY_OF_MONTH))
+        }.getOrNull()
+    }
+
     /**
      * 获取指定日期的所有事件（含年度重复纪念日）
      * 实现：基于 [getAllEventsInRange] 在 ContentProvider 端按区间过滤，
      * 仅把当天相关事件拉入 JVM，避免每次点选日期都全量扫描所有日历事件。
+     *
+     * 年度重复（RRULE=FREQ=YEARLY）事件：CalendarProvider **不会展开 RRULE**，
+     * 若事件的 DTSTART 落在往年，区间过滤会直接把它排除。因此这里对 YEARLY 事件
+     * 额外按「查询年份」重算一次发生日，命中则补入结果。
      * @param dateStr 日期字符串，格式 "yyyy-MM-dd"
      * @return 当天所有的事件列表（纪念日 + 日程）
      */
@@ -880,7 +1012,12 @@ class CalendarEventRepository @Inject constructor(
                     result.add(event)
                     continue
                 }
-                if (event.rrule?.contains("FREQ=YEARLY") == true) continue
+                // 年度重复：按查询年重算发生日，命中（如 2024 年建的纪念日在 2025 年同日）则补入
+                if (isYearlyRecurring(event) &&
+                    yearlyOccurrenceInYear(event, year)?.let { it.monthValue == month && it.dayOfMonth == day } == true
+                ) {
+                    result.add(event)
+                }
             } else {
                 if (event.dtStart < rangeEnd && event.dtEnd > rangeStart) {
                     result.add(event)

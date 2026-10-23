@@ -353,7 +353,16 @@ private fun PermissionManagementSection() {
                                     data = Uri.parse("package:${context.packageName}")
                                 }
                                 context.startActivity(intent)
-                            } catch (_: Exception) { }
+                            } catch (e: Exception) {
+                                // 国产 ROM 常不支持该 Action（抛 ActivityNotFoundException），
+                                // 回退到应用详情页，否则用户点「去开启」完全没反应
+                                android.util.Log.w("SettingsScreen", "battery opt intent failed", e)
+                                openAppDetails(context)
+                                android.widget.Toast.makeText(
+                                    context, "已打开应用设置，请在其中关闭电池优化",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
                     )
                     
@@ -392,12 +401,7 @@ private fun PermissionManagementSection() {
                                 Spacer(Modifier.height(8.dp))
                                 TextButton(
                                     onClick = {
-                                        try {
-                                            val intent = Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                                data = Uri.fromParts("package", context.packageName, null)
-                                            }
-                                            context.startActivity(intent)
-                                        } catch (_: Exception) { }
+                                        openAppDetails(context)
                                     }
                                 ) {
                                     Text("前往应用设置", style = MaterialTheme.typography.labelSmall)
@@ -449,6 +453,21 @@ private fun PermissionItem(
  * 检测当前设备是否为国产厂商 ROM
  * 国产 ROM 对后台运行有额外限制，需要引导用户手动开启相关权限
  */
+/**
+ * 打开系统「应用详情」设置页。
+ * 统一兜底：部分 ROM 不支持特定设置 Action，跳详情页至少让用户能手动调整权限。
+ */
+private fun openAppDetails(context: android.content.Context) {
+    runCatching {
+        val intent = Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+        }
+        context.startActivity(intent)
+    }.onFailure {
+        android.util.Log.w("SettingsScreen", "open app details failed", it)
+    }
+}
+
 private fun isOemRestricted(): Boolean {
     val manufacturer = Build.MANUFACTURER.lowercase()
     return manufacturer in listOf(

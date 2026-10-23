@@ -440,7 +440,11 @@ class CalendarViewModel @Inject constructor(
                     calendarEventRepo.getEventsForDate(date)
                         .filter { it.calendarId !in disabledIds }
                 }
-            } catch (_: Exception) { emptyList() }
+            } catch (e: Exception) {
+                // 记日志：静默清空会让「明明有事件却显示无事件」无从排查
+                android.util.Log.w("CalendarViewModel", "loadSelectedDateEvents failed: $date", e)
+                emptyList()
+            }
             _state.update { it.copy(selectedDateEvents = events) }
         }
     }
@@ -474,12 +478,11 @@ class CalendarViewModel @Inject constructor(
                             if (!eventDate.isBefore(fromDate) && !eventDate.isAfter(toDate)) {
                                 dates.add(eventDate.toString())
                             }
-                            // 处理年度重复纪念日：检查今年是否落在范围内
-                            if (event.rrule?.contains("FREQ=YEARLY") == true) {
+                            // 处理年度重复纪念日：检查今年是否落在范围内（复用仓库层公共函数）
+                            if (calendarEventRepo.isYearlyRecurring(event)) {
                                 for (year in fromDate.year..toDate.year) {
-                                    val thisYearDate = try {
-                                        java.time.LocalDate.of(year, eventDate.monthValue, eventDate.dayOfMonth)
-                                    } catch (_: Exception) { continue }
+                                    val thisYearDate = calendarEventRepo.yearlyOccurrenceInYear(event, year)
+                                        ?: continue
                                     if (!thisYearDate.isBefore(fromDate) && !thisYearDate.isAfter(toDate)) {
                                         dates.add(thisYearDate.toString())
                                     }
@@ -489,7 +492,11 @@ class CalendarViewModel @Inject constructor(
                         dates
                     }
                 }
-            } catch (_: Exception) { emptySet() }
+            } catch (e: Exception) {
+                android.util.Log.w("CalendarViewModel", "loadDatesWithEvents failed", e)
+                // 失败时保留上一次结果：直接清空会让日历格上的事件指示点全部消失，误导用户
+                return@launch
+            }
             _state.update { it.copy(datesWithEvents = datesWithEvents) }
         }
     }

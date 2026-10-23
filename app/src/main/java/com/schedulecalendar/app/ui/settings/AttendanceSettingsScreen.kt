@@ -47,7 +47,8 @@ private fun AttendConfigSection(
     var earlyDeduct  by remember(config) { mutableStateOf(config.earlyLeaveDeductionPerMin.toInputString()) }
 
     fun save() = onSave(AttendConfig(
-        overtimeGranMin           = granMin,
+        // 加班粒度作为除数使用，必须 ≥1，否则恢复旧备份/手输 0 会在取整时除零崩溃
+        overtimeGranMin           = granMin.coerceIn(1, 120),
         lateToleranceMin          = lateTol.toIntOrNull()?.coerceIn(0, 120) ?: 0,
         earlyLeaveToleranceMin    = earlyTol.toIntOrNull()?.coerceIn(0, 120) ?: 0,
         lateAlertCount            = lateAlert.toIntOrNull()                ?: 0,

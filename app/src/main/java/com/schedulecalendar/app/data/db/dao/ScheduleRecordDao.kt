@@ -5,13 +5,16 @@ import androidx.room.*
 import com.schedulecalendar.app.data.db.entity.ScheduleRecordEntity
 import kotlinx.coroutines.flow.Flow
 
+// 用范围查询替代 `LIKE 'yyyy-MM%'`：SQLite 默认 LIKE 大小写不敏感，前缀 LIKE 无法走索引，
+// 而 schedule_records 是最大的表，LIKE 会导致每月一次全表扫描。
+// 范围查询可直接利用 date 主键索引做区间扫描，同时天然免疫 `%` / `_` 通配符注入。
 @Dao
 interface ScheduleRecordDao {
-    @Query("SELECT * FROM schedule_records WHERE date LIKE :yearMonth || '%' ORDER BY date ASC")
-    fun observeByMonth(yearMonth: String): Flow<List<ScheduleRecordEntity>>
+    @Query("SELECT * FROM schedule_records WHERE date >= :rangeStart AND date <= :rangeEnd ORDER BY date ASC")
+    fun observeByMonth(rangeStart: String, rangeEnd: String): Flow<List<ScheduleRecordEntity>>
 
-    @Query("SELECT * FROM schedule_records WHERE date LIKE :yearMonth || '%' ORDER BY date ASC")
-    suspend fun getByMonth(yearMonth: String): List<ScheduleRecordEntity>
+    @Query("SELECT * FROM schedule_records WHERE date >= :rangeStart AND date <= :rangeEnd ORDER BY date ASC")
+    suspend fun getByMonth(rangeStart: String, rangeEnd: String): List<ScheduleRecordEntity>
 
     @Query("SELECT * FROM schedule_records WHERE date = :date")
     suspend fun getByDate(date: String): ScheduleRecordEntity?

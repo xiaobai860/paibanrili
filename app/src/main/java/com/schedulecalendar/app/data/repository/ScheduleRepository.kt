@@ -18,12 +18,32 @@ class ScheduleRepository @Inject constructor(
     private val _refreshSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val refreshSignal: Flow<Unit> = _refreshSignal.asSharedFlow()
 
-    private suspend fun notifyChanged() { _refreshSignal.tryEmit(Unit) }
-    fun observeByMonth(yearMonth: String): Flow<List<ScheduleRecord>> =
-        dao.observeByMonth(yearMonth).map { list -> list.map { it.toDomain() } }
+    private suspend fun notifyChanged() {
+        // tryEmit 可能因无 collector/缓冲满而失败，记录日志避免「静默不刷新」难以排查
+        if (!_refreshSignal.tryEmit(Unit)) {
+            android.util.Log.w("ScheduleRepo", "refreshSignal emit dropped")
+        }
+    }
 
-    suspend fun getByMonth(yearMonth: String): List<ScheduleRecord> =
-        dao.getByMonth(yearMonth).map { it.toDomain() }
+    /**
+     * 把 "yyyy-MM" 转成该月的闭区间日期范围 [start, end]（"yyyy-MM-01" ~ "yyyy-MM-31"）。
+     * 用范围查询替代 `LIKE 'yyyy-MM%'`：LIKE 大小写不敏感、无法走索引，会在最大的表上全表扫描。
+     * @throws IllegalArgumentException 格式非法时（防止通配符注入）
+     */
+    private fun monthRange(yearMonth: String): Pair<String, String> {
+        require(yearMonth.matches(Regex("""^\d{4}-\d{2}$"""))) { "bad yearMonth: $yearMonth" }
+        return "$yearMonth-01" to "$yearMonth-31"
+    }
+
+    fun observeByMonth(yearMonth: String): Flow<List<ScheduleRecord>> {
+        val (from, to) = monthRange(yearMonth)
+        return dao.observeByMonth(from, to).map { list -> list.map { it.toDomain() } }
+    }
+
+    suspend fun getByMonth(yearMonth: String): List<ScheduleRecord> {
+        val (from, to) = monthRange(yearMonth)
+        return dao.getByMonth(from, to).map { it.toDomain() }
+    }
 
     fun observeByRange(from: String, to: String): Flow<List<ScheduleRecord>> =
         dao.observeByRange(from, to).map { list -> list.map { it.toDomain() } }

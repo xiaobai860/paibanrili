@@ -3,15 +3,32 @@ package com.schedulecalendar.app.data.repository
 
 import com.schedulecalendar.app.data.db.dao.ShiftBreakDao
 import com.schedulecalendar.app.domain.model.ShiftBreak
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.map
 
 @Singleton
 class ShiftBreakRepository @Inject constructor(
     private val dao: ShiftBreakDao
 ) {
+    /**
+     * 数据变更信号：写操作后发出。
+     * 与 ScheduleRepository/ShiftRepository 保持一致，供「修改休息时段后刷新小组件」等场景监听
+     * （此前该仓库无信号，WidgetSync 收不到休息时段变更）。
+     */
+    private val _changeSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
+    val changeSignal: Flow<Unit> = _changeSignal.asSharedFlow()
+
+    private suspend fun notifyChanged() {
+        // tryEmit 可能因无 collector/缓冲满而失败，记录日志避免「静默不刷新」难以排查
+        if (!_changeSignal.tryEmit(Unit)) {
+            android.util.Log.w("ShiftBreakRepo", "changeSignal emit dropped")
+        }
+    }
+
     /** 观察有效（未归档）的时段 */
     fun observeActive(): Flow<List<ShiftBreak>> = dao.observeActive().map { it.map { e -> e.toDomain() } }
     fun observeAll(): Flow<List<ShiftBreak>> = dao.observeAll().map { it.map { e -> e.toDomain() } }
@@ -19,10 +36,10 @@ class ShiftBreakRepository @Inject constructor(
     /** 休息时段总数（轻量指纹查询） */
     suspend fun countAll(): Int = dao.countAll()
     suspend fun getAllWithArchived(): List<ShiftBreak> = dao.getAllWithArchived().map { it.toDomain() }
-    suspend fun save(item: ShiftBreak) = dao.upsert(item.toEntity())
-    suspend fun saveAll(items: List<ShiftBreak>) = dao.upsertAll(items.map { it.toEntity() })
+    suspend fun save(item: ShiftBreak) { dao.upsert(item.toEntity()); notifyChanged() }
+    suspend fun saveAll(items: List<ShiftBreak>) { dao.upsertAll(items.map { it.toEntity() }); notifyChanged() }
     /** 归档项目（逻辑删除） */
-    suspend fun archive(id: String) = dao.archiveById(id, java.time.Instant.now().toString())
-    suspend fun delete(id: String) = dao.deleteById(id)
-    suspend fun deleteAll() = dao.deleteAll()
+    suspend fun archive(id: String) { dao.archiveById(id, java.time.Instant.now().toString()); notifyChanged() }
+    suspend fun delete(id: String) { dao.deleteById(id); notifyChanged() }
+    suspend fun deleteAll() { dao.deleteAll(); notifyChanged() }
 }

@@ -30,6 +30,15 @@ import kotlinx.coroutines.sync.withLock
  * 现在所有刷新动作统一改调 [syncAllWidgets]，保证点击刷新即拉取最新数据。
  */
 
+/** 一天的分钟数（跨午夜归一、次日时刻换算都以此为基准） */
+private const val MINUTES_PER_DAY = 1440
+/** 下班卡相对「次日上班时间」的提前量：5 小时 */
+private const val OUT_CUTOFF_LEAD_MIN = 300
+/** 休息日无附加状态时，白班的下班卡截止：次日 12:00 */
+private const val OUT_CUTOFF_NOON_MIN = 720
+/** 休息日无附加状态时，夜班的下班卡截止：次日 24:00 */
+private const val OUT_CUTOFF_MIDNIGHT_MIN = MINUTES_PER_DAY * 2
+
 /** 休息/调休（无时间段班次）判定 */
 private fun isRestShift(shift: Shift?): Boolean =
     shift?.builtIn == true && (shift.builtInType == "rest" || shift.builtInType == "swap")
@@ -142,13 +151,19 @@ internal fun computeStatusRange(
 }
 
 /** 跨午夜归一：时刻早于班次开始视为次日 */
-private fun normAdjust(ss: Int, t: Int): Int = if (t < ss) t + 1440 else t
+private fun normAdjust(ss: Int, t: Int): Int = if (t < ss) t + MINUTES_PER_DAY else t
 
-/** 向上取整到粒度倍数（9:20 → 9:30 @30min） */
-private fun ceilGran(min: Int, g: Int): Int = if (min % g == 0) min else min + (g - min % g)
+/** 向上取整到粒度倍数（9:20 → 9:30 @30min）；粒度非法（≤0）时按 1 分钟处理，避免除零崩溃 */
+private fun ceilGran(min: Int, g: Int): Int {
+    val gran = g.coerceAtLeast(1)
+    return if (min % gran == 0) min else min + (gran - min % gran)
+}
 
-/** 向下取整到粒度倍数（16:12 → 16:00 @30min） */
-private fun floorGran(min: Int, g: Int): Int = min - (min % g)
+/** 向下取整到粒度倍数（16:12 → 16:00 @30min）；粒度非法（≤0）时按 1 分钟处理 */
+private fun floorGran(min: Int, g: Int): Int {
+    val gran = g.coerceAtLeast(1)
+    return min - (min % gran)
+}
 
 private fun fmtMin(min: Int): String {
     val m = if (min < 0) 0 else min
@@ -167,7 +182,7 @@ internal fun applyS4StatusRange(
     if (shift.startTime.isEmpty() || shift.endTime.isEmpty()) return record
     val range = computeStatusRange(
         shift.startTime, shift.endTime,
-        record.actualStartTime, record.actualEndTime, granularityMin
+        record.actualStartTime, record.actualEndTime, granularityMin.coerceAtLeast(1)
     )
     val ap = record.appliedStatus ?: return record
     return if (range == null) record.copy(appliedStatus = ap.copy(startTime = null, endTime = null))
@@ -187,7 +202,7 @@ private fun normalShiftStart(shift: Shift?): Int? =
 private fun isNightCrossShift(shift: Shift?): Boolean {
     val ss = normalShiftStart(shift) ?: return false
     val (_, normE) = CalcUtils.normRange(ss, CalcUtils.timeToMin(shift!!.endTime))
-    return normE > 1440
+    return normE > MINUTES_PER_DAY
 }
 
 /**
@@ -210,10 +225,10 @@ private fun computeOutCutoff(
     crossesMidnight: Boolean
 ): Int {
     val nextStart = normalShiftStart(nextShift)
-    if (nextStart != null) return 1440 + nextStart - 300
+    if (nextStart != null) return MINUTES_PER_DAY + nextStart - OUT_CUTOFF_LEAD_MIN
     val statusStart = nextDayRecord?.appliedStatus?.startTime
-    if (!statusStart.isNullOrEmpty()) return 1440 + CalcUtils.timeToMin(statusStart) - 300
-    return if (crossesMidnight) 2880 else 1440 + 720   // 24:00 / 12:00
+    if (!statusStart.isNullOrEmpty()) return MINUTES_PER_DAY + CalcUtils.timeToMin(statusStart) - OUT_CUTOFF_LEAD_MIN
+    return if (crossesMidnight) OUT_CUTOFF_MIDNIGHT_MIN else MINUTES_PER_DAY + OUT_CUTOFF_NOON_MIN
 }
 
 /**
@@ -236,7 +251,7 @@ private fun computeShiftClockButtons(
     clockOut: String,
     outCutoff: Int
 ): Pair<Boolean, Boolean> {
-    val showIn = clockIn.isEmpty() && nowAbs >= ss - 300 && nowAbs <= normE
+    val showIn = clockIn.isEmpty() && nowAbs >= ss - OUT_CUTOFF_LEAD_MIN && nowAbs <= normE
     val showOut = clockOut.isEmpty() &&
         (clockIn.isNotEmpty() || nowAbs > normE) &&
         nowAbs <= outCutoff
@@ -285,7 +300,7 @@ private fun computeClockInWidgetData(
         if (!ySt.isNullOrEmpty() && yEt.isNullOrEmpty()) {
             // 站在昨天视角：当前已是次日，故 nowAbs = 今天时刻 + 1440
             // 本场景为跨天加班（附加状态跨天），按夜班口径 → 截止可到今天 24:00
-            if (nowMin + 1440 <= computeOutCutoff(todayRecord, todayShift, crossesMidnight = true)) {
+            if (nowMin + MINUTES_PER_DAY <= computeOutCutoff(todayRecord, todayShift, crossesMidnight = true)) {
                 targetDate = today.minusDays(1)
                 targetDateStr = yesterdayStr
                 targetRecord = yRec
@@ -307,7 +322,7 @@ private fun computeClockInWidgetData(
             val yss = CalcUtils.timeToMin(yShift.startTime)
             val (_, yNormE) = CalcUtils.normRange(yss, CalcUtils.timeToMin(yShift.endTime))
             // 站在昨天视角：当前已是次日，故 nowAbs = 今天时刻 + 1440
-            val nowAbs = nowMin + 1440
+            val nowAbs = nowMin + MINUTES_PER_DAY
             // S4（昨天正常班 + 内置附加状态）以附加状态时间段作为打卡判据
             val yIsS4 = yRec.appliedStatus?.let { isBuiltInStatus(it.statusId) } == true
             val effIn  = if (yIsS4) yRec.appliedStatus.startTime ?: "" else yRec.actualStartTime ?: ""
@@ -316,7 +331,7 @@ private fun computeClockInWidgetData(
             val (inBtn, outBtn) = computeShiftClockButtons(
                 nowAbs = nowAbs, ss = yss, normE = yNormE,
                 clockIn = effIn, clockOut = effOut,
-                outCutoff = computeOutCutoff(todayRecord, todayShift, crossesMidnight = yNormE > 1440)
+                outCutoff = computeOutCutoff(todayRecord, todayShift, crossesMidnight = yNormE > MINUTES_PER_DAY)
             )
             if (inBtn || outBtn) {
                 targetDate = today.minusDays(1)
@@ -344,7 +359,7 @@ private fun computeClockInWidgetData(
         val (inBtn, outBtn) = computeShiftClockButtons(
             nowAbs = nowMin, ss = ss, normE = normE,
             clockIn = effIn, clockOut = effOut,
-            outCutoff = computeOutCutoff(tomorrowRecord, tomorrowShift, crossesMidnight = normE > 1440)
+            outCutoff = computeOutCutoff(tomorrowRecord, tomorrowShift, crossesMidnight = normE > MINUTES_PER_DAY)
         )
         showClockIn = inBtn
         showClockOut = outBtn

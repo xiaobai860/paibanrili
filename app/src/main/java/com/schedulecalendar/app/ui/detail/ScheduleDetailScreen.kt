@@ -49,7 +49,9 @@ fun ScheduleDetailScreen(
     vm: ScheduleDetailViewModel = hiltViewModel()
 ) {
     val state       by vm.state.collectAsStateWithLifecycle()
-    if (BuildConfig.DEBUG) Log.e("WBD", "detail: composed date=" + state.date)
+    LaunchedEffect(state.date) {
+        if (BuildConfig.DEBUG) Log.e("WBD", "detail: composed date=" + state.date)
+    }
     val snackbar     = remember { SnackbarHostState() }
     val scrollState  = rememberScrollState()
 

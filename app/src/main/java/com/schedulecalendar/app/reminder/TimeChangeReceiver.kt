@@ -38,25 +38,30 @@ class TimeChangeReceiver : BroadcastReceiver() {
             action != Intent.ACTION_TIMEZONE_CHANGED
         ) return
 
-        val ep = EntryPointAccessors
-            .fromApplication(context, TimeChangeReceiverEntryPoint::class.java)
-        val scheduler = ep.reminderScheduler()
-        val widgetScheduler = ep.widgetRefreshScheduler()
+        // onReceive 中任何未捕获异常都会杀死进程；goAsync() 之前的整段都要有防护
+        val result = runCatching {
+            val ep = EntryPointAccessors
+                .fromApplication(context, TimeChangeReceiverEntryPoint::class.java)
+            val scheduler = ep.reminderScheduler()
+            val widgetScheduler = ep.widgetRefreshScheduler()
 
-        val pendingResult = goAsync()
-        val app = context.applicationContext as ScheduleApp
-        app.appScope.launch(Dispatchers.IO) {
-            try {
-                // 按当前方式统一重排（基于绝对毫秒，时区变更后需重建）
-                scheduler.scheduleActiveReminders(force = true)
-                // 小组件：回源刷新 + 重排精确刷新闹钟（本地日期时间已变，重算关键时间点）
-                runCatching { syncAllWidgets(app) }
-                runCatching { widgetScheduler.scheduleWidgetRefreshes() }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                pendingResult.finish()
+            val app = context.applicationContext as? ScheduleApp ?: return
+            goAsync().also { pendingResult ->
+                app.appScope.launch(Dispatchers.IO) {
+                    try {
+                        // 按当前方式统一重排（基于绝对毫秒，时区变更后需重建）
+                        scheduler.scheduleActiveReminders(force = true)
+                        // 小组件：回源刷新 + 重排精确刷新闹钟（本地日期时间已变，重算关键时间点）
+                        runCatching { syncAllWidgets(app) }
+                        runCatching { widgetScheduler.scheduleWidgetRefreshes() }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        pendingResult.finish()
+                    }
+                }
             }
         }
+        if (result.isFailure) result.exceptionOrNull()?.printStackTrace()
     }
 }

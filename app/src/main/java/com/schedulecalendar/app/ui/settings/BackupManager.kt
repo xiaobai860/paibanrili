@@ -7,7 +7,9 @@ import androidx.core.net.toUri
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
+import androidx.room.withTransaction
 import com.google.gson.Gson
+import com.schedulecalendar.app.data.db.AppDatabase
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.*
 import com.schedulecalendar.app.domain.model.*
@@ -29,6 +31,7 @@ import javax.inject.Singleton
 @Singleton
 class BackupManager @Inject constructor(
     @param:ApplicationContext private val context: Context,
+    private val db: AppDatabase,
     private val scheduleRepo: ScheduleRepository,
     private val shiftRepo:    ShiftRepository,
     private val breakRepo:    ShiftBreakRepository,
@@ -46,19 +49,36 @@ class BackupManager @Inject constructor(
     private val privateBackupDir: File
         get() = File(context.filesDir, "backups").also { it.mkdirs() }
 
-    /** 判断路径是否为 SAF content URI */
-    private fun isSafPath(path: String): Boolean = path.startsWith("content://")
+    /** 判断路径是否为 SAF 目录标识（含旧版 `/tree/...` 格式，见 [SafPathResolver]） */
+    private fun isSafPath(path: String): Boolean = SafPathResolver.isSafPath(path)
 
-    /** 持久化 SAF URI 的读写权限（选择目录后必须调用） */
-    fun persistUriPermission(rawPath: String) {
-        if (!isSafPath(rawPath)) return
-        runCatching {
+    /**
+     * 原子写入文本：先写 `.tmp` 再 rename，避免写入中途崩溃/断电留下半个 JSON
+     * （否则该文件会被 listBackupFiles 当作有效备份，恢复时抛 JsonSyntaxException）。
+     */
+    private fun File.writeTextAtomic(text: String) {
+        val tmp = File(parentFile, "$name.tmp")
+        tmp.writeText(text)
+        if (!tmp.renameTo(this)) {
+            // rename 失败（少数文件系统）时回退为直接写入
+            tmp.delete()
+            writeText(text)
+        }
+    }
+
+    /** 持久化 SAF URI 的读写权限（选择目录后必须调用）；返回是否成功 */
+    fun persistUriPermission(rawPath: String): Boolean {
+        if (!isSafPath(rawPath)) return false
+        return runCatching {
             val uri = rawPath.toUri()
             context.contentResolver.takePersistableUriPermission(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
-        }
+        }.onFailure {
+            // 静默失败会导致「选了目录、重启后所有备份写入失败」且无任何线索
+            android.util.Log.w("BackupManager", "persistUriPermission failed", it)
+        }.isSuccess
     }
 
     /** 通过 DocumentsContract 单次 IPC 查询列出 SAF 目录中的备份文件（避免 DocumentFile 的 N 次 IPC 性能陷阱） */
@@ -130,54 +150,8 @@ class BackupManager @Inject constructor(
         return doc.uri
     }
 
-    /**
-     * 将 SAF 路径（URI 字符串或 tree URI 的 path 部分）解析为真实文件系统路径。
-     * 支持格式：
-     *  - content://com.android.externalstorage.document/tree/primary%3ADownload%2F...
-     *  - /tree/primary:Download/...（旧版存储的 uri.path）
-     *  - 普通文件系统路径（直接返回）
-     */
-    private fun resolveSafPath(rawPath: String): String {
-        // 1. 如果是 content:// URI，提取 tree document id
-        if (rawPath.startsWith("content://")) {
-            return try {
-                val uri = rawPath.toUri()
-                // path 形如 /tree/primary%3ADownload%2F...
-                val treeSeg = uri.path?.removePrefix("/tree/") ?: return rawPath
-                val decoded = java.net.URLDecoder.decode(treeSeg, "UTF-8")
-                resolveDocumentId(decoded)
-            } catch (_: Exception) {
-                rawPath
-            }
-        }
-        // 2. 如果是旧版存储的 /tree/... 格式
-        if (rawPath.startsWith("/tree/")) {
-            return try {
-                val treeSeg = rawPath.removePrefix("/tree/")
-                val decoded = java.net.URLDecoder.decode(treeSeg, "UTF-8")
-                resolveDocumentId(decoded)
-            } catch (_: Exception) {
-                rawPath
-            }
-        }
-        // 3. 普通路径直接返回
-        return rawPath
-    }
-
-    /**
-     * 将 SAF document id（如 "primary:Download/MyData"）转换为文件系统路径。
-     */
-    private fun resolveDocumentId(docId: String): String {
-        val parts = docId.split(":", limit = 2)
-        val volume = parts[0]
-        val relativePath = if (parts.size > 1) parts[1] else ""
-        val basePath = when (volume.lowercase()) {
-            "primary" -> "/storage/emulated/0"
-            "home"    -> "/storage/emulated/0"
-            else      -> "/storage/$volume"
-        }
-        return if (relativePath.isNotEmpty()) "$basePath/$relativePath" else basePath
-    }
+    /** 将 SAF 路径解析为文件系统路径（统一实现见 [SafPathResolver]） */
+    private fun resolveSafPath(rawPath: String): String = SafPathResolver.toDisplayPath(rawPath)
 
     // ── 应用数据自动备份（每天最新一条，私有+自定义目录视为整体） ──
 
@@ -236,7 +210,7 @@ class BackupManager @Inject constructor(
                     privateBackupDir
                 }
                 val file = File(targetDir, fileName)
-                file.writeText(json)
+                file.writeTextAtomic(json)
             }
 
             // 标记今天已备份（用于 UI 显示"今日已备份"等场景）
@@ -325,7 +299,7 @@ class BackupManager @Inject constructor(
                     privateBackupDir
                 }
                 val file = File(targetDir, fileName)
-                file.writeText(json)
+                file.writeTextAtomic(json)
             }
             pruneShiftConfigBackups(keepCount, listShiftConfigBackups())
         }
@@ -348,7 +322,7 @@ class BackupManager @Inject constructor(
                 privateBackupDir
             }
             val file = File(targetDir, fileName)
-            file.writeText(json)
+            file.writeTextAtomic(json)
             file
         }
     }
@@ -368,7 +342,7 @@ class BackupManager @Inject constructor(
                 privateBackupDir
             }
             val file = File(targetDir, fileName)
-            file.writeText(json)
+            file.writeTextAtomic(json)
             file
         }
     }
@@ -423,14 +397,21 @@ class BackupManager @Inject constructor(
 
     /** 从外部 JSON 内容恢复（由导入功能调用） */
     suspend fun restoreFromJson(json: String): String {
-        return if (json.contains("\"scheduleRecords\"")) {
-            restoreAppData(json)
-            "应用数据恢复成功"
-        } else if (json.contains("\"shifts\"")) {
-            restoreShiftConfig(json)
-            "班次配置恢复成功"
-        } else {
-            throw IllegalArgumentException("无法识别的备份格式")
+        // 按顶层 key 集合判断备份类型，避免用子串猜测导致备注里带关键字就误判
+        val root = runCatching {
+            com.google.gson.JsonParser.parseString(json).asJsonObject
+        }.getOrNull() ?: throw IllegalArgumentException("JSON 解析失败")
+        val keys = root.keySet()
+        return when {
+            "scheduleRecords" in keys -> {
+                restoreAppData(json)
+                "应用数据恢复成功"
+            }
+            "shifts" in keys -> {
+                restoreShiftConfig(json)
+                "班次配置恢复成功"
+            }
+            else -> throw IllegalArgumentException("无法识别的备份格式")
         }
     }
 
@@ -449,6 +430,7 @@ class BackupManager @Inject constructor(
 
     // ── 内部工具 ──────────────────────────────────────────
 
+    @Suppress("DEPRECATION") // reminderNotifyBar 已废弃，仅为兼容旧备份格式继续导出
     private suspend fun buildAppDataJson(): String {
         val now = LocalDateTime.now().format(exportFormatter)
         // 全量备份：导出所有排班记录（含历史与未来），不再仅限最近 12 个月，避免恢复后更早数据丢失
@@ -509,16 +491,35 @@ class BackupManager @Inject constructor(
     private suspend fun restoreAppData(json: String) {
         val backup = gson.fromJson(json, AppDataBackup::class.java)
             ?: throw IllegalArgumentException("JSON 解析失败")
-        // 旧版本/损坏备份可能缺失列表字段，orEmpty 防御 NPE
-        scheduleRepo.saveAll(backup.scheduleRecords.orEmpty())
-        backup.shifts.orEmpty().forEach { shiftRepo.save(it.copy(builtIn = false)) }
-        breakRepo.deleteAll()
-        backup.globalBreaks.orEmpty().forEach { breakRepo.save(it) }
-        backup.shiftStatuses.orEmpty().filter { !it.builtIn }.forEach { statusRepo.save(it) }
-        backup.extraItems.orEmpty().forEach { extraRepo.save(it) }
+        // 恢复前自动生成一份「应用数据」快照，万一恢复结果不符合预期可回退（幂等，失败仅告警不阻断）
+        runCatching { createAppDataBackup() }
+            .onFailure { android.util.Log.w("BackupManager", "pre-restore snapshot failed", it) }
+
+        // DB 部分放在同一事务内：任一步失败整体回滚，避免「排班已写、休息已删」的半套数据
+        db.withTransaction {
+            backup.scheduleRecords?.let { scheduleRepo.saveAll(it) }
+            backup.shifts?.let { list ->
+                shiftRepo.saveAll(list.filter { !it.builtIn }.map { it.copy(builtIn = false) })
+            }
+            // 仅当备份中确实存在该字段才做「全删 + 重建」；旧版备份缺字段时保持现状，
+            // 否则会把用户的休息时段/补贴项目全部清空。
+            if (backup.globalBreaks != null) {
+                breakRepo.deleteAll()
+                backup.globalBreaks.forEach { breakRepo.save(it) }
+            }
+            if (backup.shiftStatuses != null) {
+                backup.shiftStatuses.filter { !it.builtIn }.forEach { statusRepo.save(it) }
+            }
+            if (backup.extraItems != null) {
+                extraRepo.deleteAll()
+                backup.extraItems.forEach { extraRepo.save(it) }
+            }
+        }
+
+        // 偏好设置在 DB 事务成功后再写（避免 DB 回滚后偏好仍被改）
         backup.salaryConfig?.let { prefs.saveSalaryConfig(it) }
         backup.attendConfig?.let { prefs.saveAttendConfig(it) }
-        prefs.saveScheduleRule(backup.scheduleRule)
+        backup.scheduleRule?.let { prefs.saveScheduleRule(it) }
         backup.displaySchemes?.let { prefs.saveDisplaySchemes(it) }
         // 恢复账户分类和禁用状态
         backup.disabledAccountIds?.let { ids ->
@@ -551,12 +552,27 @@ class BackupManager @Inject constructor(
     private suspend fun restoreShiftConfig(json: String) {
         val data = gson.fromJson(json, com.schedulecalendar.app.ui.shifts.ShiftExportData::class.java)
             ?: throw IllegalArgumentException("JSON 解析失败")
-        data.shifts.orEmpty().filter { !it.builtIn }.forEach { shiftRepo.save(it.copy(builtIn = false)) }
-        breakRepo.deleteAll()
-        data.globalBreaks.orEmpty().forEach { breakRepo.save(it) }
-        data.shiftStatuses.orEmpty().filter { !it.builtIn }.forEach { statusRepo.save(it) }
-        extraRepo.deleteAll()
-        data.extraItems.orEmpty().forEach { extraRepo.save(it) }
+        runCatching { createShiftConfigBackup() }
+            .onFailure { android.util.Log.w("BackupManager", "pre-restore snapshot failed", it) }
+
+        db.withTransaction {
+            data.shifts?.let { list ->
+                shiftRepo.saveAll(list.filter { !it.builtIn }.map { it.copy(builtIn = false) })
+            }
+            data.shiftStatuses?.let { list ->
+                list.filter { !it.builtIn }.forEach { statusRepo.save(it) }
+            }
+            // 字段缺失时保持现状，绝不 deleteAll（防止旧版备份清空用户数据）
+            if (data.globalBreaks != null) {
+                breakRepo.deleteAll()
+                data.globalBreaks.forEach { breakRepo.save(it) }
+            }
+            if (data.extraItems != null) {
+                extraRepo.deleteAll()
+                data.extraItems.forEach { extraRepo.save(it) }
+            }
+        }
+
         // v6：恢复排序顺序与颜色索引（旧版备份为 null 时跳过，保持现状）
         data.shiftOrder?.let { prefs.saveShiftOrder(it) }
         data.statusOrder?.let { prefs.saveStatusOrder(it) }
@@ -663,15 +679,21 @@ class BackupManager @Inject constructor(
     }
 }
 
-/** 完整 AppData 备份包（内部数据结构）v2（+ 提醒设置/排序/颜色索引/快捷方式） */
+/**
+ * 完整 AppData 备份包（内部数据结构）v2（+ 提醒设置/排序/颜色索引/快捷方式）
+ *
+ * ⚠️ 列表字段用 `List<...>?` 而非默认 `emptyList()`，以便区分
+ * 「备份中确实没有该字段（旧版备份 / 手工编辑）」与「备份中该列表为空」。
+ * 恢复时：字段缺失 → 保持现状不动；字段存在 → 全量替换。
+ */
 private data class AppDataBackup(
     val version: Int = 2,
     val exportTime: String = "",
-    val scheduleRecords: List<ScheduleRecord> = emptyList(),
-    val shifts: List<Shift> = emptyList(),
-    val globalBreaks: List<ShiftBreak> = emptyList(),
-    val shiftStatuses: List<ShiftStatus> = emptyList(),
-    val extraItems: List<ExtraItem> = emptyList(),
+    val scheduleRecords: List<ScheduleRecord>? = null,
+    val shifts: List<Shift>? = null,
+    val globalBreaks: List<ShiftBreak>? = null,
+    val shiftStatuses: List<ShiftStatus>? = null,
+    val extraItems: List<ExtraItem>? = null,
     val salaryConfig: SalaryConfig? = null,
     val attendConfig: AttendConfig? = null,
     val scheduleRule: ScheduleRule? = null,

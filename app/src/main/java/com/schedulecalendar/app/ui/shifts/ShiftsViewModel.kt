@@ -34,14 +34,22 @@ data class ShiftsState(
     val statuses: List<ShiftStatus>    = emptyList()
 )
 
-/** 导出数据包 v6（v5 + 增加排序顺序与颜色索引，覆盖班次 Tab 内全部配置） */
+/**
+ * 导出数据包 v6（v5 + 增加排序顺序与颜色索引，覆盖班次 Tab 内全部配置）
+ *
+ * ⚠️ 可空性约定（关乎数据安全）：
+ * 列表字段用 `List<...>?` 而非 `List<...> = emptyList()`，以便区分
+ * 「备份中确实没有该字段（旧版备份 / 手工编辑）」与「备份中该列表为空」。
+ * 恢复时：字段缺失 → 保持现状不动；字段存在 → 全量替换。
+ * 若用默认 `emptyList()`，旧版备份恢复会把用户的休息时段/补贴项目**全部清空**。
+ */
 data class ShiftExportData(
     val version: Int                     = 6,
     val exportTime: String               = "",
-    val shifts: List<Shift>              = emptyList(),
-    val globalBreaks: List<ShiftBreak>   = emptyList(),
-    val shiftStatuses: List<ShiftStatus> = emptyList(),
-    val extraItems: List<ExtraItem>      = emptyList(),
+    val shifts: List<Shift>?             = null,
+    val globalBreaks: List<ShiftBreak>?  = null,
+    val shiftStatuses: List<ShiftStatus>? = null,
+    val extraItems: List<ExtraItem>?     = null,
     val shiftOrder: List<String>?        = null,
     val statusOrder: List<String>?       = null,
     val extraOrder: List<String>?        = null,
@@ -284,7 +292,7 @@ class ShiftsViewModel @Inject constructor(
         runCatching {
             val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
             val payload = ShiftExportData(
-                version       = 5,
+                version       = 6,
                 exportTime    = now,
                 shifts        = shiftRepo.getAll().filter { !it.builtIn },
                 globalBreaks  = breakRepo.getAll(),
@@ -307,23 +315,24 @@ class ShiftsViewModel @Inject constructor(
             var importedBreaks   = 0
             var importedStatuses = 0
             val existingIds = shiftRepo.getAll().map { it.id }.toSet()
-            data.shifts.forEach { s ->
+            // 字段缺失（旧版备份）按空列表处理，不影响其他字段导入
+            data.shifts.orEmpty().forEach { s ->
                 if (overwrite || s.id !in existingIds) {
                     shiftRepo.save(s.copy(builtIn = false)); importedShifts++
                 }
             }
             if (overwrite) {
                 breakRepo.deleteAll()
-                data.globalBreaks.forEach { breakRepo.save(it) }
-                importedBreaks = data.globalBreaks.size
+                data.globalBreaks.orEmpty().forEach { breakRepo.save(it) }
+                importedBreaks = data.globalBreaks.orEmpty().size
             } else {
                 val existingBreakIds = breakRepo.getAll().map { it.id }.toSet()
-                data.globalBreaks.filter { it.id !in existingBreakIds }.forEach {
+                data.globalBreaks.orEmpty().filter { it.id !in existingBreakIds }.forEach {
                     breakRepo.save(it); importedBreaks++
                 }
             }
             val existingStatusIds = statusRepo.getAll().filter { !it.builtIn }.map { it.id }.toSet()
-            data.shiftStatuses.filter { !it.builtIn }.forEach { st ->
+            data.shiftStatuses.orEmpty().filter { !it.builtIn }.forEach { st ->
                 if (overwrite || st.id !in existingStatusIds) {
                     statusRepo.save(st); importedStatuses++
                 }

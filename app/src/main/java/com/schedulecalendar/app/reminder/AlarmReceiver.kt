@@ -37,73 +37,90 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        val isClockIn = intent.getBooleanExtra(ReminderScheduler.EXTRA_IS_CLOCK_IN, true)
-        val date = intent.getStringExtra(ReminderScheduler.EXTRA_DATE) ?: ""
-        val time = intent.getStringExtra(ReminderScheduler.EXTRA_TIME) ?: ""
-        val shiftName = intent.getStringExtra(ReminderScheduler.EXTRA_SHIFT_NAME) ?: ""
+        // onReceive 中任何未捕获异常都会杀死进程（弹「应用已停止」），而提醒闹钟若在此崩溃，
+        // 用户感知就是「莫名不提醒 + 应用停止」。因此 goAsync() 之前的整段都要有防护。
+        val pendingResult = runCatching {
+            val isClockIn = intent.getBooleanExtra(ReminderScheduler.EXTRA_IS_CLOCK_IN, true)
+            val date = intent.getStringExtra(ReminderScheduler.EXTRA_DATE) ?: ""
+            val time = intent.getStringExtra(ReminderScheduler.EXTRA_TIME) ?: ""
+            val shiftName = intent.getStringExtra(ReminderScheduler.EXTRA_SHIFT_NAME) ?: ""
 
-        if (date.isEmpty() || time.isEmpty()) return
+            if (date.isEmpty() || time.isEmpty()) return
 
-        val prefs = EntryPointAccessors
-            .fromApplication(context, AlarmReceiverEntryPoint::class.java)
-            .appPreferences()
+            val prefs = runCatching {
+                EntryPointAccessors
+                    .fromApplication(context, AlarmReceiverEntryPoint::class.java)
+                    .appPreferences()
+            }.getOrNull() ?: return
 
-        // 延长广播生命周期至协程完成，避免系统过早杀进程或主线程阻塞
-        val pendingResult = goAsync()
-        (context.applicationContext as ScheduleApp).appScope.launch(Dispatchers.IO) {
-            try {
-                // 总开关关闭时不弹通知；开启总开关后通知栏提醒强制开启（以总开关为唯一真相源）
-                if (!prefs.getReminderEnabled()) return@launch
-                if (!prefs.getReminderNotifyBar()) return@launch
+            val app = context.applicationContext as? ScheduleApp ?: return
+            goAsync().also { pr ->
+                app.appScope.launch(Dispatchers.IO) {
+                    try {
+                        // 总开关关闭时不弹通知；开启总开关后通知栏提醒强制开启（以总开关为唯一真相源）
+                        if (!prefs.getReminderEnabled()) return@launch
 
-                // 创建通知渠道（兼容性保障）
-                createNotificationChannelIfNeeded(context)
+                        // 创建通知渠道（兼容性保障）
+                        createNotificationChannelIfNeeded(context)
 
-                val typeLabel = if (isClockIn) "上班" else "下班"
-                val title = if (shiftName.isNotEmpty()) "$shiftName - ${typeLabel}提醒" else "${typeLabel}提醒"
-                val body = "今天${typeLabel}时间：$time"
+                        // Android 13+ 未授予通知权限时 notify 会被静默丢弃，用户表现为「提醒莫名不弹」。
+                        // 此处仅记录日志便于排查（授权引导由设置页提供）。
+                        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        if (!nm.areNotificationsEnabled()) {
+                            android.util.Log.w("AlarmReceiver", "notifications disabled, skip remind")
+                            return@launch
+                        }
 
-                val notificationId = if (isClockIn) {
-                    ReminderScheduler.NOTIFICATION_ID_CLOCK_IN
-                } else {
-                    ReminderScheduler.NOTIFICATION_ID_CLOCK_OUT
+                        val typeLabel = if (isClockIn) "上班" else "下班"
+                        val title = if (shiftName.isNotEmpty()) "$shiftName - ${typeLabel}提醒" else "${typeLabel}提醒"
+                        val body = "今天${typeLabel}时间：$time"
+
+                        val notificationId = if (isClockIn) {
+                            ReminderScheduler.NOTIFICATION_ID_CLOCK_IN
+                        } else {
+                            ReminderScheduler.NOTIFICATION_ID_CLOCK_OUT
+                        }
+
+                        // 点击通知后打开应用并触发对应打卡动作
+                        val action = if (isClockIn) MainActivity.ACTION_CLOCK_IN else MainActivity.ACTION_CLOCK_OUT
+                        val tapIntent = Intent(context, MainActivity::class.java).apply {
+                            this.action = action
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        }
+                        val tapPending = PendingIntent.getActivity(
+                            context, notificationId, tapIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+
+                        // 选取闹钟/通知默认铃声（优先闹钟声，缺失则回退通知声）
+                        val soundUri: Uri? = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                            ?.takeIf { it != Uri.EMPTY }
+                            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+                        val notification = NotificationCompat.Builder(context, ReminderScheduler.CHANNEL_ID)
+                            .setSmallIcon(android.R.drawable.ic_dialog_info)
+                            .setContentTitle(title)
+                            .setContentText(body)
+                            .setPriority(NotificationCompat.PRIORITY_MAX)
+                            .setCategory(NotificationCompat.CATEGORY_ALARM)
+                            .setContentIntent(tapPending)
+                            .setSound(soundUri)
+                            .setVibrate(longArrayOf(0, 400, 200, 400))
+                            .setAutoCancel(true)
+                            .build()
+
+                        nm.notify(notificationId, notification)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        pr.finish()
+                    }
                 }
-
-                // 点击通知后打开应用并触发对应打卡动作
-                val action = if (isClockIn) MainActivity.ACTION_CLOCK_IN else MainActivity.ACTION_CLOCK_OUT
-                val tapIntent = Intent(context, MainActivity::class.java).apply {
-                    this.action = action
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                }
-                val tapPending = PendingIntent.getActivity(
-                    context, notificationId, tapIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-
-                // 选取闹钟/通知默认铃声（优先闹钟声，缺失则回退通知声）
-                val soundUri: Uri? = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                    ?.takeIf { it != Uri.EMPTY }
-                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-
-                val notification = NotificationCompat.Builder(context, ReminderScheduler.CHANNEL_ID)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle(title)
-                    .setContentText(body)
-                    .setPriority(NotificationCompat.PRIORITY_MAX)
-                    .setCategory(NotificationCompat.CATEGORY_ALARM)
-                    .setContentIntent(tapPending)
-                    .setSound(soundUri)
-                    .setVibrate(longArrayOf(0, 400, 200, 400))
-                    .setAutoCancel(true)
-                    .build()
-
-                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                nm.notify(notificationId, notification)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                pendingResult.finish()
             }
+        }
+        // goAsync() 之前失败：记录日志即可（此时还没有 pendingResult 需要 finish）
+        if (pendingResult.isFailure) {
+            pendingResult.exceptionOrNull()?.printStackTrace()
         }
     }
 

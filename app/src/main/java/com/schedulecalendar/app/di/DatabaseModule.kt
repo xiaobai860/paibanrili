@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.schedulecalendar.app.data.db.AppDatabase
+import com.schedulecalendar.app.data.db.Migrations
 import com.schedulecalendar.app.data.db.dao.ExtraItemDao
 import com.schedulecalendar.app.data.db.dao.ScheduleRecordDao
 import com.schedulecalendar.app.data.db.dao.ShiftBreakDao
@@ -25,8 +26,8 @@ object DatabaseModule {
     fun provideDatabase(@ApplicationContext ctx: Context): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, "schedule_calendar.db")
             // 不使用破坏性迁移：升级若未提供 Migration，Room 会直接抛异常（fail-fast）而非静默清空全部数据。
-            // 以后每次提升 @Database(version=...) 都必须在下方 addMigrations(...) 提供对应迁移。
-            .addMigrations()
+            // 以后每次提升 @Database(version=...) 都必须在 Migrations.ALL 中补对应跳变的迁移。
+            .addMigrations(*Migrations.ALL)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                     super.onOpen(db)

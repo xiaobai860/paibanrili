@@ -119,8 +119,11 @@ fun AppNavHost() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
-    if (BuildConfig.DEBUG) Log.e("WBD", "navhost: dest=" + (navBackStackEntry?.destination?.route ?: "null"))
     val currentDest = navBackStackEntry?.destination
+    // 调试日志放在副作用里，避免每次重组都打印
+    LaunchedEffect(currentDest?.route) {
+        if (BuildConfig.DEBUG) Log.e("WBD", "navhost: dest=" + (currentDest?.route ?: "null"))
+    }
     val tabRouteNames = tabs.map { (it.route::class).qualifiedName }
     val showBottomBar = currentDest?.route in tabRouteNames
 

@@ -38,7 +38,9 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
+import com.schedulecalendar.app.data.repository.ExtraItemRepository
 import com.schedulecalendar.app.data.repository.ScheduleRepository
+import com.schedulecalendar.app.data.repository.ShiftBreakRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.reminder.ReminderScheduler
@@ -116,7 +118,10 @@ private const val KEY_WIDGET_JSON = "widget_json"
 class ScheduleGlanceWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent { ClockInWidgetContent() }
+        // 组合期异常会被 Glance 框架捕获并保留上一次快照（不会崩进程），
+        // 但仍记录日志便于排查渲染失败原因。
+        runCatching { provideContent { ClockInWidgetContent() } }
+            .onFailure { android.util.Log.e("ScheduleGlanceWidget", "provideGlance failed", it) }
     }
 
     companion object {
@@ -637,17 +642,6 @@ class OpenAppAction : ActionCallback {
     }
 }
 
-private fun hexToWidgetColor(hex: String, fallback: Color): Color {
-    return runCatching {
-        val h = hex.removePrefix("#")
-        val a = if (h.length == 8) h.substring(0, 2).toInt(16) / 255f else 1f
-        val r = h.substring(h.length - 6, h.length - 4).toInt(16) / 255f
-        val g = h.substring(h.length - 4, h.length - 2).toInt(16) / 255f
-        val b = h.substring(h.length - 2).toInt(16) / 255f
-        Color(r, g, b, a)
-    }.getOrElse { fallback }
-}
-
 // ── 判断附加状态是否为内置（调休/请假） ──────────────────────────────
 
 fun isBuiltInStatus(statusId: String): Boolean {
@@ -662,6 +656,8 @@ interface WidgetClockEntryPoint {
     fun scheduleRepository(): ScheduleRepository
     fun shiftRepository(): ShiftRepository
     fun shiftStatusRepository(): ShiftStatusRepository
+    fun shiftBreakRepository(): ShiftBreakRepository
+    fun extraItemRepository(): ExtraItemRepository
     fun appPreferences(): AppPreferences
     fun reminderScheduler(): ReminderScheduler
     fun widgetRefreshScheduler(): WidgetRefreshScheduler

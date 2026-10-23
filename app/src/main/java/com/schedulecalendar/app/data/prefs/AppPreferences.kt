@@ -73,7 +73,11 @@ class AppPreferences @Inject constructor(
 
     // ── 薪资配置 ───────────────────────────────────
     val salaryConfigFlow: Flow<SalaryConfig> = context.dataStore.data.map { p ->
-        p[KEY_SALARY_CONFIG]?.let { gson.fromJson(it, SalaryConfig::class.java) } ?: SalaryConfig()
+        // JSON 损坏/字段类型变更时 Gson 会抛异常，若不兜住会导致整个 Flow 终止、
+        // 设置页与薪资统计全部拿不到数据，因此回退默认值。
+        p[KEY_SALARY_CONFIG]?.let { json ->
+            runCatching { gson.fromJson(json, SalaryConfig::class.java) }.getOrNull()
+        } ?: SalaryConfig()
     }
     suspend fun saveSalaryConfig(cfg: SalaryConfig) = context.dataStore.edit {
         it[KEY_SALARY_CONFIG] = gson.toJson(cfg)
@@ -81,7 +85,9 @@ class AppPreferences @Inject constructor(
 
     // ── 考勤配置 ───────────────────────────────────
     val attendConfigFlow: Flow<AttendConfig> = context.dataStore.data.map { p ->
-        p[KEY_ATTEND_CONFIG]?.let { gson.fromJson(it, AttendConfig::class.java) } ?: AttendConfig()
+        p[KEY_ATTEND_CONFIG]?.let { json ->
+            runCatching { gson.fromJson(json, AttendConfig::class.java) }.getOrNull()
+        } ?: AttendConfig()
     }
     suspend fun saveAttendConfig(cfg: AttendConfig) = context.dataStore.edit {
         it[KEY_ATTEND_CONFIG] = gson.toJson(cfg)
@@ -89,7 +95,9 @@ class AppPreferences @Inject constructor(
 
     // ── 排班规则 ───────────────────────────────────
     val scheduleRuleFlow: Flow<ScheduleRule?> = context.dataStore.data.map { p ->
-        p[KEY_SCHEDULE_RULE]?.let { gson.fromJson(it, ScheduleRule::class.java) }
+        p[KEY_SCHEDULE_RULE]?.let { json ->
+            runCatching { gson.fromJson(json, ScheduleRule::class.java) }.getOrNull()
+        }
     }
     suspend fun saveScheduleRule(rule: ScheduleRule?) = context.dataStore.edit {
         it[KEY_SCHEDULE_RULE] = if (rule == null) "" else gson.toJson(rule)
@@ -295,7 +303,14 @@ class AppPreferences @Inject constructor(
     suspend fun saveReminderClockOutMinutes(minutes: Int) = context.dataStore.edit {
         it[KEY_REMINDER_CLOCK_OUT_MINUTES] = minutes
     }
-    /** 通知栏提醒开关：是否通过通知栏推送提醒（默认开启，关闭后仅日历事件可见、不弹通知） */
+    /**
+     * 通知栏提醒开关：是否通过通知栏推送提醒（默认开启，关闭后仅日历事件可见、不弹通知）。
+     *
+     * ⚠️ 已废弃：提醒现在以「总开关」[getReminderEnabled] 为唯一真相源，UI 无此开关，
+     * [com.schedulecalendar.app.reminder.AlarmReceiver] 也不再读取它。
+     * 保留仅为了备份文件的向后兼容（旧备份仍可能写入该字段）。
+     */
+    @Deprecated("提醒以总开关为唯一真相源，此开关仅保留备份兼容")
     suspend fun getReminderNotifyBar(): Boolean =
         context.dataStore.data.first()[KEY_REMINDER_NOTIFY_BAR] != "false"
     suspend fun saveReminderNotifyBar(enabled: Boolean) = context.dataStore.edit {

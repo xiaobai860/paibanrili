@@ -60,16 +60,18 @@ class CalendarGlanceWidget : GlanceAppWidget() {
         val isLarge = maxH >= 220f
         val baseHeight = maxH.dp
         // 3x3 widget：显示 日期+班次+附加状态（3 项），launcher cell 大时不裁切
-        provideContent {
-            CalendarWidgetContent(
-                isLarge = isLarge,
-                baseHeight = baseHeight,
-                showLunar = false,
-                showStatus = true,
-                maxVisibleRows = Int.MAX_VALUE,
-                compact = true
-            )
-        }
+        runCatching {
+            provideContent {
+                CalendarWidgetContent(
+                    isLarge = isLarge,
+                    baseHeight = baseHeight,
+                    showLunar = false,
+                    showStatus = true,
+                    maxVisibleRows = Int.MAX_VALUE,
+                    compact = true
+                )
+            }
+        }.onFailure { android.util.Log.e("CalendarGlanceWidget", "provideGlance failed", it) }
     }
     companion object {
         suspend fun updateWidgetData(context: Context, data: CalendarWidgetInfo) {
@@ -316,17 +318,6 @@ private fun CalendarDayCellContent(
     }
 }
 
-private fun hexToWidgetColor(hex: String, fallback: Color): Color {
-    return runCatching {
-        val h = hex.removePrefix("#")
-        val a = if (h.length == 8) h.substring(0, 2).toInt(16) / 255f else 1f
-        val r = h.substring(h.length - 6, h.length - 4).toInt(16) / 255f
-        val g = h.substring(h.length - 4, h.length - 2).toInt(16) / 255f
-        val b = h.substring(h.length - 2).toInt(16) / 255f
-        Color(r, g, b, a)
-    }.getOrElse { fallback }
-}
-
 // === 3x4 排班日历小组件 (3 格宽 \u00d7 4 格高，可拉伸到 4 格宽) ===
 // 与 3x3 共用 widgetData（读同一份 CalendarWidgetInfo JSON）与样式配置，只是 baseHeight 不同
 // 9:35 AM 2026-8-22
@@ -336,15 +327,17 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
         val sizes = manager.getAppWidgetSizes(id)
         val maxH = sizes.maxOfOrNull { it.height.value } ?: 240f
         // 3x4 widget：显示 4 项内容（日期+班次+附加状态+农历），渲染完整所有行（保证 31 号可见）
-        provideContent {
-            CalendarWidgetContent(
-                isLarge = true,
-                baseHeight = maxH.dp,
-                showLunar = true,
-                showStatus = true,
-                maxVisibleRows = Int.MAX_VALUE
-            )
-        }
+        runCatching {
+            provideContent {
+                CalendarWidgetContent(
+                    isLarge = true,
+                    baseHeight = maxH.dp,
+                    showLunar = true,
+                    showStatus = true,
+                    maxVisibleRows = Int.MAX_VALUE
+                )
+            }
+        }.onFailure { android.util.Log.e("Calendar3x4GlanceWidget", "provideGlance failed", it) }
     }
 
     companion object {

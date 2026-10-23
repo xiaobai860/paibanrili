@@ -246,7 +246,15 @@ fun AddAnniversaryScreen(
                                     lunarYear = l.lunarYear
                                     lunarMonth = l.lunarMonth
                                     lunarDay = l.lunarDay
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    // 转换失败若继续切换模式，农历三项会停留在旧值而公历已变，
+                                    // 用户会存下错误的纪念日；这里提示并保持原模式
+                                    android.util.Log.w("AddAnniversary", "solarToLunar failed", e)
+                                    android.widget.Toast.makeText(
+                                        context, "该日期不支持农历转换", android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                    return@Switch
+                                }
                             } else {
                                 // 农历 → 公历
                                 try {
@@ -254,7 +262,13 @@ fun AddAnniversaryScreen(
                                     selectedYear = s.year
                                     selectedMonth = s.month
                                     selectedDay = s.day
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    android.util.Log.w("AddAnniversary", "lunarToSolar failed", e)
+                                    android.widget.Toast.makeText(
+                                        context, "该农历日期不支持转换", android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                    return@Switch
+                                }
                             }
                         }
                         isLunarMode = newMode

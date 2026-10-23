@@ -49,6 +49,12 @@ import androidx.compose.foundation.pager.rememberPagerState
 
 private val WEEK_LABELS = listOf("一","二","三","四","五","六","日")
 
+/** 需要用户处理的待办类型（用于顶栏红字计数） */
+private val PENDING_TODO_TYPES = setOf(
+    TodoType.MISSED_CLOCK_IN, TodoType.MISSED_CLOCK_OUT,
+    TodoType.PENDING_EARLY_OT, TodoType.PENDING_LATE_OT
+)
+
 private data class DayCellData(
     val day: Int, val dateStr: String,
     val shift: Shift?, val record: ScheduleRecord?,
@@ -68,6 +74,9 @@ private fun renderDateGrid(
     vm: CalendarViewModel,
     navController: NavController
 ) {
+    // 42 个格子的 HolidayData / 节假日 / 选中态计算较重，且滑动翻页、动画帧都会触发重组。
+    // 这里按「真正影响结果的输入」记忆化，避免同一状态下重复计算（state 为 data class，按值比较）。
+    val allDays: List<DayCellData> = remember(gridYear, gridMonth, totalRows, shiftMap, state, todayStr) {
         val gym = YearMonth.of(gridYear, gridMonth)
         val gDaysInMonth = gym.lengthOfMonth()
         val gFirstDow = LocalDate.of(gridYear, gridMonth, 1).dayOfWeek.let {
@@ -148,7 +157,8 @@ private fun renderDateGrid(
                 isNextMonth = true
             )
         }
-        val allDays = prevFillDays + curMonthDays + nextFillDays
+        prevFillDays + curMonthDays + nextFillDays
+    }
 
         Column(Modifier.fillMaxWidth()) {
             for (rowIdx in 0 until totalRows) {
@@ -205,7 +215,10 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
     var editMenuExpanded by remember { mutableStateOf(false) }
     // 批量排班面板展开状态（提升到本层：返回键需要「第一次收起面板、第二次退出模式」）
     var batchExpanded by remember { mutableStateOf(false) }
-    if (BuildConfig.DEBUG) Log.e("WBD", "calendar: composed mode=[b=" + state.batchMode + ",c=" + state.copyMode + ",d=" + state.deleteMode + "] expanded=" + batchExpanded)
+    // 调试日志放到副作用里：原先直接写在组合体内会在每次重组都打印（滑动/动画时刷屏）
+    LaunchedEffect(state.batchMode, state.copyMode, state.deleteMode, batchExpanded) {
+        if (BuildConfig.DEBUG) Log.e("WBD", "calendar: mode=[b=" + state.batchMode + ",c=" + state.copyMode + ",d=" + state.deleteMode + "] expanded=" + batchExpanded)
+    }
 
     // 处理快捷方式Intent
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -291,11 +304,8 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             }
 
                             // 待办提醒红色小字
-                            val pendingCount = state.todos.count { todo ->
-                                todo.type in listOf(
-                                    TodoType.MISSED_CLOCK_IN, TodoType.MISSED_CLOCK_OUT,
-                                    TodoType.PENDING_EARLY_OT, TodoType.PENDING_LATE_OT
-                                )
+                            val pendingCount = remember(state.todos) {
+                                state.todos.count { it.type in PENDING_TODO_TYPES }
                             }
                             if (pendingCount > 0) {
                                 Spacer(Modifier.width(6.dp))
