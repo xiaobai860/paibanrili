@@ -14,6 +14,7 @@ import com.schedulecalendar.app.domain.model.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -81,6 +82,7 @@ class ShiftsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             _shiftOrder.value = prefs.getShiftOrder()
+            yield()
             _statusOrder.value = prefs.getStatusOrder()
             _breakOrder.value = prefs.getBreakOrder()
         }
