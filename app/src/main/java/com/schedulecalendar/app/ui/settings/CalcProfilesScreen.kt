@@ -75,11 +75,13 @@ class CalcProfilesViewModel @Inject constructor(
     private val _uiEvent = Channel<CalcProfilesUiEvent>(Channel.BUFFERED)
     val uiEvent = _uiEvent.receiveAsFlow()
 
-    init { refresh(); refreshEmptyRangeCount() }
+    /** 空区间档案数量（生效日晚于失效日）。
+         * ⚠️ 必须声明在 init 之前：Main.immediate 会同步执行 init 里 launch 的协程，
+         * 且 `field.value = <挂起表达式>` 是接收者先求值 —— 声明在后面会写到 null 字段（真机崩过）。 */
+        private val _emptyRangeCount = MutableStateFlow(0)
+        val emptyRangeCount = _emptyRangeCount.asStateFlow()
 
-    /** 从未生效的空区间档案数量（生效日晚于失效日），仅用于页面提示 */
-    private val _emptyRangeCount = MutableStateFlow(0)
-    val emptyRangeCount = _emptyRangeCount.asStateFlow()
+        init { refresh(); refreshEmptyRangeCount() }
 
     fun refreshEmptyRangeCount() = viewModelScope.launch {
         _emptyRangeCount.value = runCatching {
