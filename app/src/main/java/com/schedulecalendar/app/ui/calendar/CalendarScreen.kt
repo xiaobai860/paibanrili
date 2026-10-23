@@ -34,6 +34,7 @@ import androidx.navigation.NavController
 import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.data.calendar.CalendarEventInfo
 import com.schedulecalendar.app.domain.model.*
+import com.schedulecalendar.app.domain.util.DateFormats
 import com.schedulecalendar.app.ui.detail.safeColor
 import com.schedulecalendar.app.ui.util.currentLocale
 import com.schedulecalendar.app.ui.component.WheelDatePickerDialog
@@ -90,7 +91,7 @@ private fun renderDateGrid(
         val prevFillDays = (0 until gFirstDow).map { idx ->
             val day = gPrevDaysInMonth - gFirstDow + 1 + idx
             val pDate = LocalDate.of(gPrevYM.year, gPrevYM.monthValue, day)
-            val dateStr = "%04d-%02d-%02d".format(pDate.year, pDate.monthValue, pDate.dayOfMonth)
+            val dateStr = DateFormats.date(pDate)
             val record = state.schedules[dateStr]
             val shift = record?.shiftId?.let { shiftMap[it] }
             val detail = state.dayDetails[dateStr]
@@ -114,7 +115,7 @@ private fun renderDateGrid(
         }
         val curMonthDays = (0 until gDaysInMonth).map { dayIdx ->
             val day = dayIdx + 1
-            val dateStr = "%04d-%02d-%02d".format(gridYear, gridMonth, day)
+            val dateStr = DateFormats.date(gridYear, gridMonth, day)
             val record = state.schedules[dateStr]
             val shift = record?.shiftId?.let { shiftMap[it] }
             val detail = state.dayDetails[dateStr]
@@ -135,7 +136,7 @@ private fun renderDateGrid(
         val gRemaining = totalRows * 7 - gTotalCells
         val nextFillDays = (1..gRemaining).map { idx ->
             val nDate = LocalDate.of(gNextYM.year, gNextYM.monthValue, idx)
-            val dateStr = "%04d-%02d-%02d".format(nDate.year, nDate.monthValue, nDate.dayOfMonth)
+            val dateStr = DateFormats.date(nDate)
             val record = state.schedules[dateStr]
             val shift = record?.shiftId?.let { shiftMap[it] }
             val detail = state.dayDetails[dateStr]
@@ -280,7 +281,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                     title = {
                         val today = LocalDate.now()
                         val isCurMonth = state.year == today.year && state.month == today.monthValue
-                        val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+                        val todayStr = DateFormats.date(today)
 
                         // 使用 Row 实现左对齐年月 + 右侧今日按钮
                         Row(
@@ -449,7 +450,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                     if (it == DayOfWeek.SUNDAY) 6 else it.value - 1
                 }
                 val daysInMonth = ym.lengthOfMonth()
-                val todayStr    = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+                val todayStr    = DateFormats.date(today)
                 val totalCells  = firstDow + daysInMonth
 
                 val isInOperMode = state.batchMode || state.deleteMode || state.copyMode
@@ -580,7 +581,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
             if (!state.batchMode && !state.copyMode && !state.deleteMode) {
                 item(key = "date_detail_section") {
                     val today = LocalDate.now()
-                    val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+                    val todayStr = DateFormats.date(today)
                     val selectedDate = state.selectedDate ?: todayStr
 
                     DateDetailSection(
@@ -595,7 +596,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                 // ══════════════════════════════════════════════════════════
                 item(key = "schedule_preview_section") {
                     val today = LocalDate.now()
-                    val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+                    val todayStr = DateFormats.date(today)
                     val selectedDate = state.selectedDate ?: todayStr
                     val record = state.schedules[selectedDate]
                     val shift = record?.shiftId?.let { id -> state.allShifts.find { it.id == id } }
@@ -617,7 +618,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                 // ══════════════════════════════════════════════════════════
                 if (state.selectedDateEvents.isNotEmpty()) {
                     item(key = "anniversary_event_section") {
-                        val todayStr2 = "%04d-%02d-%02d".format(LocalDate.now().year, LocalDate.now().monthValue, LocalDate.now().dayOfMonth)
+                        val todayStr2 = DateFormats.date(LocalDate.now())
                         AnniversaryEventSection(
                             events = state.selectedDateEvents,
                             selectedDate = state.selectedDate ?: todayStr2

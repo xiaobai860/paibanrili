@@ -9,6 +9,7 @@ import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import com.schedulecalendar.app.domain.util.DateFormats
 import androidx.compose.runtime.Composable
 import androidx.core.content.edit
 import androidx.compose.ui.graphics.Color
@@ -240,12 +241,12 @@ private fun CalendarDayCellContent(
 ) {
     val hasShift = day.shiftName.isNotEmpty()
     val hasStatus = day.statusName.isNotEmpty()
-    val dateStr = if (year > 0 && month > 0) "%04d-%02d-%02d".format(year, month, day.day) else ""
+    val dateStr = if (year > 0 && month > 0) DateFormats.date(year, month, day.day) else ""
     val isLegalHoliday = dateStr.isNotEmpty() && HolidayData.isLegalHoliday(dateStr)
     val isHolidayFirstDay = if (isLegalHoliday) {
         val prevDate = try {
             val p = LocalDate.of(year, month, day.day).minusDays(1)
-            "%04d-%02d-%02d".format(p.year, p.monthValue, p.dayOfMonth)
+            DateFormats.date(p)
         } catch (_: Exception) { null }
         prevDate == null || !HolidayData.isLegalHoliday(prevDate)
     } else false

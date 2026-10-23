@@ -1,6 +1,8 @@
 // app/src/main/java/com/schedulecalendar/app/ui/calendar/CalendarViewModel.kt
 package com.schedulecalendar.app.ui.calendar
 
+import com.schedulecalendar.app.domain.util.DateFormats
+
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -160,8 +162,8 @@ class CalendarViewModel @Inject constructor(
             // 下月（滑动联动用，需加载完整月份数据）
             val nextYM = if (s.month == 12) YearMonth.of(s.year + 1, 1) else YearMonth.of(s.year, s.month + 1)
             // 数据范围：上月1日 ~ 下月末日（覆盖完整相邻月份，支持滑动时显示）
-            val rangeFrom = "%04d-%02d-01".format(prevYM.year, prevYM.monthValue)
-            val rangeTo   = "%04d-%02d-%02d".format(nextYM.year, nextYM.monthValue, nextYM.lengthOfMonth())
+            val rangeFrom = DateFormats.monthStart(prevYM.year, prevYM.monthValue)
+            val rangeTo   = DateFormats.date(nextYM.year, nextYM.monthValue, nextYM.lengthOfMonth())
 
             combine(
                 shiftRepo.observeAll().distinctUntilChanged(),
@@ -236,7 +238,7 @@ class CalendarViewModel @Inject constructor(
                     // 不再在此处额外同步：避免「ViewModel 同步 + 全局信号」双路 update 在部分 OEM 桌面上被丢弃。
                 }
                 // 加载选中日期的纪念日与日程（首次加载或切月后）
-                val selDate = _state.value.selectedDate ?: "%04d-%02d-%02d".format(s.year, s.month, LocalDate.now().dayOfMonth)
+                val selDate = _state.value.selectedDate ?: DateFormats.date(s.year, s.month, LocalDate.now().dayOfMonth)
                 loadSelectedDateEvents(selDate)
                 // 加载当月有日历事件（日程/纪念日）的日期集合
                 loadDatesWithEvents(rangeFrom, rangeTo)
@@ -265,7 +267,7 @@ class CalendarViewModel @Inject constructor(
             if (year == todayY && month > todayM) break  // 当前年份但月份在未来，整月跳过
             if (year == todayY && month == todayM && d >= todayD) break
 
-            val dateStr = "%04d-%02d-%02d".format(year, month, d)
+            val dateStr = DateFormats.date(year, month, d)
             val record  = schedules[dateStr]
             val shift   = record?.shiftId?.let { id -> shifts.find { it.id == id } }
             if (shift == null) continue
@@ -384,7 +386,7 @@ class CalendarViewModel @Inject constructor(
     }
     fun goToToday() {
         val today = LocalDate.now()
-        val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+        val todayStr = DateFormats.date(today)
         val s = _state.value
         val sameMonth = s.year == today.year && s.month == today.monthValue
         if (sameMonth) {
@@ -406,7 +408,7 @@ class CalendarViewModel @Inject constructor(
 
     /** 跳转到指定日期并自动点击该日期 */
     fun goToDay(year: Int, month: Int, day: Int) {
-        val dateStr = "%04d-%02d-%02d".format(year, month, day)
+        val dateStr = DateFormats.date(year, month, day)
         // 先跳转到目标月份
         if (year != _state.value.year || month != _state.value.month) {
             _state.update { it.copy(year = year, month = month, loading = true, todos = emptyList(), dayDetails = emptyMap()) }
@@ -747,7 +749,7 @@ class CalendarViewModel @Inject constructor(
         }.getOrNull()
 
         for (d in 1..days) {
-            val dateStr = "%04d-%02d-%02d".format(year, month, d)
+            val dateStr = DateFormats.date(year, month, d)
             if (!overwrite && existing.containsKey(dateStr)) continue
 
             val idx = if (rule.independentCycle || startDate == null) {
@@ -834,7 +836,7 @@ class CalendarViewModel @Inject constructor(
     fun batchSelectAll() {
         val s = _state.value
         val daysInMonth = getDaysInMonth(s.year, s.month)
-        val allDates = (1..daysInMonth).map { "%04d-%02d-%02d".format(s.year, s.month, it) }.toSet()
+        val allDates = (1..daysInMonth).map { DateFormats.date(s.year, s.month, it) }.toSet()
         _state.update { it.copy(batchSelected = allDates) }
     }
 
@@ -905,7 +907,7 @@ class CalendarViewModel @Inject constructor(
             val dates = mutableSetOf<String>()
             var current = startDate
             while (!current.isAfter(endDate)) {
-                dates.add("%04d-%02d-%02d".format(current.year, current.monthValue, current.dayOfMonth))
+                dates.add(DateFormats.date(current))
                 current = current.plusDays(1)
             }
             _state.update { it.copy(
@@ -967,7 +969,7 @@ class CalendarViewModel @Inject constructor(
             val srcLocalDate = LocalDate.parse(srcDate)
             val daysOffset = sourceStart.until(srcLocalDate).days
             val dstDate = targetStart.plusDays(daysOffset.toLong())
-            val dstDateStr = "%04d-%02d-%02d".format(dstDate.year, dstDate.monthValue, dstDate.dayOfMonth)
+            val dstDateStr = DateFormats.date(dstDate)
             results.add(record.copy(date = dstDateStr))
         }
 
@@ -983,19 +985,19 @@ class CalendarViewModel @Inject constructor(
      */
     fun batchCopyMonth(srcYear: Int, srcMonth: Int, dstYear: Int, dstMonth: Int, overwrite: Boolean = false) =
         viewModelScope.launch {
-            val srcRecords = scheduleRepo.getByMonth("%04d-%02d".format(srcYear, srcMonth))
+            val srcRecords = scheduleRepo.getByMonth(DateFormats.yearMonth(srcYear, srcMonth))
             if (srcRecords.isEmpty()) {
                 _uiEvent.send(CalendarUiEvent.ShowMessage("来源月份无排班数据"))
                 return@launch
             }
-            val dstExisting = scheduleRepo.getByMonth("%04d-%02d".format(dstYear, dstMonth))
+            val dstExisting = scheduleRepo.getByMonth(DateFormats.yearMonth(dstYear, dstMonth))
                 .associateBy { it.date }.toMutableMap()
             val srcDays  = getDaysInMonth(srcYear, srcMonth)
             val dstDays  = getDaysInMonth(dstYear, dstMonth)
             val results  = mutableListOf<ScheduleRecord>()
             for (d in 1..minOf(srcDays, dstDays)) {
-                val srcDate = "%04d-%02d-%02d".format(srcYear, srcMonth, d)
-                val dstDate = "%04d-%02d-%02d".format(dstYear, dstMonth, d)
+                val srcDate = DateFormats.date(srcYear, srcMonth, d)
+                val dstDate = DateFormats.date(dstYear, dstMonth, d)
                 if (!overwrite && dstExisting.containsKey(dstDate)) continue
                 val src = srcRecords.find { it.date == srcDate } ?: continue
                 results.add(src.copy(date = dstDate))

@@ -22,6 +22,7 @@ import androidx.navigation.NavController
 import androidx.navigation.toRoute
 import com.schedulecalendar.app.domain.model.LunarCalendar
 import com.schedulecalendar.app.domain.model.LunarCalendar.ShiChen
+import com.schedulecalendar.app.domain.util.DateFormats
 import com.schedulecalendar.app.ui.navigation.RouteHuangLi
 import com.schedulecalendar.app.ui.theme.Green700
 import java.time.LocalDate
@@ -31,7 +32,7 @@ import java.time.LocalDate
 fun HuangLiScreen(navController: NavController) {
     val date = remember {
         navController.currentBackStackEntry?.toRoute<RouteHuangLi>()?.date
-            ?: LocalDate.now().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
+            ?: DateFormats.date(LocalDate.now())
     }
 
     val parts = date.split("-")

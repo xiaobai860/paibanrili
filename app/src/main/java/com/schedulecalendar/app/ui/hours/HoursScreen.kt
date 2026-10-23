@@ -35,6 +35,7 @@ import com.schedulecalendar.app.domain.model.ScheduleType
 import com.schedulecalendar.app.ui.component.MonthNavigator
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import com.schedulecalendar.app.ui.navigation.*
+import com.schedulecalendar.app.domain.util.DateFormats
 import com.schedulecalendar.app.ui.util.rememberToday
 import java.time.LocalDate
 import kotlin.math.max
@@ -113,7 +114,7 @@ fun HoursContent(
             val details = state.details
             val attendCfg = state.attendConfig
 
-            val todayStr = rememberToday().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
+            val todayStr = DateFormats.date(rememberToday())
             val workDays = details.filter { it.record != null && it.date <= todayStr }.reversed()
 
             LazyColumn(
@@ -224,7 +225,7 @@ private fun HoursStatsGrid(
     details: List<DayScheduleDetail>
 ) {
     // 用 rememberToday：跨天后会自动更新（普通 remember 会停在首次组合的日期）
-    val todayStr = rememberToday().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
+    val todayStr = DateFormats.date(rememberToday())
     val remarkCount = remember(details, todayStr) {
         details.count { d -> !d.record?.remark.isNullOrBlank() && d.date <= todayStr }
     }
@@ -438,7 +439,7 @@ private fun DailyHoursBar(details: List<DayScheduleDetail>) {
     val chartDays = remember(details, today) {
         (6 downTo 0).mapNotNull { offset ->
             val d  = today.minusDays(offset.toLong())
-            val ds = "%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)
+            val ds = DateFormats.date(d)
             details.firstOrNull { it.date == ds } ?: DayScheduleDetail(date = ds)
         }
     }

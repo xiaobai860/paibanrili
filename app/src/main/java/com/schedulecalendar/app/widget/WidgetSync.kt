@@ -9,6 +9,7 @@ import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
+import com.schedulecalendar.app.domain.util.DateFormats
 import dagger.hilt.android.EntryPointAccessors
 import java.time.LocalDate
 import java.time.LocalTime
@@ -43,7 +44,7 @@ private const val OUT_CUTOFF_MIDNIGHT_MIN = MINUTES_PER_DAY * 2
 private fun isRestShift(shift: Shift?): Boolean =
     shift?.builtIn == true && (shift.builtInType == "rest" || shift.builtInType == "swap")
 
-private fun fmtDate(d: LocalDate): String = "%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)
+private fun fmtDate(d: LocalDate): String = DateFormats.date(d)
 
 private fun getRepos(context: Context): Triple<ScheduleRepository, ShiftRepository, ShiftStatusRepository> {
     val ep = EntryPointAccessors.fromApplication(context.applicationContext, WidgetClockEntryPoint::class.java)
@@ -76,7 +77,7 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
         val dates = listOf(today, yesterday, tomorrow)
         val schedules = mutableMapOf<String, ScheduleRecord>()
         for (d in dates) {
-            val key = "%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)
+            val key = DateFormats.date(d)
             scheduleRepo.getByDate(key)?.let { schedules[key] = it }
         }
 
@@ -480,11 +481,11 @@ private suspend fun refreshCalendarWidgets(
     val ym = YearMonth.of(year, month)
     val daysInMonth = ym.lengthOfMonth()
     val firstDow = (LocalDate.of(year, month, 1).dayOfWeek.value + 6) % 7
-    val yearMonth = "%04d-%02d".format(year, month)
+    val yearMonth = DateFormats.yearMonth(year, month)
     val schedules = scheduleRepo.getByMonth(yearMonth).associateBy { it.date }
 
     val days = (1..daysInMonth).map { d ->
-        val dateStr = "%04d-%02d-%02d".format(year, month, d)
+        val dateStr = DateFormats.date(year, month, d)
         val record = schedules[dateStr]
         val shift = record?.shiftId?.let { id -> shifts.find { it.id == id } }
         val appliedSt = record?.appliedStatus?.let { statusMap[it.statusId] }

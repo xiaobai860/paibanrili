@@ -1,6 +1,8 @@
 // app/src/main/java/com/schedulecalendar/app/ui/salary/SalaryViewModel.kt
 package com.schedulecalendar.app.ui.salary
 
+import com.schedulecalendar.app.domain.util.DateFormats
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.schedulecalendar.app.data.prefs.AppPreferences
@@ -94,11 +96,11 @@ class SalaryViewModel @Inject constructor(
                 val extraItems   = extraItemRepo.getAll()
                 val salaryConf   = prefs.salaryConfigFlow.first()
                 val attendConf   = prefs.attendConfigFlow.first()
-                val records      = scheduleRepo.getByMonth("%04d-%02d".format(year, month))
+                val records      = scheduleRepo.getByMonth(DateFormats.yearMonth(year, month))
                 val schedules    = records.associateBy { it.date }
 
                 val today    = LocalDate.now()
-                val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+                val todayStr = DateFormats.date(today)
                 val isCurrentMonth = year == today.year && month == today.monthValue
                 val isFutureMonth  = year > today.year ||
                     (year == today.year && month > today.monthValue)
@@ -180,7 +182,7 @@ class SalaryViewModel @Inject constructor(
         for (i in 7 downTo 0) {
             var m = month - i; var y = year
             if (m <= 0) { m += 12; y -= 1 }
-            val recs   = scheduleRepo.getByMonth("%04d-%02d".format(y, m))
+            val recs   = scheduleRepo.getByMonth(DateFormats.yearMonth(y, m))
             val schMap = recs.associateBy { it.date }
             val value  = if (schMap.isEmpty()) 0.0
             else CalcUtils.calcMonthSalary(y, m, schMap, shifts, breaks, extraItems, salaryConf, attendConf).totalSalary

@@ -8,6 +8,7 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import com.schedulecalendar.app.domain.util.DateFormats
 
 /**
  * 工时 & 薪资计算业务逻辑
@@ -619,7 +620,7 @@ object CalcUtils {
         val days   = daysInMonth(year, month)
         val result = mutableListOf<DayScheduleDetail>()
         for (d in 1..days) {
-            val dateStr = "%04d-%02d-%02d".format(year, month, d)
+            val dateStr = DateFormats.date(year, month, d)
             val record  = schedules[dateStr]
             val shift   = record?.shiftId?.let { id -> shifts.find { it.id == id } }
             val hours   = if (record != null) calcDayHours(record, dateStr, shifts, breaks, attendConfig)
@@ -698,7 +699,7 @@ object CalcUtils {
      */
     fun isWeekend(year: Int, month: Int, day: Int): Boolean {
         // month 是 0-based，转为 1-based 用于字符串和 java.time
-        val dateStr = "%04d-%02d-%02d".format(year, month + 1, day)
+        val dateStr = DateFormats.date(year, month + 1, day)
         // 若是补班工作日（调休）则不算周末
         if (HolidayData.isMakeupDay(dateStr)) return false
         val dow = LocalDate.of(year, month + 1, day).dayOfWeek

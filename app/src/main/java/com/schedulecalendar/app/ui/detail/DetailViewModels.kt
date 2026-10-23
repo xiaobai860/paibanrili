@@ -1,6 +1,8 @@
 // app/src/main/java/com/schedulecalendar/app/ui/detail/DetailViewModels.kt
 package com.schedulecalendar.app.ui.detail
 
+import com.schedulecalendar.app.domain.util.DateFormats
+
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -333,14 +335,14 @@ class HoursDetailViewModel @Inject constructor(
             val extras      = extraRepo.getAll()
             val salaryConf  = prefs.salaryConfigFlow.first()
             val attendConf  = prefs.attendConfigFlow.first()
-            val records     = scheduleRepo.getByMonth("%04d-%02d".format(year, month))
+            val records     = scheduleRepo.getByMonth(DateFormats.yearMonth(year, month))
             val schedules   = records.associateBy { it.date }
             val details     = CalcUtils.getMonthScheduleDetails(year, month, schedules, shifts, breaks, extras, salaryConf, attendConf)
             // 附加状态 id → ShiftStatus 映射，用于查名称/颜色
             val statusMap   = statuses.associateBy { it.id }
 
             val today = LocalDate.now()
-            val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+            val todayStr = DateFormats.date(today)
             val isCurrentMonth = (today.year == year && today.monthValue == month)
 
             /** 查附加状态名称+颜色，未设或查不到返回 (null, null) */

@@ -10,6 +10,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.schedulecalendar.app.domain.util.DateFormats
 import com.schedulecalendar.app.ui.util.rememberToday
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -1601,7 +1602,7 @@ private fun generateHolidaysForYear(year: Int): List<HolidayListItem> {
     for (m in 1..12) {
         for (d in 1..31) {
             try {
-                val ds = "%04d-%02d-%02d".format(year, m, d)
+                val ds = DateFormats.date(year, m, d)
                 val hn = HolidayData.getHolidayName(ds)
                 if (hn != null && !hn.contains("补班")) {
                     allHolidayNames[ds] = hn

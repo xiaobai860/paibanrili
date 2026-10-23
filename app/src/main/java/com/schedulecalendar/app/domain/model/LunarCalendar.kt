@@ -6,6 +6,7 @@ import com.tyme.lunar.LunarMonth as TymeLunarMonth
 import com.tyme.sixtycycle.SixtyCycle
 import com.tyme.sixtycycle.SixtyCycleHour
 import com.tyme.solar.SolarDay
+import com.schedulecalendar.app.domain.util.DateFormats
 
 /**
  * 公历转农历 / 黄历工具
@@ -211,7 +212,7 @@ object LunarCalendar {
         val key = Triple(year, month, day)
         fullHuangLiCache[key]?.let { return it }
 
-        val dateStr = "%04d-%02d-%02d".format(year, month, day)
+        val dateStr = DateFormats.date(year, month, day)
         val solarDay = SolarDay.fromYmd(year, month, day)
         val lunar = solarToLunar(year, month, day)
         val lunarDayObj = solarDay.getLunarDay()

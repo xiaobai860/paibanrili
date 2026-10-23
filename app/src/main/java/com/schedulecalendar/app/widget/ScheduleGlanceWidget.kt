@@ -9,6 +9,7 @@ import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import com.schedulecalendar.app.domain.util.DateFormats
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -214,7 +215,7 @@ class WidgetClockInAction : ActionCallback {
 
     private suspend fun fallbackClock(context: Context, glanceId: GlanceId, isClockIn: Boolean) {
         val today = LocalDate.now()
-        val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+        val todayStr = DateFormats.date(today)
         val now = LocalTime.now()
         val currentTime = "%02d:%02d".format(now.hour, now.minute)
 
@@ -307,7 +308,7 @@ class WidgetClockOutAction : ActionCallback {
 
     private suspend fun fallbackClock(context: Context, glanceId: GlanceId, isClockIn: Boolean) {
         val today = LocalDate.now()
-        val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+        val todayStr = DateFormats.date(today)
         val now = LocalTime.now()
         val currentTime = "%02d:%02d".format(now.hour, now.minute)
 
@@ -349,7 +350,7 @@ private fun pickColor(light: Color, dark: Color, isDark: Boolean): ColorProvider
 /** 计算下一个法定节假日天数 */
 private fun getHolidayCountdownText(): String {
     val today = LocalDate.now()
-    val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+    val todayStr = DateFormats.date(today)
 
     // 检查当天是否是法定节假日
     if (HolidayData.isLegalHoliday(todayStr)) {

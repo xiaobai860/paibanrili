@@ -1,6 +1,8 @@
 // app/src/main/java/com/schedulecalendar/app/ui/hours/HoursViewModel.kt
 package com.schedulecalendar.app.ui.hours
 
+import com.schedulecalendar.app.domain.util.DateFormats
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.schedulecalendar.app.data.prefs.AppPreferences
@@ -102,11 +104,11 @@ class HoursViewModel @Inject constructor(
                 val extraItems   = extraRepo.getAll()
                 val salaryConf   = prefs.salaryConfigFlow.first()
                 val attendConf   = prefs.attendConfigFlow.first()
-                val records      = scheduleRepo.getByMonth("%04d-%02d".format(year, month))
+                val records      = scheduleRepo.getByMonth(DateFormats.yearMonth(year, month))
                 val schedules    = records.associateBy { it.date }
 
                 val today    = LocalDate.now()
-                val todayStr = "%04d-%02d-%02d".format(today.year, today.monthValue, today.dayOfMonth)
+                val todayStr = DateFormats.date(today)
                 val isCurrentMonth = year == today.year && month == today.monthValue
                 val isFutureMonth  = year > today.year ||
                     (year == today.year && month > today.monthValue)
@@ -172,7 +174,7 @@ class HoursViewModel @Inject constructor(
         val months = mutableSetOf<String>()
         var d = startDate
         while (!d.isAfter(endDate)) {
-            months.add("%04d-%02d".format(d.year, d.monthValue))
+            months.add(DateFormats.yearMonth(d))
             d = d.plusDays(1)
         }
         val allRecords = mutableListOf<ScheduleRecord>()
@@ -191,8 +193,8 @@ class HoursViewModel @Inject constructor(
         }
 
         // 筛选最近7天
-        val startStr = "%04d-%02d-%02d".format(startDate.year, startDate.monthValue, startDate.dayOfMonth)
-        val endStr = "%04d-%02d-%02d".format(endDate.year, endDate.monthValue, endDate.dayOfMonth)
+        val startStr = DateFormats.date(startDate)
+        val endStr = DateFormats.date(endDate)
         return allDetails.filter { it.date in startStr..endStr }
     }
 
@@ -205,7 +207,7 @@ class HoursViewModel @Inject constructor(
         for (i in 6 downTo 0) {
             var m = month - i; var y = year
             if (m <= 0) { m += 12; y -= 1 }
-            val recs      = scheduleRepo.getByMonth("%04d-%02d".format(y, m))
+            val recs      = scheduleRepo.getByMonth(DateFormats.yearMonth(y, m))
             val schMap    = recs.associateBy { it.date }
             if (schMap.isEmpty()) { result.add(MonthlyHoursTrend("${m}月", 0.0, 0.0, 0.0)); continue }
             val summary   = CalcUtils.calcMonthHours(y, m, schMap, shifts, breaks, statuses, attendConf)

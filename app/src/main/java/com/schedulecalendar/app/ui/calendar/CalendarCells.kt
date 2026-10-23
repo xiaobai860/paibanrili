@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.core.graphics.toColorInt
+import com.schedulecalendar.app.domain.util.DateFormats
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -169,7 +170,7 @@ internal fun DayCell(
         if (isHoliday) {
             val prevDate = try {
                 val p = java.time.LocalDate.parse(dateStr).minusDays(1)
-                "%04d-%02d-%02d".format(p.year, p.monthValue, p.dayOfMonth)
+                DateFormats.date(p)
             } catch (_: Exception) { null }
             prevDate == null || !HolidayData.isLegalHoliday(prevDate)
         } else false
