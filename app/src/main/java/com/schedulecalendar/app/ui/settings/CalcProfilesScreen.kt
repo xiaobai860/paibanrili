@@ -75,7 +75,34 @@ class CalcProfilesViewModel @Inject constructor(
     private val _uiEvent = Channel<CalcProfilesUiEvent>(Channel.BUFFERED)
     val uiEvent = _uiEvent.receiveAsFlow()
 
-    init { refresh() }
+    init { refresh(); refreshEmptyRangeCount() }
+
+    /** 从未生效的空区间档案数量（生效日晚于失效日），仅用于页面提示 */
+    private val _emptyRangeCount = MutableStateFlow(0)
+    val emptyRangeCount = _emptyRangeCount.asStateFlow()
+
+    fun refreshEmptyRangeCount() = viewModelScope.launch {
+        _emptyRangeCount.value = runCatching {
+            profileRepo.getAll().count { it.effectiveTo != null && it.effectiveTo!! < it.effectiveFrom }
+        }.getOrDefault(0)
+    }
+
+    /**
+     * 清理「从未生效」的空区间档案。由**用户手动点击**触发，不做启动时自动清理 ——
+     * 数据整理应由用户知情决定，也避免判定逻辑有误时静默丢数据。
+     */
+    fun cleanupEmptyRanges() = viewModelScope.launch {
+        runCatching { profileRepo.cleanupEmptyRanges() }
+            .onSuccess { n ->
+                refresh()
+                refreshEmptyRangeCount()
+                _uiEvent.send(
+                    if (n > 0) CalcProfilesUiEvent.ShowMessage("已清理 $n 条从未生效的无效口径（不影响任何计算结果）")
+                    else CalcProfilesUiEvent.ShowMessage("没有需要清理的无效口径")
+                )
+            }
+            .onFailure { _uiEvent.send(CalcProfilesUiEvent.ShowError("清理失败：${it.message}")) }
+    }
 
     fun refresh() = viewModelScope.launch {
         val list = runCatching { profileRepo.getAll() }.getOrDefault(emptyList())
@@ -142,6 +169,7 @@ fun CalcProfilesScreen(
     val snackbar = remember { SnackbarHostState() }
 
     val deletability by vm.deletability.collectAsStateWithLifecycle()
+    val emptyRangeCount by vm.emptyRangeCount.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<CalcProfile?>(null) }
     LaunchedEffect(Unit) {
         vm.uiEvent.collect { e ->
@@ -191,6 +219,25 @@ fun CalcProfilesScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+            if (emptyRangeCount > 0) {
+                item {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "有 $emptyRangeCount 条从未生效的无效口径",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                "它们不参与任何计算（同一天反复修改配置产生的残留），可安全清理。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            TextButton(onClick = { vm.cleanupEmptyRanges() }) { Text("清理无效口径") }
+                        }
                     }
                 }
             }
