@@ -19,13 +19,30 @@ fun AttendanceSettingsScreen(
     vm: SettingsViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val profile by vm.currentProfile.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+
+    // 保存结果提示：明确告诉用户「生成了新口径、历史不受影响」
+    LaunchedEffect(Unit) {
+        vm.uiEvent.collect { e ->
+            when (e) {
+                is SettingsUiEvent.ProfileCreated -> snackbar.showSnackbar(
+                    "已创建新口径「${e.name}」，自 ${e.effectiveFrom} 起生效；之前的记录不变"
+                )
+                is SettingsUiEvent.ShowError -> snackbar.showSnackbar(e.msg)
+                else -> Unit
+            }
+        }
+    }
 
     Scaffold(
-        topBar = { ScheduleTopBar("考勤设置", onBack = { navController.popBackStack() }) }
+        topBar = { ScheduleTopBar("考勤设置", onBack = { navController.popBackStack() }) },
+        snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
         AttendConfigSection(
             config = state.attendConfig,
-            onSave = vm::saveAttendConfig,
+            profile = profile,
+            onSave = { cfg, effectiveFrom -> vm.saveAttendAsProfile(cfg, effectiveFrom) },
             modifier = Modifier.padding(padding)
         )
     }
@@ -34,7 +51,8 @@ fun AttendanceSettingsScreen(
 @Composable
 private fun AttendConfigSection(
     config: AttendConfig,
-    onSave: (AttendConfig) -> Unit,
+    profile: com.schedulecalendar.app.domain.model.CalcProfile?,
+    onSave: (AttendConfig, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var granMin      by remember(config) { mutableIntStateOf(config.overtimeGranMin) }
@@ -46,7 +64,7 @@ private fun AttendConfigSection(
     var lateDeduct   by remember(config) { mutableStateOf(config.lateDeductionPerMin.toInputString()) }
     var earlyDeduct  by remember(config) { mutableStateOf(config.earlyLeaveDeductionPerMin.toInputString()) }
 
-    fun save() = onSave(AttendConfig(
+    fun buildConfig() = AttendConfig(
         // 加班粒度作为除数使用，必须 ≥1，否则恢复旧备份/手输 0 会在取整时除零崩溃
         overtimeGranMin           = granMin.coerceIn(1, 120),
         lateToleranceMin          = lateTol.toIntOrNull()?.coerceIn(0, 120) ?: 0,
@@ -56,17 +74,18 @@ private fun AttendConfigSection(
         normalWorkHoursPerDay     = stdHours.toDoubleOrNull()              ?: 0.0,
         lateDeductionPerMin       = lateDeduct.toDoubleOrNull()            ?: 0.0,
         earlyLeaveDeductionPerMin = earlyDeduct.toDoubleOrNull()           ?: 0.0
-    ))
+    )
+
+    // 生效日期：默认今天，可切到下月 1 日（工资月结场景）
+    var effectiveFrom by remember { mutableStateOf(effectiveDateOptions().first()) }
+    // 有改动才允许保存（避免误点生成空档案）
+    val dirty = buildConfig() != config
 
     Column(modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // ── 影响提示：这些参数参与历史工时/薪资计算 ──
-        Text(
-            "ⓘ 修改会立即生效，并追溯影响历史月份的工时与薪资（历史排班会按新参数重新计算）。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
-        )
+        // ── 当前生效口径（只读）+ 生效日期选择 ──
+        CurrentProfileCard(profile)
+        EffectiveDateRow(selected = effectiveFrom, onSelect = { effectiveFrom = it })
 
         // ── 加班粒度：单选按钮组 ──
         Text("加班粒度", style = MaterialTheme.typography.labelMedium,
@@ -75,24 +94,40 @@ private fun AttendConfigSection(
             listOf(15 to "分钟", 30 to "分钟", 60 to "分钟").forEach { (value, unit) ->
                 FilterChip(
                     selected = granMin == value,
-                    onClick  = { granMin = value; save() },
+                    onClick  = { granMin = value },
                     label    = { Text("$value$unit") }
                 )
             }
         }
 
-        ProtectedNumField("迟到容忍（分钟）", lateTol, "0~120") { lateTol = it; save() }
-        ProtectedNumField("早退容忍（分钟）", earlyTol, "0~120") { earlyTol = it; save() }
+        ProtectedNumField("迟到容忍（分钟）", lateTol, "0~120") { lateTol = it }
+        ProtectedNumField("早退容忍（分钟）", earlyTol, "0~120") { earlyTol = it }
 
-        ProtectedNumField("迟到提醒阈值（次）", lateAlert, "0")  { lateAlert   = it; save() }
-        ProtectedNumField("早退提醒阈值（次）", earlyAlert, "0") { earlyAlert  = it; save() }
+        ProtectedNumField("迟到提醒阈值（次）", lateAlert, "0")  { lateAlert   = it }
+        ProtectedNumField("早退提醒阈值（次）", earlyAlert, "0") { earlyAlert  = it }
         Text("提醒阈值 = 允许的次数，超过才在统计页警示；默认 0 → 出现 1 次即警示",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, top = 2.dp))
 
-        ProtectedNumField("日标准工时（小时）", stdHours, "请输入日标准工时") { stdHours = it; save() }
-        ProtectedNumField("迟到扣款（元/分钟）", lateDeduct)     { lateDeduct  = it; save() }
-        ProtectedNumField("早退扣款（元/分钟）", earlyDeduct)    { earlyDeduct = it; save() }
+        ProtectedNumField("日标准工时（小时）", stdHours, "请输入日标准工时") { stdHours = it }
+        ProtectedNumField("迟到扣款（元/分钟）", lateDeduct)     { lateDeduct  = it }
+        ProtectedNumField("早退扣款（元/分钟）", earlyDeduct)    { earlyDeduct = it }
+
+        // ── 保存：生成新口径档案（生效日之前的历史不受影响）──
+        ProfileSaveBar(
+            enabled = dirty,
+            onSave = { onSave(buildConfig(), effectiveFrom) },
+            onReset = {
+                granMin     = config.overtimeGranMin
+                lateTol     = config.lateToleranceMin.toInputString()
+                earlyTol    = config.earlyLeaveToleranceMin.toInputString()
+                lateAlert   = config.lateAlertCount.toInputString()
+                earlyAlert  = config.earlyLeaveAlertCount.toInputString()
+                stdHours    = config.normalWorkHoursPerDay.toInputString()
+                lateDeduct  = config.lateDeductionPerMin.toInputString()
+                earlyDeduct = config.earlyLeaveDeductionPerMin.toInputString()
+            }
+        )
     }
 }

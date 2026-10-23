@@ -76,6 +76,32 @@ class CalcProfileRepository @Inject constructor(
     }
 
     /**
+     * 基于当前生效档案**派生**一个新档案（用户改薪资/考勤时的入口）。
+     *
+     * 规则：**全量复制当前档案**再替换指定项 → 用户没改的项（另一类配置、休息时段）不会丢。
+     * 新档案的生效日由用户选择；生效日之前的历史继续用旧档案 → 历史计算结果不变。
+     */
+    suspend fun createDerivedProfile(
+        effectiveFrom: String,
+        name: String,
+        salary: SalaryConfig? = null,
+        attend: AttendConfig? = null,
+        breaks: List<ShiftBreak>? = null
+    ): CalcProfile {
+        val base = getEffectiveOn(effectiveFrom) ?: getCurrentProfile()
+        val baseSalary = base?.salary ?: prefs.salaryConfigFlow.first()
+        val baseAttend = base?.attend ?: prefs.attendConfigFlow.first()
+        val baseBreaks = breaks ?: base?.breaks ?: breakRepo.getAll()
+        return createProfile(
+            name    = name,
+            salary  = salary ?: baseSalary,
+            attend  = attend ?: baseAttend,
+            breaks  = baseBreaks,
+            effectiveFrom = effectiveFrom
+        )
+    }
+
+    /**
      * 新建档案并维护区间接力：
      * - 生效日之前「正在生效」的那条档案，其 effectiveTo 收口为新档案生效日的前一天；
      * - 新档案 effectiveTo = null（接续到下一个档案生效前）。

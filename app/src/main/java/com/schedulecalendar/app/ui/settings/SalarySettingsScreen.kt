@@ -22,13 +22,30 @@ fun SalarySettingsScreen(
     vm: SettingsViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val profile by vm.currentProfile.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+
+    // 保存结果提示：明确告诉用户「生成了新口径、历史不受影响」
+    LaunchedEffect(Unit) {
+        vm.uiEvent.collect { e ->
+            when (e) {
+                is SettingsUiEvent.ProfileCreated -> snackbar.showSnackbar(
+                    "已创建新口径「${e.name}」，自 ${e.effectiveFrom} 起生效；之前的记录不变"
+                )
+                is SettingsUiEvent.ShowError -> snackbar.showSnackbar(e.msg)
+                else -> Unit
+            }
+        }
+    }
 
     Scaffold(
-        topBar = { ScheduleTopBar("薪资设置", onBack = { navController.popBackStack() }) }
+        topBar = { ScheduleTopBar("薪资设置", onBack = { navController.popBackStack() }) },
+        snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
         SalaryConfigSection(
             config = state.salaryConfig,
-            onSave = vm::saveSalaryConfig,
+            profile = profile,
+            onSave = { cfg, effectiveFrom -> vm.saveSalaryAsProfile(cfg, effectiveFrom) },
             modifier = Modifier.padding(padding)
         )
     }
@@ -37,7 +54,8 @@ fun SalarySettingsScreen(
 @Composable
 private fun SalaryConfigSection(
     config: SalaryConfig,
-    onSave: (SalaryConfig) -> Unit,
+    profile: com.schedulecalendar.app.domain.model.CalcProfile?,
+    onSave: (SalaryConfig, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     // ── 标准工时制字段 ──
@@ -61,7 +79,10 @@ private fun SalaryConfigSection(
         housingFundDeduction = housingFund.toDoubleOrNull() ?: 0.0
     )
 
-    fun save() = onSave(buildConfig())
+    // 生效日期：默认今天，可切到下月 1 日（工资月结场景）
+    var effectiveFrom by remember { mutableStateOf(effectiveDateOptions().first()) }
+    // 有改动才允许保存（避免误点生成空档案）
+    val dirty = buildConfig() != config
 
     Column(
         modifier = modifier
@@ -78,18 +99,38 @@ private fun SalaryConfigSection(
             modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
         )
 
+        // ── 当前生效口径（只读）+ 生效日期选择 ──
+        CurrentProfileCard(profile)
+        EffectiveDateRow(selected = effectiveFrom, onSelect = { effectiveFrom = it })
+
         // ── 标准工时制 ──
         Text("标准工时制", style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
 
-        ProtectedNumField("基础底薪 (元/月)", baseSalary)   { baseSalary  = it; save() }
-        ProtectedNumField("基础绩效 (元/月)", basePerf)     { basePerf    = it; save() }
-        ProtectedNumField("正常时薪 (元/时)", normalRate)   { normalRate  = it; save() }
-        ProtectedNumField("加班时薪 (元/时)", otRate)       { otRate      = it; save() }
-        ProtectedNumField("周末时薪 (元/时)", wkndRate)     { wkndRate    = it; save() }
-        ProtectedNumField("节假日时薪 (元/时)", holRate)    { holRate     = it; save() }
-        ProtectedNumField("社保扣款 (元/月)", insurance)    { insurance   = it; save() }
-        ProtectedNumField("公积金扣款 (元/月)", housingFund){ housingFund = it; save() }
+        ProtectedNumField("基础底薪 (元/月)", baseSalary)   { baseSalary  = it }
+        ProtectedNumField("基础绩效 (元/月)", basePerf)     { basePerf    = it }
+        ProtectedNumField("正常时薪 (元/时)", normalRate)   { normalRate  = it }
+        ProtectedNumField("加班时薪 (元/时)", otRate)       { otRate      = it }
+        ProtectedNumField("周末时薪 (元/时)", wkndRate)     { wkndRate    = it }
+        ProtectedNumField("节假日时薪 (元/时)", holRate)    { holRate     = it }
+        ProtectedNumField("社保扣款 (元/月)", insurance)    { insurance   = it }
+        ProtectedNumField("公积金扣款 (元/月)", housingFund){ housingFund = it }
+
+        // ── 保存：生成新口径档案（生效日之前的历史不受影响）──
+        ProfileSaveBar(
+            enabled = dirty,
+            onSave = { onSave(buildConfig(), effectiveFrom) },
+            onReset = {
+                baseSalary   = config.baseSalary.toInputString()
+                basePerf     = config.basePerformance.toInputString()
+                normalRate   = config.normalRate.toInputString()
+                otRate       = config.overtimeRate.toInputString()
+                wkndRate     = config.weekendRate.toInputString()
+                holRate      = config.holidayRate.toInputString()
+                insurance    = config.socialInsurance.toInputString()
+                housingFund  = config.housingFundDeduction.toInputString()
+            }
+        )
 
         // 底部间距，避免被导航栏遮挡
         Spacer(Modifier.height(16.dp))
