@@ -121,14 +121,24 @@ class CalcProfileRepository @Inject constructor(
         effectiveFrom: String,
         note: String? = null
     ): CalcProfile {
-        val all = dao.getAll()
+        val all = dao.getAll().map { it.toDomain() }
+        // 0) **相邻去重**：新档案内容与「紧邻的上一条」完全一致 → 不新建（只跟相邻的那条比，不跨条数）。
+        //    仅在上一条本身就是当前生效档案（effectiveTo == null）时生效 —— 此时它已覆盖新生效日，
+        //    无需任何改动；若上一条是历史档案则正常新建，由下面的收口逻辑维护接力，
+        //    避免出现「延长上一条区间导致与后续档案重叠」的问题。
+        val prev = all.filter { it.effectiveFrom < effectiveFrom }.maxByOrNull { it.effectiveFrom }
+        if (prev != null && prev.effectiveTo == null &&
+            prev.salary == salary && prev.attend == attend && prev.breaks == breaks
+        ) {
+            return prev
+        }
         // 1) 原本延伸到「至今」的档案全部收口到新档案生效日的前一天 —— 包括**同日生效**的那条
-        //    （否则同一天内复制/修改多次会产生多条 effectiveTo == null，全部显示"生效中"）。
-        //    收口后 from > to 的同日档案会在下一步被清理掉（它一天都没真正生效过）。
+        //    （否则同一天内修改多次会产生多条 effectiveTo == null，全部显示"生效中"）。
+        //    收口后 from > to 的同日档案会被下一步清理掉（它一天都没真正生效过）。
         //    ⚠️ 只收口「生效日 <= 新档案生效日」的；更晚生效的档案由第 3 步处理，不能动。
         all.filter { it.effectiveTo == null && it.effectiveFrom <= effectiveFrom }
-            .forEach { dao.update(it.copy(effectiveTo = dayBefore(effectiveFrom))) }
-        // 2) 清理空区间档案（收口后 from > to 的，从未真正生效）
+            .forEach { dao.update(it.copy(effectiveTo = dayBefore(effectiveFrom)).toEntity()) }
+        // 2) 清理收口产生的倒挂空区间（相邻去重后正常流程不会产生，这里兜底历史坏数据）
         cleanupEmptyRanges()
         // 3) 新档案的终点：若已有更晚生效的档案，到它前一天为止
         val nextFuture = dao.getAll()
