@@ -8,6 +8,7 @@ import com.schedulecalendar.app.data.db.entity.CalcProfileEntity
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.domain.model.AttendConfig
 import com.schedulecalendar.app.domain.model.CalcProfile
+import com.schedulecalendar.app.domain.model.sameConfigAs
 import com.schedulecalendar.app.domain.model.SalaryConfig
 import com.schedulecalendar.app.domain.model.ShiftBreak
 import com.schedulecalendar.app.domain.util.DateFormats
@@ -128,8 +129,9 @@ class CalcProfileRepository @Inject constructor(
         //    若上一条是历史档案（内容不同）则正常新建，由下面的收口逻辑维护接力。
         val prev = all.filter { it.effectiveFrom <= effectiveFrom }
             .maxWithOrNull(compareBy({ it.effectiveFrom }, { it.createdAt }))
-        if (prev != null && prev.effectiveTo == null &&
-            prev.salary == salary && prev.attend == attend && prev.breaks == breaks
+        if (prev != null && prev.effectiveTo == null && prev.sameConfigAs(
+                CalcProfile(id = "", name = name, salary = salary, attend = attend, breaks = breaks, effectiveFrom = effectiveFrom)
+            )
         ) {
             return prev
         }
