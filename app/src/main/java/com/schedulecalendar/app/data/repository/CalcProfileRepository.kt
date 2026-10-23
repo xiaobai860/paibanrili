@@ -42,6 +42,9 @@ class CalcProfileRepository @Inject constructor(
 
     suspend fun getAll(): List<CalcProfile> = dao.getAll().map { it.toDomain() }
 
+    /** 列表展示用：最新生效的在前 */
+    suspend fun getAllDesc(): List<CalcProfile> = dao.getAllDesc().map { it.toDomain() }
+
     /** 取某天生效的档案（没有则 null，调用方需回退到当前 DataStore 现值） */
     suspend fun getEffectiveOn(date: String): CalcProfile? = dao.getEffectiveOn(date)?.toDomain()
 
@@ -271,6 +274,9 @@ class CalcProfileRepository @Inject constructor(
     suspend fun replaceAll(profiles: List<CalcProfile>) {
         dao.deleteAll()
         if (profiles.isNotEmpty()) dao.upsertAll(profiles.map { it.toEntity() })
+        // 备份里的档案可能来自不同版本（区间重叠/留空/倒挂都出现过），
+        // 恢复后按同一套规则重算接力，避免"恢复完计算结果就变了"
+        repairRelay()
     }
 
     private fun dayBefore(date: String): String =

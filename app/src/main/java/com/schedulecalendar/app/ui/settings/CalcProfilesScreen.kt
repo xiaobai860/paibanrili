@@ -115,7 +115,7 @@ class CalcProfilesViewModel @Inject constructor(
     }
 
     fun refresh() = viewModelScope.launch {
-        val list = runCatching { profileRepo.getAll() }.getOrDefault(emptyList())
+        val list = runCatching { profileRepo.getAllDesc() }.getOrDefault(emptyList())
         _profiles.value = list
         // 逐条判定能否安全删除（今天才生效且区间内无排班数据）
         _deletability.value = list.associate { p ->
