@@ -10,6 +10,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.schedulecalendar.app.ui.util.rememberToday
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -256,7 +257,7 @@ private fun TodoTab(
             .fillMaxSize()
     ) {
         // 月份选择器（固定不滚动）：与统计页「工时薪资」一致的导航样式
-        val today = java.time.LocalDate.now()
+        val today = rememberToday()
         val isNotCurrentMonth = year != today.year || month != today.monthValue
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -1653,7 +1654,7 @@ private fun generateHolidaysForYear(year: Int): List<HolidayListItem> {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HolidayTab() {
-    val today = remember { LocalDate.now() }
+    val today = rememberToday()
 
     // 懒加载年份范围：初始 = 去年 ~ 未来 2 年；滑动到顶部/底部边界时扩展
     var startYear by remember { mutableIntStateOf(today.year - 1) }

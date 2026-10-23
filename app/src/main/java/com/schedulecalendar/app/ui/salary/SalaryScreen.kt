@@ -33,6 +33,7 @@ import com.schedulecalendar.app.domain.model.ShiftStatus
 import com.schedulecalendar.app.ui.component.MonthNavigator
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import com.schedulecalendar.app.ui.detail.safeColor
+import com.schedulecalendar.app.ui.util.rememberToday
 
 private fun fmtY(v: Double): String = "%.2f".format(v)
 
@@ -100,7 +101,7 @@ fun SalaryContent(
             val future = state.future
             val details = state.details
 
-            val todayStr = java.time.LocalDate.now().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
+            val todayStr = rememberToday().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
             val workDays = details.filter { it.record != null && it.date <= todayStr }.reversed()
 
             LazyColumn(

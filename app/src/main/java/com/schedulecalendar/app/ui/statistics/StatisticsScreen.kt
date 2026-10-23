@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.schedulecalendar.app.ui.hours.HoursContent
 import com.schedulecalendar.app.ui.salary.SalaryContent
+import com.schedulecalendar.app.ui.util.rememberToday
 import kotlinx.coroutines.launch
 
 /**
@@ -40,7 +41,7 @@ fun StatisticsScreen(navController: NavController) {
     val currentPage = pagerState.currentPage
     val scope = rememberCoroutineScope()
 
-    val today = java.time.LocalDate.now()
+    val today = rememberToday()
     val isNotCurrentMonth = sharedYear != today.year || sharedMonth != today.monthValue
 
     Scaffold(

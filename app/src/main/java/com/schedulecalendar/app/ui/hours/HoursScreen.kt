@@ -35,6 +35,7 @@ import com.schedulecalendar.app.domain.model.ScheduleType
 import com.schedulecalendar.app.ui.component.MonthNavigator
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 import com.schedulecalendar.app.ui.navigation.*
+import com.schedulecalendar.app.ui.util.rememberToday
 import java.time.LocalDate
 import kotlin.math.max
 
@@ -112,7 +113,7 @@ fun HoursContent(
             val details = state.details
             val attendCfg = state.attendConfig
 
-            val todayStr = java.time.LocalDate.now().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
+            val todayStr = rememberToday().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
             val workDays = details.filter { it.record != null && it.date <= todayStr }.reversed()
 
             LazyColumn(
@@ -222,9 +223,8 @@ private fun HoursStatsGrid(
     onRemarkClick: () -> Unit, onExtraClick: () -> Unit,
     details: List<DayScheduleDetail>
 ) {
-    val todayStr = remember {
-        LocalDate.now().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
-    }
+    // 用 rememberToday：跨天后会自动更新（普通 remember 会停在首次组合的日期）
+    val todayStr = rememberToday().let { "%04d-%02d-%02d".format(it.year, it.monthValue, it.dayOfMonth) }
     val remarkCount = remember(details, todayStr) {
         details.count { d -> !d.record?.remark.isNullOrBlank() && d.date <= todayStr }
     }
@@ -434,9 +434,10 @@ private fun HoursChartCard(
 @Composable
 private fun DailyHoursBar(details: List<DayScheduleDetail>) {
     // 固定显示最近7天（不受选中月份影响，可跨月）
-    val chartDays = remember(details) {
+    val today = rememberToday()
+    val chartDays = remember(details, today) {
         (6 downTo 0).mapNotNull { offset ->
-            val d  = LocalDate.now().minusDays(offset.toLong())
+            val d  = today.minusDays(offset.toLong())
             val ds = "%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)
             details.firstOrNull { it.date == ds } ?: DayScheduleDetail(date = ds)
         }
