@@ -2,6 +2,9 @@
 package com.schedulecalendar.app.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -302,7 +305,17 @@ private fun ProfileCard(
     onDelete: () -> Unit
 ) {
     val today = DateFormats.date(LocalDate.now())
-    val isCurrent = profile.isEffectiveOn(today)
+    // 三态：未来生效 / 正在生效 / 已历史（左闭右闭区间）
+    val stateLabel = when {
+        profile.effectiveFrom > today -> "未生效"
+        profile.isEffectiveOn(today)  -> "生效中"
+        else                          -> "历史"
+    }
+    val stateColor = when (stateLabel) {
+        "生效中" -> MaterialTheme.colorScheme.primary
+        "未生效" -> MaterialTheme.colorScheme.tertiary
+        else     -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -312,10 +325,9 @@ private fun ProfileCard(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    if (isCurrent) "生效中" else "历史",
+                    stateLabel,
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (isCurrent) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = stateColor
                 )
             }
             Text(
@@ -334,12 +346,19 @@ private fun ProfileCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            TextButton(onClick = onCopy) { Text("复制为新口径（今天生效）") }
+            // 删除靠左、复制靠右（不换行）：无删除按钮时用 weight 占位把复制按钮推到右侧
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 if (deletability is CalcProfileRepository.ProfileDeletability.Deletable) {
                     TextButton(onClick = onDelete) {
                         Text("删除", color = MaterialTheme.colorScheme.error)
                     }
                 }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onCopy) { Text("复制为新口径") }
+            }
         }
     }
 }
