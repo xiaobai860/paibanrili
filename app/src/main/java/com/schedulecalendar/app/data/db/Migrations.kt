@@ -22,24 +22,43 @@ object Migrations {
     /** 2 → 3：附加状态支持时间段 */
     val MIGRATION_2_3 = object : Migration(2, 3) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `shift_statuses` ADD COLUMN `startTime` TEXT DEFAULT NULL")
-            db.execSQL("ALTER TABLE `shift_statuses` ADD COLUMN `endTime` TEXT DEFAULT NULL")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `shift_statuses_new` (
+                    `id` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `color` TEXT NOT NULL,
+                    `builtIn` INTEGER NOT NULL,
+                    `reportType` TEXT,
+                    `startTime` TEXT NOT NULL,
+                    `endTime` TEXT NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "INSERT OR REPLACE INTO `shift_statuses_new` " +
+                    "(id, name, color, builtIn, reportType, startTime, endTime) " +
+                    "SELECT id, name, color, builtIn, reportType, '09:00', '18:00' FROM `shift_statuses`"
+            )
+            db.execSQL("DROP TABLE `shift_statuses`")
+            db.execSQL("ALTER TABLE `shift_statuses_new` RENAME TO `shift_statuses`")
         }
     }
 
     /** 3 → 4：补贴扣款项目支持归档 */
     val MIGRATION_3_4 = object : Migration(3, 4) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `extra_items` ADD COLUMN `archivedAt` INTEGER DEFAULT NULL")
+            db.execSQL("ALTER TABLE `extra_items` ADD COLUMN `archivedAt` TEXT DEFAULT NULL")
         }
     }
 
     /** 4 → 5：班次 / 休息时段 / 附加状态支持归档 */
     val MIGRATION_4_5 = object : Migration(4, 5) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `shifts` ADD COLUMN `archivedAt` INTEGER DEFAULT NULL")
-            db.execSQL("ALTER TABLE `shift_breaks` ADD COLUMN `archivedAt` INTEGER DEFAULT NULL")
-            db.execSQL("ALTER TABLE `shift_statuses` ADD COLUMN `archivedAt` INTEGER DEFAULT NULL")
+            db.execSQL("ALTER TABLE `shifts` ADD COLUMN `archivedAt` TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE `shift_breaks` ADD COLUMN `archivedAt` TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE `shift_statuses` ADD COLUMN `archivedAt` TEXT DEFAULT NULL")
         }
     }
 

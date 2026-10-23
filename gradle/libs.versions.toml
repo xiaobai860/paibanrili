@@ -51,6 +51,10 @@ lifecycle-runtime-compose     = { group = "androidx.lifecycle",  name = "lifecyc
 room-runtime            = { group = "androidx.room",               name = "room-runtime",                 version.ref = "room" }
 room-ktx                = { group = "androidx.room",               name = "room-ktx",                     version.ref = "room" }
 room-compiler           = { group = "androidx.room",               name = "room-compiler",                version.ref = "room" }
+room-testing            = { group = "androidx.room",               name = "room-testing",                 version.ref = "room" }
+# 仪器测试（androidTest）：Room 迁移测试需要
+androidx-test-ext-junit = { group = "androidx.test.ext",           name = "junit",                        version = "1.2.1" }
+androidx-test-runner    = { group = "androidx.test",               name = "runner",                       version = "1.6.2" }
 
 # DataStore
 datastore-prefs         = { group = "androidx.datastore",          name = "datastore-preferences",        version.ref = "datastore" }

@@ -33,6 +33,12 @@ android {
         // 注意：Android 仅比较 versionCode 决定是否允许覆盖安装。
         versionCode   = 198
         versionName   = "2026102304"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    sourceSets {
+        // Room 迁移测试（androidTest）需要从 assets 读取导出的 schema JSON
+        getByName("androidTest") { assets.srcDir("$projectDir/schemas") }
     }
 
     signingConfigs {
@@ -47,6 +53,9 @@ android {
     buildTypes {
         debug {
             isDebuggable = true
+            // 与 release 共存：仪器测试（Room 迁移测试）必须装 debug 变体，
+            // 若共用 applicationId 会因签名不同而要求卸载 release（丢用户数据）。
+            applicationIdSuffix = ".debug"
         }
         release {
             isMinifyEnabled   = true
@@ -113,6 +122,10 @@ ksp {
 
 dependencies {
     implementation(libs.core.ktx)
+    // 仪器测试（Room 迁移测试用）
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.room.testing)
     implementation(libs.appcompat)
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)
