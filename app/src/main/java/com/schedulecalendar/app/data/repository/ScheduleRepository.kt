@@ -66,20 +66,7 @@ class ScheduleRepository @Inject constructor(
         val statusIds = HashSet<String>()
         val extraIds = HashSet<String>()
         for (row in dao.getReferenceColumns()) {
-            // appliedStatusesJson: [{"statusId":"xxx","startTime":null,"endTime":null}]
-            runCatching {
-                com.google.gson.JsonParser.parseString(row.appliedStatusesJson).asJsonArray.forEach { el ->
-                    val id = el.asJsonObject.get("statusId")?.asString
-                    if (!id.isNullOrBlank()) statusIds.add(id)
-                }
-            }
-            // extraItemIdsJson: ["id1","id2"]
-            runCatching {
-                com.google.gson.JsonParser.parseString(row.extraItemIdsJson).asJsonArray.forEach { el ->
-                    val id = el.asString
-                    if (id.isNotBlank()) extraIds.add(id)
-                }
-            }
+            parseReferencedIds(row.appliedStatusesJson, row.extraItemIdsJson, statusIds, extraIds)
         }
         return Triple(shiftIds, statusIds, extraIds)
     }
@@ -88,4 +75,42 @@ class ScheduleRepository @Inject constructor(
     suspend fun countAll(): Int = dao.countAll()
     /** 最近排班日期 yyyy-MM-dd */
     suspend fun maxDate(): String? = dao.maxDate()
+}
+
+/**
+ * 从排班记录的引用列 JSON 中解析「被引用的附加状态 ID / 补贴项 ID」。
+ *
+ * 独立成纯函数是为了能写单元测试 —— 这段逻辑直接决定「废弃数据清理」会不会
+ * 误删仍被历史排班引用的状态/补贴项（2026-10-23 就踩过一次「按数组解析单对象」的坑，
+ * 导致状态引用集合恒为空、已归档状态被误判为无引用）。
+ *
+ * 约定：解析失败一律抛 [IllegalStateException]，绝不静默跳过 ——
+ * 静默跳过等于把该行的引用当成「没有引用」，清理时就会删掉历史数据仍在用的项。
+ */
+internal fun parseReferencedIds(
+    appliedStatusesJson: String,
+    extraItemIdsJson: String,
+    statusIds: MutableSet<String>,
+    extraIds: MutableSet<String>
+) {
+    // 附加状态：DB 里存的是「单对象」格式（{"statusId":..}），旧数据是数组格式，
+    // 统一用 [parseAppliedStatus] 解析（两种格式都兼容）
+    val statusJson = appliedStatusesJson.trim()
+    if (statusJson.isNotEmpty() && statusJson != "null" && statusJson != "[]") {
+        val st = parseAppliedStatus(statusJson)
+            ?: throw IllegalStateException("排班引用数据解析失败（附加状态）：$statusJson")
+        if (st.statusId.isNotBlank()) statusIds.add(st.statusId)
+    }
+    // 补贴项：JSON 数组 ["id1","id2"]；解析失败同样中止，绝不静默丢引用
+    val extraJson = extraItemIdsJson.trim()
+    if (extraJson.isNotEmpty() && extraJson != "null" && extraJson != "[]") {
+        runCatching {
+            com.google.gson.JsonParser.parseString(extraJson).asJsonArray.forEach { el ->
+                val id = el.asString
+                if (id.isNotBlank()) extraIds.add(id)
+            }
+        }.getOrElse {
+            throw IllegalStateException("排班引用数据解析失败（补贴项）：$extraJson")
+        }
+    }
 }

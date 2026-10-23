@@ -91,6 +91,7 @@ fun ExtraItemsScreen(navController: NavController, vm: ExtraItemsViewModel = hil
     if (showEditor) {
         ExtraItemEditorDialog(
             item     = editTarget,
+            // 重名检查只与「有效（未归档）」项目比对：已归档的是历史数据，允许存在同名的新项目
             existingNames = items.map { it.name },
             onSave   = { newItem ->
                 if (editTarget != null) vm.saveAsReplacement(editTarget!!, newItem)
