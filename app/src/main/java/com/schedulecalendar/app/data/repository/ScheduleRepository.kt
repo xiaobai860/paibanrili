@@ -35,6 +35,9 @@ class ScheduleRepository @Inject constructor(
         return dao.getByMonth(from, to).map { it.toDomain() }
     }
 
+    /** 某日及之后的排班条数（判断某口径区间内是否已产生数据） */
+    suspend fun countRecordsSince(from: String): Int = dao.countSince(from)
+
     fun observeByRange(from: String, to: String): Flow<List<ScheduleRecord>> =
         dao.observeByRange(from, to).map { list -> list.map { it.toDomain() } }
 

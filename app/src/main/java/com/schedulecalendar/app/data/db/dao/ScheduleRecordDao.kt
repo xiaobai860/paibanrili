@@ -71,6 +71,10 @@ interface ScheduleRecordDao {
     @Query("SELECT COUNT(*) FROM schedule_records")
     suspend fun countAll(): Int
 
+    /** 某日及之后的排班条数（判断某口径区间内是否已有数据） */
+    @Query("SELECT COUNT(*) FROM schedule_records WHERE date >= :from")
+    suspend fun countSince(from: String): Int
+
     /** 最近排班日期 yyyy-MM-dd（轻量指纹查询） */
     @Query("SELECT MAX(date) FROM schedule_records")
     suspend fun maxDate(): String?

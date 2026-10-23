@@ -28,7 +28,8 @@ import javax.inject.Singleton
 class CalcProfileRepository @Inject constructor(
     private val dao: CalcProfileDao,
     private val prefs: AppPreferences,
-    private val breakRepo: ShiftBreakRepository
+    private val breakRepo: ShiftBreakRepository,
+    private val scheduleRepo: ScheduleRepository
 ) {
     private val gson = Gson()
 
@@ -154,6 +155,52 @@ class CalcProfileRepository @Inject constructor(
                 )
             )
         }
+        return true
+    }
+
+    /** 档案是否可安全删除的判定结果 */
+    sealed class ProfileDeletability {
+        object Deletable : ProfileDeletability()
+        data class NotDeletable(val reason: String) : ProfileDeletability()
+    }
+
+    /**
+     * 判断某档案能否**安全删除**。
+     *
+     * 允许删除的唯一情形：**今天（或将来）才生效，且该区间内还没有任何排班记录** ——
+     * 那些日期本来就没有数据，回退到上一份口径不会让任何工时/薪资发生变化。
+     * 其余情况一律不可删（删了等于让那段历史改用别的口径重算）。
+     */
+    suspend fun deletability(profile: CalcProfile): ProfileDeletability {
+        if (profile.id == INITIAL_PROFILE_ID) {
+            return ProfileDeletability.NotDeletable("初始口径覆盖全部历史，不能删除")
+        }
+        val today = DateFormats.date(LocalDate.now())
+        if (profile.effectiveFrom < today) {
+            return ProfileDeletability.NotDeletable("该口径已生效过并覆盖历史日期，删除会改变历史计算结果")
+        }
+        val used = scheduleRepo.countRecordsSince(profile.effectiveFrom)
+        if (used > 0) {
+            return ProfileDeletability.NotDeletable("该口径已有 $used 条排班记录，删除会改变这些记录的计算结果")
+        }
+        return ProfileDeletability.Deletable
+    }
+
+    /**
+     * 删除一条「今天才生效、区间内无数据」的口径，并把前一份口径的接力恢复为「至今」。
+     *
+     * 背景：新建档案时会把上一条的 effectiveTo 收口为「新档案生效日 − 1 天」，
+     * 故删掉新档案后必须把上一条的 effectiveTo 恢复为 null，否则今天起会没有档案可用。
+     */
+    suspend fun deleteIfUnused(profile: CalcProfile): Boolean {
+        if (deletability(profile) !is ProfileDeletability.Deletable) return false
+        val prev = dao.getAll()
+            .filter { it.effectiveFrom < profile.effectiveFrom }
+            .maxByOrNull { it.effectiveFrom }
+        if (prev != null && prev.effectiveTo != null) {
+            dao.update(prev.copy(effectiveTo = null))
+        }
+        dao.deleteById(profile.id)
         return true
     }
 

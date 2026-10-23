@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -20,6 +21,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -65,13 +69,42 @@ class CalcProfilesViewModel @Inject constructor(
     private val _profiles = MutableStateFlow<List<CalcProfile>>(emptyList())
     val profiles = _profiles.asStateFlow()
 
+    private val _deletability = MutableStateFlow<Map<String, CalcProfileRepository.ProfileDeletability>>(emptyMap())
+    val deletability = _deletability.asStateFlow()
+
     private val _uiEvent = Channel<CalcProfilesUiEvent>(Channel.BUFFERED)
     val uiEvent = _uiEvent.receiveAsFlow()
 
     init { refresh() }
 
     fun refresh() = viewModelScope.launch {
-        _profiles.value = runCatching { profileRepo.getAll() }.getOrDefault(emptyList())
+        val list = runCatching { profileRepo.getAll() }.getOrDefault(emptyList())
+        _profiles.value = list
+        // 逐条判定能否安全删除（今天才生效且区间内无排班数据）
+        _deletability.value = list.associate { p ->
+            p.id to runCatching { profileRepo.deletability(p) }
+                .getOrDefault(CalcProfileRepository.ProfileDeletability.NotDeletable("无法判定"))
+        }
+    }
+
+    /** 删除一条今天才生效、且区间内无数据的口档；不可删时把原因回报给用户 */
+    fun delete(id: String) = viewModelScope.launch {
+        val profile = _profiles.value.firstOrNull { it.id == id }
+        if (profile == null) {
+            _uiEvent.send(CalcProfilesUiEvent.ShowError("口径不存在"))
+            return@launch
+        }
+        runCatching { profileRepo.deleteIfUnused(profile) }
+            .onSuccess { ok ->
+                refresh()
+                _uiEvent.send(
+                    if (ok) CalcProfilesUiEvent.ShowMessage("已删除「${profile.name}」，今天起恢复使用上一份口径")
+                    else CalcProfilesUiEvent.ShowError("该口径不可删除：删除会改变历史计算结果")
+                )
+            }
+            .onFailure {
+                _uiEvent.send(CalcProfilesUiEvent.ShowError("删除失败：${it.message}"))
+            }
     }
 
     /** 把某个档案复制为「今天生效」的新档案（回滚到旧口径 / 基于旧口径微调） */
@@ -108,6 +141,8 @@ fun CalcProfilesScreen(
     val profiles by vm.profiles.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
 
+    val deletability by vm.deletability.collectAsStateWithLifecycle()
+    var pendingDelete by remember { mutableStateOf<CalcProfile?>(null) }
     LaunchedEffect(Unit) {
         vm.uiEvent.collect { e ->
             when (e) {
@@ -115,6 +150,16 @@ fun CalcProfilesScreen(
                 is CalcProfilesUiEvent.ShowError   -> snackbar.showSnackbar(e.msg)
             }
         }
+    }
+
+    pendingDelete?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("删除口径") },
+            text = { Text("确定删除「${target.name}」吗？\n\n该口径今天才生效、且没有任何排班记录使用它，删除后今天起恢复使用上一份口径，历史数据不受影响。") },
+            confirmButton = { TextButton(onClick = { vm.delete(target.id); pendingDelete = null }) { Text("删除") } },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } }
+        )
     }
 
     Scaffold(
@@ -150,14 +195,24 @@ fun CalcProfilesScreen(
                 }
             }
             items(profiles, key = { it.id }) { profile ->
-                ProfileCard(profile = profile, onCopy = { vm.copyAsNew(profile.id) })
+                ProfileCard(
+                    profile = profile,
+                    deletability = deletability[profile.id],
+                    onCopy = { vm.copyAsNew(profile.id) },
+                    onDelete = { pendingDelete = profile }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ProfileCard(profile: CalcProfile, onCopy: () -> Unit) {
+private fun ProfileCard(
+    profile: CalcProfile,
+    deletability: CalcProfileRepository.ProfileDeletability?,
+    onCopy: () -> Unit,
+    onDelete: () -> Unit
+) {
     val today = DateFormats.date(LocalDate.now())
     val isCurrent = profile.isEffectiveOn(today)
     Card(Modifier.fillMaxWidth()) {
@@ -192,6 +247,11 @@ private fun ProfileCard(profile: CalcProfile, onCopy: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             TextButton(onClick = onCopy) { Text("复制为新口径（今天生效）") }
+                if (deletability is CalcProfileRepository.ProfileDeletability.Deletable) {
+                    TextButton(onClick = onDelete) {
+                        Text("删除", color = MaterialTheme.colorScheme.error)
+                    }
+                }
         }
     }
 }
