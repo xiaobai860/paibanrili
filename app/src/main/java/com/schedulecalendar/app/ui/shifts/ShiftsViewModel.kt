@@ -391,6 +391,19 @@ class ShiftsViewModel @Inject constructor(
                     }
                 }
             }
+            // 导入可能改动了全局休息时段 → 同步生成新口径档案（今天生效），历史计算不受影响
+            if (importedBreaks > 0) {
+                val today = com.schedulecalendar.app.domain.util.DateFormats.date(java.time.LocalDate.now())
+                runCatching {
+                    profileRepo.createDerivedProfile(
+                        effectiveFrom = today,
+                        name = "${today.take(7)} 时段导入",
+                        breaks = breakRepo.getAll()
+                    )
+                }.onFailure {
+                    android.util.Log.w("ShiftsViewModel", "sync profile after import failed", it)
+                }
+            }
             _uiEvent.send(ShiftsUiEvent.ShowMessage(
                 "导入成功：班次 $importedShifts，时段 $importedBreaks，状态 $importedStatuses，项目 $importedExtras"
             ))

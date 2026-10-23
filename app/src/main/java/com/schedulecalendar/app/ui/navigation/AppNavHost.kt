@@ -34,6 +34,7 @@ import com.schedulecalendar.app.ui.detail.ExtraItemsScreen
 import com.schedulecalendar.app.ui.detail.HoursDetailScreen
 import com.schedulecalendar.app.ui.detail.ScheduleDetailScreen
 import com.schedulecalendar.app.ui.settings.SettingsScreen
+import com.schedulecalendar.app.ui.settings.CalcProfilesScreen
 import com.schedulecalendar.app.ui.settings.SalarySettingsScreen
 import com.schedulecalendar.app.ui.settings.AttendanceSettingsScreen
 import com.schedulecalendar.app.ui.settings.CalendarAccountSettingsScreen
@@ -245,6 +246,7 @@ fun AppNavHost() {
                 AddAnniversaryScreen(navController = navController, eventId = route.eventId)
             }
             composable<RouteWidgetSettings> { WidgetSettingsScreen(navController) }
+            composable<RouteCalcProfiles> { CalcProfilesScreen(navController) }
         }
 
         // 重写返回键：当在 Tab 页面时拦截 popBackStack，直接 finish Activity。

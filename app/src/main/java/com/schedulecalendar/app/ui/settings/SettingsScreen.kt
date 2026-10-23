@@ -118,6 +118,17 @@ fun SettingsScreen(navController: NavController, vm: SettingsViewModel = hiltVie
             }
 
 
+            // ── 计算口径档案 ────────────────────────────────────────────
+            item {
+                SettingsCard(
+                    icon = Icons.Default.Calculate,
+                    title = "计算口径档案",
+                    description = "薪资 / 考勤 / 休息时段的历次口径与生效日期",
+                    onClick = { navController.navigate(RouteCalcProfiles) }
+                )
+            }
+
+
             // ── 权限管理 ──────────────────────────────────────────
             item {
                 PermissionManagementSection()
