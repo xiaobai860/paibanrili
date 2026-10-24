@@ -53,9 +53,21 @@ data class StorageUiState(
     val shiftConfigKeepCount: Int = 10,
     val customBackupPath:   String = "",
     val defaultBackupPath:  String = "",
-    val dbSizeBytes:        Long = 0L,
     val backupSizeBytes:    Long = 0L,
-    val freeSizeBytes:      Long = 0L,
+    /**
+     * 本应用占用的储存空间总量（私有目录全部内容：数据库 + 偏好设置 + 缓存 + 应用内备份）。
+     *
+     * ⚠️ 不再展示「手机可用空间」：那是 GB 级数字，与本应用几百 KB 的占用放在一起毫无意义。
+     */
+    val appTotalBytes:      Long = 0L,
+    /** 应用数据占用（数据库与设置，不含缓存与备份） */
+    val appDataBytes:       Long = 0L,
+    /** 缓存占用（临时文件，系统与应用可随时回收） */
+    val cacheBytes:         Long = 0L,
+    /** 应用内备份占用（私有目录里的 backups/，是 appTotalBytes 的一部分） */
+    val privateBackupBytes: Long = 0L,
+    /** 备份文件份数（应用数据 + 班次配置） */
+    val backupFileCount:    Int = 0,
     val loading:            Boolean = true,
     // 废弃数据清理扫描结果
     val orphanShiftsCount:    Int = 0,
@@ -127,17 +139,18 @@ class StorageViewModel @Inject constructor(
             // 仅列出文件，不执行裁剪（裁剪在自动备份时进行），确保页面秒开
             val appFiles = backupManager.listAppDataBackups()
             val shiftFiles = backupManager.listShiftConfigBackups()
-            val dbFile = context.getDatabasePath("schedule_calendar.db")
-            val dbSize = if (dbFile.exists()) dbFile.length() else 0L
+            val usage = computeStorageUsage()
             val backupSize = appFiles.sumOf { it.sizeBytes } + shiftFiles.sumOf { it.sizeBytes }
-            val freeSize = context.filesDir.freeSpace
             _state.update {
                 it.copy(
                     appDataBackups = appFiles.sortedByDescending { f -> f.createdAt },
                     shiftConfigBackups = shiftFiles.sortedByDescending { f -> f.createdAt },
-                    dbSizeBytes = dbSize,
                     backupSizeBytes = backupSize,
-                    freeSizeBytes = freeSize,
+                    appTotalBytes = usage.total,
+                    appDataBytes = usage.data,
+                    cacheBytes = usage.cache,
+                    privateBackupBytes = usage.privateBackup,
+                    backupFileCount = appFiles.size + shiftFiles.size,
                     loading = false
                 )
             }
@@ -147,21 +160,59 @@ class StorageViewModel @Inject constructor(
     suspend fun reload() {
         val appFiles = backupManager.listAppDataBackups()
         val shiftFiles = backupManager.listShiftConfigBackups()
-        val dbFile = context.getDatabasePath("schedule_calendar.db")
-        val dbSize = if (dbFile.exists()) dbFile.length() else 0L
+        val usage = computeStorageUsage()
         val backupSize = appFiles.sumOf { it.sizeBytes } + shiftFiles.sumOf { it.sizeBytes }
-        val freeSize = context.filesDir.freeSpace
 
         _state.update {
             it.copy(
                 appDataBackups = appFiles.sortedByDescending { f -> f.createdAt },
                 shiftConfigBackups = shiftFiles.sortedByDescending { f -> f.createdAt },
-                dbSizeBytes = dbSize,
                 backupSizeBytes = backupSize,
-                freeSizeBytes = freeSize,
+                appTotalBytes = usage.total,
+                appDataBytes = usage.data,
+                cacheBytes = usage.cache,
+                privateBackupBytes = usage.privateBackup,
+                backupFileCount = appFiles.size + shiftFiles.size,
                 loading = false
             )
         }
+    }
+
+    /** 存储占用统计结果（口径见 [StorageUiState.appTotalBytes]） */
+    private data class StorageUsage(
+        /** 私有目录总量 */
+        val total: Long,
+        /** 应用数据（总量 − 缓存 − 应用内备份） */
+        val data: Long,
+        /** 缓存 */
+        val cache: Long,
+        /** 应用内备份（私有目录 backups/） */
+        val privateBackup: Long
+    )
+
+    /**
+     * 统计本应用的储存占用。
+     *
+     * 口径（三项自洽，加起来 = 应用总量）：
+     * - **应用数据**：数据库（含 WAL/SHM）+ 偏好设置 + 其它持久化数据；
+     * - **备份文件**：应用内 `files/backups/`（自定义目录里的备份不占应用空间，另行统计）；
+     * - **缓存**：`cacheDir`（临时文件，可随时回收）。
+     */
+    private fun computeStorageUsage(): StorageUsage {
+        val total = dirSize(java.io.File(context.applicationInfo.dataDir))
+        val cache = dirSize(context.cacheDir)
+        val privateBackup = dirSize(java.io.File(context.filesDir, "backups"))
+        val data = (total - cache - privateBackup).coerceAtLeast(0L)
+        return StorageUsage(total, data, cache, privateBackup)
+    }
+
+    /** 递归求目录内所有文件的总大小（字节） */
+    private fun dirSize(dir: java.io.File): Long {
+        if (!dir.exists()) return 0L
+        if (dir.isFile) return dir.length()
+        var sum = 0L
+        dir.listFiles()?.forEach { sum += dirSize(it) }
+        return sum
     }
 
     // ── 备份操作 ──────────────────────────────────────────────────

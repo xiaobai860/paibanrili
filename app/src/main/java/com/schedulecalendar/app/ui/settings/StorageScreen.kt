@@ -584,56 +584,110 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
 
 // ── 存储空间可视化卡片 ─────────────────────────────────────────────────────────
 
+/**
+ * 本应用储存占用（**紧凑版**：一行标题 + 细构成条 + 三列明细，尽量少占页面）。
+ *
+ * ⚠️ 不再展示「手机可用空间」：它是 GB 级数字，而本应用占用只有几百 KB，
+ * 放在同一个比例条里几乎看不见，对用户也没有决策价值。
+ */
 @Composable
 private fun StorageUsageCard(state: StorageUiState) {
-    val total   = state.dbSizeBytes + state.backupSizeBytes + state.freeSizeBytes
-    val dbRatio = if (total > 0) state.dbSizeBytes.toFloat() / total else 0f
-    val bkRatio = if (total > 0) state.backupSizeBytes.toFloat() / total else 0f
+    val total = state.appTotalBytes
+    // 构成条的比例基准是「本应用占用」→ 三段长度才有意义
+    val dataRatio = if (total > 0) state.appDataBytes.toFloat() / total else 0f
+    val backupRatio = if (total > 0) state.privateBackupBytes.toFloat() / total else 0f
+    val cacheRatio = if (total > 0) state.cacheBytes.toFloat() / total else 0f
+
+    val primary   = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val tertiary = MaterialTheme.colorScheme.tertiary
 
     Card(
-        Modifier.padding(12.dp).fillMaxWidth(),
-        shape  = RoundedCornerShape(18.dp),
+        Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth(),
+        shape  = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("存储空间", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            // 标题 + 本应用占用总量
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("本应用占用", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    formatBytes(total),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
 
-            // 色块条
-            val primary  = MaterialTheme.colorScheme.primary
-            val secondary = MaterialTheme.colorScheme.secondary
-            val surface  = MaterialTheme.colorScheme.outlineVariant
+            // 构成条：应用数据 / 应用内备份 / 缓存（比例相对本应用占用）
             Canvas(
-                Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(7.dp))
+                Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
             ) {
                 val w = size.width
-                drawRect(surface)  // 底色（空闲）
-                if (dbRatio + bkRatio > 0f) {
-                    drawRect(primary, size = Size(w * dbRatio, size.height))
-                    drawRect(secondary,
-                        topLeft = Offset(w * dbRatio, 0f),
-                        size    = Size(w * bkRatio, size.height))
+                var x = 0f
+                if (dataRatio > 0f) {
+                    drawRect(primary, size = Size(w * dataRatio, size.height))
+                    x += w * dataRatio
+                }
+                if (backupRatio > 0f) {
+                    drawRect(secondary, topLeft = Offset(x, 0f), size = Size(w * backupRatio, size.height))
+                    x += w * backupRatio
+                }
+                if (cacheRatio > 0f) {
+                    drawRect(tertiary, topLeft = Offset(x, 0f), size = Size(w * cacheRatio, size.height))
                 }
             }
 
-            // 图例
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                StorageLegend("数据库", state.dbSizeBytes, primary)
-                StorageLegend("备份文件", state.backupSizeBytes, secondary)
-                StorageLegend("可用空间", state.freeSizeBytes, surface)
+            // 三项明细：等宽三列，一眼看清「数据 / 备份 / 缓存」
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                StorageUsageCell(
+                    color = primary, label = "应用数据",
+                    value = formatBytes(state.appDataBytes),
+                    modifier = Modifier.weight(1f)
+                )
+                StorageUsageCell(
+                    color = secondary,
+                    label = if (state.backupFileCount > 0) "备份 ${state.backupFileCount} 份" else "备份",
+                    value = formatBytes(state.backupSizeBytes),
+                    modifier = Modifier.weight(1f)
+                )
+                StorageUsageCell(
+                    color = tertiary, label = "缓存",
+                    value = formatBytes(state.cacheBytes),
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
 }
 
+/** 一列占用明细：色点 + 名称（含份数）+ 数值 */
 @Composable
-private fun RowScope.StorageLegend(label: String, bytes: Long, color: Color) {
-    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.size(10.dp).background(color, RoundedCornerShape(2.dp)))
-        Column {
-            Text(formatBytes(bytes), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-            Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun StorageUsageCell(
+    color: Color,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(6.dp).background(color, RoundedCornerShape(2.dp)))
+            Spacer(Modifier.width(4.dp))
+            Text(
+                label,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
+        Text(
+            value,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 
