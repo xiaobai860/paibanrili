@@ -31,14 +31,14 @@ android {
         //   而 `-d` 只对 debuggable 包生效、release 包无效 → 只能「完整卸载（不带 -k）→ 安装」。
         //   （不要为此把 versionCode 改成日期型。）
         // 注意：Android 仅比较 versionCode 决定是否允许覆盖安装。
-        versionCode   = 220
-        versionName   = "2026102406"
+        versionCode   = 221
+        versionName   = "2026102407"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     sourceSets {
         // Room 迁移测试（androidTest）需要从 assets 读取导出的 schema JSON
-        getByName("androidTest") { assets.srcDir("$projectDir/schemas") }
+        getByName("androidTest") { assets.directories.add("$projectDir/schemas") }
     }
 
     signingConfigs {

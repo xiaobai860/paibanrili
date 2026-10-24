@@ -6,9 +6,6 @@ package com.schedulecalendar.app.widget
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import android.os.Handler
-import android.os.Looper
-import android.widget.Toast
 import com.schedulecalendar.app.domain.util.DateFormats
 import androidx.compose.runtime.Composable
 import androidx.core.content.edit
@@ -59,13 +56,11 @@ class CalendarGlanceWidget : GlanceAppWidget() {
         val sizes = runCatching { GlanceAppWidgetManager(context).getAppWidgetSizes(id) }.getOrNull()
         val maxH = sizes?.maxOfOrNull { it.height }?.value ?: 180f
         val isLarge = maxH >= 220f
-        val baseHeight = maxH.dp
         // 3x3 widget：显示 日期+班次+附加状态（3 项），launcher cell 大时不裁切
         runCatching {
             provideContent {
                 CalendarWidgetContent(
                     isLarge = isLarge,
-                    baseHeight = baseHeight,
                     showLunar = false,
                     showStatus = true,
                     maxVisibleRows = Int.MAX_VALUE,
@@ -111,13 +106,12 @@ class RefreshWidgetAction : ActionCallback {
 @Composable
 private fun CalendarWidgetContent(
     isLarge: Boolean,
-    baseHeight: androidx.compose.ui.unit.Dp,
     showLunar: Boolean,
     showStatus: Boolean,
     maxVisibleRows: Int = Int.MAX_VALUE,
     compact: Boolean = false
 ) {
-    val prefs = androidx.glance.LocalContext.current.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
+    val prefs = LocalContext.current.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
     val jsonStr = prefs.getString(KEY_CALENDAR_WIDGET_JSON, "")
     val data = if (!jsonStr.isNullOrBlank())
         runCatching { Gson().fromJson(jsonStr, CalendarWidgetInfo::class.java) }.getOrElse { CalendarWidgetInfo() }
@@ -144,12 +138,11 @@ private fun CalendarWidgetContent(
         if (compact) "${today.monthValue}月" else "${today.year}年${today.monthValue}月"
     }
     val weekLabels = listOf("一", "二", "三", "四", "五", "六", "日")
-    val tfs = if (isLarge) 18.sp else 16.sp
     val useBig = isLarge && !compact
     val wfs = if (useBig) 10.sp else 10.sp
-    val dfs = if (useBig) 14.sp else 12.sp
+    val dfs = 14.sp
     val sfs = if (useBig) 10.sp else 10.sp
-    val stfs = if (useBig) 9.sp else 9.sp
+    val statusFontSize = if (useBig) 9.sp else 9.sp
     val lfs = if (isLarge) 8.sp else 9.sp
     val visibleRows = minOf(data.totalRows, maxVisibleRows)
     val headerUseBig = isLarge && !compact
@@ -233,7 +226,7 @@ private fun CalendarWidgetContent(
                                 .cornerRadius(cellCorner)
                             ) {
                                 if (day != null && day.day > 0) CalendarDayCellContent(
-                                    day, isToday, isLarge, showLunar, showStatus, data.year, data.month, dfs, sfs, stfs, lfs, utc, utcDark, bgAlpha, isDark, cellCorner)
+                                    day, isToday, showLunar, showStatus, data.year, data.month, dfs, sfs, statusFontSize, lfs, utc, utcDark, bgAlpha, isDark, cellCorner)
                             }
                         }
                     }
@@ -245,7 +238,7 @@ private fun CalendarWidgetContent(
 
 @Composable
 private fun CalendarDayCellContent(
-    day: CalendarWidgetDay, isToday: Boolean, isLarge: Boolean,
+    day: CalendarWidgetDay, isToday: Boolean,
     showLunar: Boolean, showStatus: Boolean,
     year: Int, month: Int, dayNumberSize: TextUnit,
     shiftFontSize: TextUnit, statusFontSize: TextUnit, lunarFontSize: TextUnit,
@@ -339,15 +332,11 @@ private fun CalendarDayCellContent(
 // 9:35 AM 2026-8-22
 class Calendar3x4GlanceWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val manager = androidx.glance.appwidget.GlanceAppWidgetManager(context)
-        val sizes = manager.getAppWidgetSizes(id)
-        val maxH = sizes.maxOfOrNull { it.height.value } ?: 240f
         // 3x4 widget：显示 4 项内容（日期+班次+附加状态+农历），渲染完整所有行（保证 31 号可见）
         runCatching {
             provideContent {
                 CalendarWidgetContent(
                     isLarge = true,
-                    baseHeight = maxH.dp,
                     showLunar = true,
                     showStatus = true,
                     maxVisibleRows = Int.MAX_VALUE
