@@ -88,12 +88,15 @@ class BackupManager @Inject constructor(
         if (customPath.isNotBlank()) {
             val customResult = runCatching {
                 if (isSafPath(customPath)) {
+                    val docUri = writeSafBackupFile(customPath.toUri(), fileName, json)
                     // 必须回真实文档 URI：拼接的伪路径后续读取/删除会静默失败
-                    File(writeSafBackupFile(customPath.toUri(), fileName, json).toString())
+                    lastBackupLocation = describeSafWrite(docUri, fileName)
+                    File(docUri.toString())
                 } else {
                     val dir = File(resolveSafPath(customPath)).also { it.mkdirs() }
                     val file = File(dir, fileName)
                     file.writeTextAtomic(json)
+                    lastBackupLocation = "$fileName（${resolveSafPath(customPath)}）"
                     file
                 }
             }
@@ -104,7 +107,27 @@ class BackupManager @Inject constructor(
         }
         val file = File(privateBackupDir, fileName)
         file.writeTextAtomic(json)
+        lastBackupLocation = "$fileName（应用内存储）"
         return file
+    }
+
+    /**
+     * 最近一次备份写入的**可读位置**（提示文案用）。
+     *
+     * ⚠️ SAF 目录写入时，返回的 `File.name` 是**编码过的 documentId 片段**
+     * （形如 `primary%3ADocuments%2F%E6%96%87%E4%BB%B6...`）→ 直接显示给用户就是一串乱码。
+     * 这里在写入时就算好可读文本（解码后的文件名 + 真实目录路径），提示里直接用。
+     */
+    @Volatile
+    var lastBackupLocation: String? = null
+        private set
+
+    /** SAF 写入后的可读描述：文件名（解码）+ 真实目录路径 */
+    private fun describeSafWrite(docUri: Uri, fallbackName: String): String {
+        val name = Uri.decode(docUri.lastPathSegment?.substringAfterLast('/') ?: fallbackName)
+        val tree = docUri.toString().substringBefore("/document/")
+        val dir = SafPathResolver.toDisplayPath(tree)
+        return if (dir.isBlank()) name else "$name（$dir）"
     }
 
     /** 持久化 SAF URI 的读写权限（选择目录后必须调用）；返回是否成功 */

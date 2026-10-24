@@ -175,7 +175,10 @@ class StorageViewModel @Inject constructor(
             }
         }
         result.onSuccess { file ->
-            _uiEvent.send(StorageUiEvent.ShowMessage("备份成功：${file.name}"))
+            // ⚠️ SAF 目录写入时 file.name 是编码过的 documentId 片段（会显示成乱码），
+            // 用 BackupManager 备好的可读位置（解码后的文件名 + 真实目录路径）
+            val where = backupManager.lastBackupLocation ?: file.name
+            _uiEvent.send(StorageUiEvent.ShowMessage("备份成功：$where"))
             viewModelScope.launch { reload() }
         }.onFailure {
             _uiEvent.send(StorageUiEvent.ShowError("备份失败：${it.message}"))
