@@ -292,9 +292,11 @@ private fun CalendarDayCellContent(
                 Text(text = day.day.toString(),
                     style = TextStyle(color = if (isDark) ColorProvider(dayColorD) else ColorProvider(dayColor), fontSize = dayNumberSize,
                         fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium))
-                if (isLegalHoliday && isHolidayFirstDay) {
-                    Text(text = "假",
-                        style = TextStyle(color = ColorProvider(Color(0xFFDC2626)), fontSize = 7.sp,
+                // 法定假「假」/ 补班「补」：日期数字右侧（与数字并排），法定假每天标、补班日标「补」
+                val isMakeup = HolidayData.isTransferWorkday(dateStr)
+                if (isMakeup || isLegalHoliday) {
+                    Text(text = if (isMakeup) "补" else "假",
+                        style = TextStyle(color = ColorProvider(if (isMakeup) Color(0xFF2563EB) else Color(0xFFDC2626)), fontSize = 7.sp,
                             fontWeight = FontWeight.Bold))
                 }
             }
