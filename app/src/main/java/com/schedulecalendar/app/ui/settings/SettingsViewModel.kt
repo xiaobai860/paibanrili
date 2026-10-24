@@ -76,8 +76,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun saveSalaryConfig(cfg: SalaryConfig)            = viewModelScope.launch { prefs.saveSalaryConfig(cfg) }
-    fun saveAttendConfig(cfg: AttendConfig)            = viewModelScope.launch { prefs.saveAttendConfig(cfg) }
+    // ⚠️ 薪资/考勤**必须**走 [saveSalaryAsProfile] / [saveAttendAsProfile]（先生成口径档案再写现值）。
+    // 这里刻意不提供「只改 DataStore 现值」的入口：
+    // 那样会绕过档案 → 当前生效口径仍是旧档案 → 用户改了却不算数，
+    // 且 DataStore 现值与档案永久分裂（两份真相）。备份恢复等内部场景请直接用 AppPreferences。
 
     // ── 计算口径档案（改配置不改历史）──────────────────────────────────────
 

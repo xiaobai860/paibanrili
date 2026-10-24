@@ -570,11 +570,45 @@ class BackupManager @Inject constructor(
             // 计算口径档案（v4+）：整表替换，保证恢复后历史日期用的口径与备份时完全一致。
             // 旧备份没有该字段时保持现状（不删已有档案）。
             backup.calcProfiles?.let { calcProfileRepo.replaceAll(it) }
+            // 恢复后对齐「当前生效集合」：档案里存的是时段快照，表里存的是编辑中集合，
+            // 两者若不一致（老备份或中途改过），编辑器显示的时段就会与实际计算口径对不上。
+            // 口径以「当前生效档案的快照」为准（自洽备份下这一步是幂等的，不会改变数据）。
+            runCatching {
+                calcProfileRepo.getCurrentProfile()?.let { cur ->
+                    calcProfileRepo.syncBreaksToTable(cur.breaks)
+                }
+            }.onFailure { android.util.Log.w("BackupManager", "sync breaks after restore failed", it) }
         }
 
         // 偏好设置在 DB 事务成功后再写（避免 DB 回滚后偏好仍被改）
         backup.salaryConfig?.let { prefs.saveSalaryConfig(it) }
         backup.attendConfig?.let { prefs.saveAttendConfig(it) }
+        // ── 档案与「现值」对齐（避免两份真相分裂）────────────────────────
+        // 旧备份（应用数据 v1~v3）不带 calc_profiles：恢复出来的是**薪资/考勤现值**，
+        // 但本地仍留着旧档案 → 当前生效口径可能还是旧档案那份，
+        // 用户在设置页看到的新值实际不参与计算（现值与口径分裂）。
+        // 修法：用恢复后的现值补一份「今天生效」的档案（**不改更早的历史**）；
+        // 本地根本没有档案时则建初始档案（覆盖全部历史）。
+        if (backup.calcProfiles == null) {
+            runCatching {
+                if (calcProfileRepo.countAll() == 0) {
+                    calcProfileRepo.ensureInitialProfile()
+                } else {
+                    val today = com.schedulecalendar.app.domain.util.DateFormats.date(java.time.LocalDate.now())
+                    val cur = calcProfileRepo.getCurrentProfile()
+                    val curSalary = prefs.salaryConfigFlow.first()
+                    val curAttend = prefs.attendConfigFlow.first()
+                    if (cur != null && (cur.salary != curSalary || cur.attend != curAttend)) {
+                        calcProfileRepo.createDerivedProfile(
+                            effectiveFrom = today,
+                            name = "${today.take(7)} 恢复口径"
+                        )
+                    }
+                }
+            }.onFailure {
+                android.util.Log.w("BackupManager", "align profile after legacy restore failed", it)
+            }
+        }
         backup.scheduleRule?.let { prefs.saveScheduleRule(it) }
         backup.displaySchemes?.let { prefs.saveDisplaySchemes(it) }
         // 恢复账户分类和禁用状态

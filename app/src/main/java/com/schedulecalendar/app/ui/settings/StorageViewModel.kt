@@ -67,6 +67,12 @@ data class StorageUiState(
     val orphanStatuses:  List<OrphanItemInfo> = emptyList(),
     val orphanExtras:    List<OrphanItemInfo> = emptyList(),
     val orphanBreaks:    List<OrphanItemInfo> = emptyList(),
+    // 已归档、但被历史档案的口径快照提到的时段（同样可清：快照自包含，删表行不影响历史计算）
+    val orphanBreaksInProfiles: List<OrphanItemInfo> = emptyList(),
+    /**
+     * 配置一致性自检结果：null = 正常；非 null = 薪资/考勤的现值与当前生效口径不一致（需处理提示）
+     */
+    val configInconsistency: String? = null,
     // 已归档但仍被历史排班引用 → 必须保留（历史锚点，不可清理）
     val keptShiftsCount:   Int = 0,
     val keptStatusesCount: Int = 0,
@@ -291,13 +297,16 @@ class StorageViewModel @Inject constructor(
         runCatching {
             // 扫描逻辑集中在 OrphanDataCleaner（扫描与删除共用同一套判定，避免两处漂移）
             val scan = orphanCleaner.scan()
+            // 配置一致性自检：薪资/考勤现值 vs 当前生效口径
+            val inconsistency = orphanCleaner.checkConfigConsistency()
 
             _state.update {
                 it.copy(
+                    configInconsistency = inconsistency,
                     orphanShiftsCount = scan.shifts.size,
                     orphanStatusesCount = scan.statuses.size,
                     orphanExtrasCount = scan.extras.size,
-                    orphanBreaksCount = scan.breaks.size,
+                    orphanBreaksCount = scan.breaks.size + scan.breaksInProfileSnapshots.size,
                     orphanShifts = scan.shifts.map {
                         OrphanItemInfo(it.id, it.name, it.color,
                             if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
@@ -309,6 +318,10 @@ class StorageViewModel @Inject constructor(
                         OrphanItemInfo(it.id, it.name, extra = "${if (it.type == "deduction") "-" else "+"}¥${"%.2f".format(it.amount)}")
                     },
                     orphanBreaks = scan.breaks.map {
+                        OrphanItemInfo(it.id, it.label, extra =
+                            if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
+                    },
+                    orphanBreaksInProfiles = scan.breaksInProfileSnapshots.map {
                         OrphanItemInfo(it.id, it.label, extra =
                             if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
                     },
@@ -342,6 +355,37 @@ class StorageViewModel @Inject constructor(
             scanOrphanData()
         }.onFailure {
             _uiEvent.send(StorageUiEvent.ShowError("清理失败：${it.message}"))
+        }
+    }
+
+    /**
+     * 一键对齐：把「薪资/考勤现值 + 当前生效的休息时段集合」固化成一份**今天生效**的口径档案。
+     *
+     * 为什么需要：口径档案冻结的是快照，表里是「编辑中集合」。
+     * 两者不一致时（如手动删过档案、或导入了不带档案的旧备份），
+     * 每次「按档案同步时段集合」都会把多出来的时段重新归档 → 刚清理掉的废弃数据会再出现。
+     * 对齐之后「当前生效集合 = 当前档案快照」这条不变式恢复，废弃数据不再复现。
+     *
+     * ⚠️ 只影响今天及以后：生效日之前的日期仍用各自的历史档案 → 历史工时/薪资不变。
+     */
+    fun alignConfigWithProfile() = viewModelScope.launch {
+        runCatching {
+            val today = com.schedulecalendar.app.domain.util.DateFormats.date(java.time.LocalDate.now())
+            calcProfileRepo.createProfile(
+                name = "${today.take(7)} 口径对齐",
+                salary = prefs.salaryConfigFlow.first(),
+                attend = prefs.attendConfigFlow.first(),
+                breaks = breakRepo.getAll(),
+                effectiveFrom = today
+            )
+            // 表与档案对齐（同一批 id → 归档后立即复活，不产生新残留）
+            calcProfileRepo.getCurrentProfile()?.let { cur ->
+                calcProfileRepo.syncBreaksToTable(cur.breaks)
+            }
+            _uiEvent.send(StorageUiEvent.ShowMessage("已生成今天生效的口径档案，现值与口径已一致"))
+            scanOrphanData()
+        }.onFailure {
+            _uiEvent.send(StorageUiEvent.ShowError("对齐失败：${it.message}"))
         }
     }
 }

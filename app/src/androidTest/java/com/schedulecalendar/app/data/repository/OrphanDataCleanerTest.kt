@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.schedulecalendar.app.data.db.AppDatabase
 import com.schedulecalendar.app.data.db.Migrations
+import com.schedulecalendar.app.data.prefs.AppPreferences
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -47,13 +48,21 @@ class OrphanDataCleanerTest {
                 "VALUES ('2026-01-05','SHIFT','s3',NULL,NULL,NULL,'[]','null',NULL,0,0,0,0)"
         )
 
+        val breakRepo = ShiftBreakRepository(db.shiftBreakDao())
         val cleaner = OrphanDataCleaner(
             db = db,
             scheduleRepo = ScheduleRepository(db.scheduleRecordDao()),
             shiftRepo = ShiftRepository(db.shiftDao()),
             statusRepo = ShiftStatusRepository(db.shiftStatusDao()),
             extraRepo = ExtraItemRepository(db.extraItemDao()),
-            breakRepo = ShiftBreakRepository(db.shiftBreakDao())
+            breakRepo = breakRepo,
+            calcProfileRepo = CalcProfileRepository(
+                dao = db.calcProfileDao(),
+                prefs = AppPreferences(ctx),
+                breakRepo = breakRepo,
+                scheduleRepo = ScheduleRepository(db.scheduleRecordDao())
+            ),
+            prefs = AppPreferences(ctx)
         )
 
         runBlocking {

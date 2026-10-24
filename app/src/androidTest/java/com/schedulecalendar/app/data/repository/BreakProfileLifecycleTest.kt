@@ -56,7 +56,9 @@ class BreakProfileLifecycleTest {
             shiftRepo = ShiftRepository(db.shiftDao()),
             statusRepo = ShiftStatusRepository(db.shiftStatusDao()),
             extraRepo = ExtraItemRepository(db.extraItemDao()),
-            breakRepo = breakRepo
+            breakRepo = breakRepo,
+            calcProfileRepo = profileRepo,
+            prefs = AppPreferences(ctx)
         )
 
         val today = DateFormats.date(LocalDate.now())
@@ -80,10 +82,14 @@ class BreakProfileLifecycleTest {
             // ── 环节 2：删除该时段 ───────────────────────────────────────
             profileRepo.deleteBreakWithProfile(created.id, today, "时段调整")
             assertEquals("删除后有效时段应为 1", 1, breakRepo.getAll().size)
+            // 残留 1 条，但它**被「创建时段时生成的那份档案」的快照提到** → 归入"历史口径里的时段"分组
+            val afterDelete = cleaner.scan()
+            assertEquals("纯垃圾分组此时为空", 0, afterDelete.breaks.size)
             assertEquals(
-                "删除时段应产生 1 条归档残留（无引用锚点 → 纯废弃数据）",
-                1, cleaner.scan().breaks.size
+                "被历史档案快照提到的归档时段应单独归组",
+                1, afterDelete.breaksInProfileSnapshots.size
             )
+            assertEquals("合计仍是 1 条可清理", 1, afterDelete.cleanableCount)
 
             // ── 环节 3：逐个删除档案，只留初始档案 ────────────────────────
             // 反复删除「当前生效且非初始」的档案，直到只剩初始档案
@@ -96,7 +102,7 @@ class BreakProfileLifecycleTest {
                 // 与 UI 侧一致：删除档案后把该档案的时段集合同步回表
                 val restored = profileRepo.getCurrentProfile()
                 profileRepo.syncBreaksToTable(restored?.breaks ?: emptyList())
-                rounds += cleaner.scan().breaks.size
+                rounds += cleaner.scan().cleanableCount
                 guard++
                 assertTrue("不应陷入死循环", guard < 10)
             }
@@ -115,8 +121,12 @@ class BreakProfileLifecycleTest {
 
             // ── 结论：残留仍在，但可被清理，且不影响有效集合 ─────────────
             assertEquals(
-                "最终状态：残留仍是那 1 条归档时段",
+                "最终状态：残留仍是那 1 条归档时段（此时已无档案快照引用它）",
                 1, cleaner.scan().breaks.size
+            )
+            assertEquals(
+                "最终状态：被档案快照引用的分组为空",
+                0, cleaner.scan().breaksInProfileSnapshots.size
             )
             assertEquals("有效时段集合应回到初始档案那一份", 1, breakRepo.getAll().size)
             assertEquals("有效时段内容应与初始档案冻结的一致", "午休", breakRepo.getAll().first().label)
@@ -136,14 +146,46 @@ class BreakProfileLifecycleTest {
                 "同步时段不应影响班次的归档状态",
                 before.shifts.size, after.shifts.size
             )
-
             // ── 清理后：归档残留归零，有效数据不动 ───────────────────────
             // 计数 = 1 条归档时段 + 上面为对照插入的 1 条归档班次
             assertEquals("应清掉 1 条归档时段 + 1 条归档班次", 2, cleaner.clean())
             assertEquals("清理后无归档时段残留", 0, cleaner.scan().breaks.size)
+            assertEquals("清理后无被档案引用的归档时段", 0, cleaner.scan().breaksInProfileSnapshots.size)
             assertEquals("清理后无归档班次残留", 0, cleaner.scan().shifts.size)
             assertEquals("清理后有效时段仍为 1", 1, breakRepo.getAll().size)
             assertEquals("清理后档案数不变", 1, profileRepo.getAll().size)
+
+            // ── 场景 2：归档时段被**历史档案的快照**引用 ─────────────────────
+            // 关键：档案里存的是自包含 JSON 快照 → 物理删表行不改变任何历史计算 → 依然可清。
+            // 但扫描必须把它与「纯垃圾」分开（UI 上要单独标注，用户才敢删）。
+            val historic = ShiftBreak(id = "b_hist", label = "历史时段", startTime = "15:00", endTime = "15:30")
+            breakRepo.save(historic)
+            // 一份带该时段的历史档案（已收口 → 历史口径）
+            profileRepo.createProfile(
+                name = "历史口径",
+                salary = profileRepo.getCurrentProfile()!!.salary,
+                attend = profileRepo.getCurrentProfile()!!.attend,
+                breaks = listOf(historic),
+                effectiveFrom = "2026-01-01"
+            )
+            breakRepo.archive(historic.id)   // 退出生效，但历史档案的快照里还有它
+
+            val scan2 = cleaner.scan()
+            assertEquals(
+                "被历史档案快照引用的归档时段应单独分组",
+                1, scan2.breaksInProfileSnapshots.size
+            )
+            assertEquals("纯垃圾分组此时为空", 0, scan2.breaks.size)
+            assertTrue(
+                "该时段仍应计入可清理总数（删除安全）",
+                scan2.cleanableCount >= 1
+            )
+            // 删掉它之后，历史档案的快照内容不变 → 历史计算口径不变
+            val snapshotBefore = profileRepo.getAll().first { it.breaks.any { b -> b.id == historic.id } }.breaks
+            cleaner.clean()
+            val snapshotAfter = profileRepo.getAll().first { it.breaks.any { b -> b.id == historic.id } }.breaks
+            assertEquals("删除后历史档案的快照内容必须不变", snapshotBefore, snapshotAfter)
+            assertEquals("删除后表里已无该时段", 0, breakRepo.getAllWithArchived().count { it.id == historic.id })
         }
         db.close()
         ctx.deleteDatabase(dbName)

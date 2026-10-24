@@ -288,6 +288,41 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
             // ── 数据清理 ──────────────────────────────────────
             item { SectionHeader("数据清理") }
 
+            // 配置一致性提示：薪资/考勤的现值与当前生效口径不一致（会让设置页显示的值不参与计算）
+            state.configInconsistency?.let { msg ->
+                item {
+                    Card(
+                        Modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.35f))
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "配置口径不一致",
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Text(msg, fontSize = 12.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text(
+                                "影响：设置页显示的值可能不参与计算。" +
+                                    "另外，删/复制口径档案时，不在目标档案快照里的时段会退出生效，" +
+                                    "变成可清理的废弃数据（数量固定，不会越清越多）。",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Button(
+                                onClick = { vm.alignConfigWithProfile() },
+                                modifier = Modifier.padding(top = 4.dp)
+                            ) {
+                                Text("一键对齐（生成今天生效的口径）")
+                            }
+                        }
+                    }
+                }
+            }
+
             // 清理废弃数据
             val totalOrphans = state.orphanShiftsCount + state.orphanStatusesCount + state.orphanExtrasCount + state.orphanBreaksCount
             if (totalOrphans > 0) {
@@ -359,6 +394,22 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                                     if (state.orphanBreaks.isNotEmpty()) {
                                         OrphanGroupHeader("废弃不计入时段", state.orphanBreaks.size)
                                         state.orphanBreaks.forEach { item ->
+                                            OrphanDetailRow(item.name, item.extra)
+                                        }
+                                    }
+                                    // 归档、但被历史口径档案的快照提到过的时段
+                                    if (state.orphanBreaksInProfiles.isNotEmpty()) {
+                                        OrphanGroupHeader(
+                                            "历史口径里的时段（已不生效）",
+                                            state.orphanBreaksInProfiles.size
+                                        )
+                                        Text(
+                                            "这些时段曾写进某份口径档案的快照里，现在已不生效。" +
+                                                "档案存的是快照副本（不是引用），删除它们不会改变任何历史月份的工时与薪资。",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        state.orphanBreaksInProfiles.forEach { item ->
                                             OrphanDetailRow(item.name, item.extra)
                                         }
                                     }
