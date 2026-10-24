@@ -77,12 +77,33 @@ private data class OvertimeActionTarget(val date: String, val isEarly: Boolean)
 @Composable
 fun TodoScreen(
     navController: NavController,
+    /**
+     * 进入时定位的月份（"yyyy-MM"）。
+     *
+     * 头部「N 条待办待处理」跳进来时带上待办所在月份 —— 否则会停在本月，
+     * 而待办是**按月加载**的，那条上个月的待办在列表里根本不存在（看着像"待办丢了"）。
+     * 注意：事项页与日历页各自持有**不同的** CalendarViewModel 实例，月份互不相通，
+     * 所以必须显式传，不能指望共享状态。
+     */
+    focusMonth: String? = null,
     vm: CalendarViewModel = hiltViewModel(),
     eventVm: CalendarEventViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // 定位到指定月份（待办所在月）→ 重新加载该月的待办与日程
+    LaunchedEffect(focusMonth) {
+        val ym = focusMonth?.split("-")
+        if (ym != null && ym.size == 2) {
+            val y = ym[0].toIntOrNull()
+            val m = ym[1].toIntOrNull()
+            if (y != null && m != null && m in 1..12) {
+                vm.goToMonth(y, m)
+            }
+        }
+    }
 
     // ── 待办中心展开状态 ──────────────────────────────────────────────
     var missedExpanded by remember { mutableStateOf(true) }

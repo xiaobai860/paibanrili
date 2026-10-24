@@ -50,15 +50,32 @@ import com.schedulecalendar.app.ui.settings.ReminderSettingsScreen
 import com.schedulecalendar.app.ui.settings.WidgetSettingsScreen
 import com.schedulecalendar.app.ui.calendar.HuangLiScreen
 
-/** Tab 配置（使用类型安全路由 Any 统一持有） */
-data class TabItem(val route: Any, val label: String, val icon: ImageVector)
+/**
+ * Tab 配置（使用类型安全路由 Any 统一持有）
+ *
+ * @param isSelected 是否为当前 destination。
+ *   ⚠️ 类型安全路由（kotlinx.serialization）的 `destination.route` 是**路由模板**，
+ *   带参数的路由形如 `…RouteTodo?focusMonth={focusMonth}` 或 `…RouteTodo/{focusMonth}?`，
+ *   **与类名不相等** → 直接拿 route 字符串比类名会漏判（底部导航栏不显示、Tab 高亮丢失）。
+ *   模板总是以「路由类名」开头，故用 `startsWith(类名)` 判定，两种模板形式都成立，
+ *   且不依赖 Navigation 具体的模板拼接规则。
+ */
+data class TabItem(
+    val route: Any,
+    val label: String,
+    val icon: ImageVector,
+    val isSelected: (NavDestination?) -> Boolean
+)
+
+private fun NavDestination?.isTabRoute(routeName: String): Boolean =
+    this?.route?.startsWith(routeName) == true
 
 private val tabs = listOf(
-    TabItem(RouteCalendar,   "日历",  Icons.Filled.CalendarMonth),
-    TabItem(RouteTodo,       "事项",  Icons.Filled.Notifications),
-    TabItem(RouteStatistics, "统计",  Icons.Filled.BarChart),
-    TabItem(RouteShifts,     "班次",  Icons.Filled.Schedule),
-    TabItem(RouteSettings,   "设置",  Icons.Filled.Settings)
+    TabItem(RouteCalendar,   "日历",  Icons.Filled.CalendarMonth) { d -> d.isTabRoute(RouteCalendar::class.qualifiedName.orEmpty()) },
+    TabItem(RouteTodo(),     "事项",  Icons.Filled.Notifications) { d -> d.isTabRoute(RouteTodo::class.qualifiedName.orEmpty()) },
+    TabItem(RouteStatistics, "统计",  Icons.Filled.BarChart)     { d -> d.isTabRoute(RouteStatistics::class.qualifiedName.orEmpty()) },
+    TabItem(RouteShifts,     "班次",  Icons.Filled.Schedule)    { d -> d.isTabRoute(RouteShifts::class.qualifiedName.orEmpty()) },
+    TabItem(RouteSettings,   "设置",  Icons.Filled.Settings)     { d -> d.isTabRoute(RouteSettings::class.qualifiedName.orEmpty()) }
 )
 
 // ── 转场动画 ──────────────────────────────────────────────────────────────────
@@ -121,8 +138,11 @@ fun AppNavHost() {
     LaunchedEffect(currentDest?.route) {
         if (BuildConfig.DEBUG) Log.e("WBD", "navhost: dest=" + (currentDest?.route ?: "null"))
     }
-    val tabRouteNames = tabs.map { (it.route::class).qualifiedName }
-    val showBottomBar = currentDest?.route in tabRouteNames
+    // ⚠️ 类型安全路由（kotlinx.serialization）的 destination.route 是**路由模板**，
+    // 带参数的路由形如 "…RouteTodo?focusMonth={focusMonth}" 或 "…RouteTodo/{focusMonth}?"，
+    // **与类名不相等** → 直接比较会漏判（底部导航栏不显示、Tab 高亮丢失）。
+    // 用官方 hasRoute(KClass) 判定：不依赖模板的具体格式，object / 带参数路由都正确。
+    val showBottomBar = currentDest != null && tabs.any { it.isSelected(currentDest) }
 
     val context = LocalContext.current
 
@@ -141,7 +161,7 @@ fun AppNavHost() {
                 //   进入二级页 → 导航栏**向下滑出** + 淡出（更快，让位要果断）；
                 //   返回      → 从下方**滑入**   + 淡入（略延迟，等页面基本落位再出现）。
                 // 位移只在「进入/离开二级页」时触发 —— Tab 互切时 showBottomBar 恒为 true
-                // （五个 Tab 都在 tabRouteNames 里），所以不会在快速切 Tab 时反复触发整条导航栏的布局/绘制。
+                // （五个 Tab 都在 tabs 里），所以不会在快速切 Tab 时反复触发整条导航栏的布局/绘制。
                 enter = slideInVertically(
                     animationSpec = tween(BOTTOM_BAR_ENTER_MS, delayMillis = BOTTOM_BAR_ENTER_DELAY_MS, easing = MotionEasing)
                 ) { fullHeight -> fullHeight } + fadeIn(
@@ -155,7 +175,7 @@ fun AppNavHost() {
             ) {
                 NavigationBar {
                     tabs.forEach { tab ->
-                        val selected = currentDest?.route == (tab.route::class).qualifiedName
+                        val selected = tab.isSelected(currentDest)
                         NavigationBarItem(
                             icon     = { Icon(tab.icon, contentDescription = tab.label) },
                             label    = { Text(tab.label) },
@@ -206,7 +226,10 @@ fun AppNavHost() {
             composable<RouteTodo>(
                 enterTransition = tabEnter, exitTransition = tabExit,
                 popEnterTransition = tabEnter, popExitTransition = tabExit,
-                content = { TodoScreen(navController) }
+                content = { backStackEntry ->
+                    val route = backStackEntry.toRoute<RouteTodo>()
+                    TodoScreen(navController, focusMonth = route.focusMonth)
+                }
             )
             composable<RouteShifts>(
                 enterTransition = tabEnter, exitTransition = tabExit,

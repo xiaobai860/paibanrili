@@ -343,13 +343,17 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                     fontWeight = FontWeight.Medium,
                                     color = HolidayRed,
                                     modifier = Modifier.clickable {
-                                        navController.navigate(RouteTodo) {
+                                        // 把**待办所在月份**带过去：待办是按月加载的，
+                                        // 而事项页与日历页是两个不同的 ViewModel 实例（月份互不相通），
+                                        // 不传就会停在本月 → 上个月那条待办在事项页看不到（像"丢了"）。
+                                        // ⚠️ 这里刻意**不**用 saveState/restoreState：
+                                        // restoreState 会恢复此前保存的 RouteTodo entry（带旧参数）→ 新月份被忽略。
+                                        val focus = "%04d-%02d".format(state.year, state.month)
+                                        navController.navigate(RouteTodo(focusMonth = focus)) {
                                             popUpTo(navController.graph.startDestinationId) {
                                                 inclusive = true
-                                                saveState = true
                                             }
                                             launchSingleTop = true
-                                            restoreState = true
                                         }
                                     }
                                 )
