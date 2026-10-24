@@ -66,7 +66,14 @@ data class StorageUiState(
     val orphanShifts:    List<OrphanItemInfo> = emptyList(),
     val orphanStatuses:  List<OrphanItemInfo> = emptyList(),
     val orphanExtras:    List<OrphanItemInfo> = emptyList(),
-    val orphanBreaks:    List<OrphanItemInfo> = emptyList()
+    val orphanBreaks:    List<OrphanItemInfo> = emptyList(),
+    // 已归档但仍被历史排班引用 → 必须保留（历史锚点，不可清理）
+    val keptShiftsCount:   Int = 0,
+    val keptStatusesCount: Int = 0,
+    val keptExtrasCount:   Int = 0,
+    val keptShifts:   List<OrphanItemInfo> = emptyList(),
+    val keptStatuses: List<OrphanItemInfo> = emptyList(),
+    val keptExtras:   List<OrphanItemInfo> = emptyList()
 )
 
 sealed class StorageUiEvent {
@@ -87,7 +94,9 @@ class StorageViewModel @Inject constructor(
     private val extraRepo:    ExtraItemRepository,
     private val prefs: AppPreferences,
     private val db: AppDatabase,
-    private val calcProfileRepo: CalcProfileRepository
+    private val calcProfileRepo: CalcProfileRepository,
+    /** 废弃数据扫描/清理（判定逻辑集中在这里，扫描与删除共用，避免两处漂移） */
+    private val orphanCleaner: OrphanDataCleaner
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(StorageUiState())
@@ -280,38 +289,41 @@ class StorageViewModel @Inject constructor(
     /** 扫描可清理的废弃（已归档且无引用）数据 */
     fun scanOrphanData() = viewModelScope.launch {
         runCatching {
-            // 收集所有排班记录中引用的 shiftId、statusId、extraItemId
-            // （走 referencedIds：只读必要列，不整表读、不映射全表对象）
-            val (referencedShiftIds, referencedStatusIds, referencedExtraIds) = scheduleRepo.referencedIds()
-
-            // 找出已归档且未被引用的项目
-            val archivedShifts = shiftRepo.getAll().filter { it.archivedAt != null && it.id !in referencedShiftIds }
-            // 必须用含归档集合：这里正是要筛「已归档且无引用」的项，用仅有效集合永远扫不到
-            val archivedStatuses = statusRepo.getAllIncludingArchivedWithBuiltin().filter { it.archivedAt != null && it.id !in referencedStatusIds }
-            val archivedExtras = extraRepo.getAll().filter { it.archivedAt != null && it.id !in referencedExtraIds }
-            // 全局休息时段**不参与**废弃数据清理：它是「全局生效」配置（不挂在任何排班上），
-            // 没有「是否被引用」的判定；清理它会直接改变所有历史日期的工时口径。
-            val archivedBreaks = emptyList<com.schedulecalendar.app.domain.model.ShiftBreak>()
+            // 扫描逻辑集中在 OrphanDataCleaner（扫描与删除共用同一套判定，避免两处漂移）
+            val scan = orphanCleaner.scan()
 
             _state.update {
                 it.copy(
-                    orphanShiftsCount = archivedShifts.size,
-                    orphanStatusesCount = archivedStatuses.size,
-                    orphanExtrasCount = archivedExtras.size,
-                    orphanBreaksCount = archivedBreaks.size,
-                    orphanShifts = archivedShifts.map {
+                    orphanShiftsCount = scan.shifts.size,
+                    orphanStatusesCount = scan.statuses.size,
+                    orphanExtrasCount = scan.extras.size,
+                    orphanBreaksCount = scan.breaks.size,
+                    orphanShifts = scan.shifts.map {
                         OrphanItemInfo(it.id, it.name, it.color,
                             if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
                     },
-                    orphanStatuses = archivedStatuses.map {
+                    orphanStatuses = scan.statuses.map {
                         OrphanItemInfo(it.id, it.name, it.color, it.reportType ?: "")
                     },
-                    orphanExtras = archivedExtras.map {
+                    orphanExtras = scan.extras.map {
                         OrphanItemInfo(it.id, it.name, extra = "${if (it.type == "deduction") "-" else "+"}¥${"%.2f".format(it.amount)}")
                     },
-                    orphanBreaks = archivedBreaks.map {
+                    orphanBreaks = scan.breaks.map {
                         OrphanItemInfo(it.id, it.label, extra =
                             if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
+                    },
+                    keptShiftsCount = scan.keptShifts.size,
+                    keptStatusesCount = scan.keptStatuses.size,
+                    keptExtrasCount = scan.keptExtras.size,
+                    keptShifts = scan.keptShifts.map {
+                        OrphanItemInfo(it.id, it.name, it.color,
+                            if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
+                    },
+                    keptStatuses = scan.keptStatuses.map {
+                        OrphanItemInfo(it.id, it.name, it.color, it.reportType ?: "")
+                    },
+                    keptExtras = scan.keptExtras.map {
+                        OrphanItemInfo(it.id, it.name, extra = "${if (it.type == "deduction") "-" else "+"}¥${"%.2f".format(it.amount)}")
                     }
                 )
             }
@@ -323,26 +335,8 @@ class StorageViewModel @Inject constructor(
     /** 执行清理：物理删除所有废弃数据 */
     fun cleanupOrphanData() = viewModelScope.launch {
         runCatching {
-            val (referencedShiftIds, referencedStatusIds, referencedExtraIds) = scheduleRepo.referencedIds()
-
-            val archivedShifts = shiftRepo.getAll().filter { it.archivedAt != null && it.id !in referencedShiftIds }
-            // 必须用含归档集合：这里正是要筛「已归档且无引用」的项，用仅有效集合永远扫不到
-            val archivedStatuses = statusRepo.getAllIncludingArchivedWithBuiltin().filter { it.archivedAt != null && it.id !in referencedStatusIds }
-            val archivedExtras = extraRepo.getAll().filter { it.archivedAt != null && it.id !in referencedExtraIds }
-            // 全局休息时段不清理（全局生效、无引用概念，删它=改所有历史口径）
-            val archivedBreaks = emptyList<com.schedulecalendar.app.domain.model.ShiftBreak>()
-
-            // 整个清理放进单事务：原先逐条物理删除，中途失败会留下「删一半」且不可回滚的状态。
-            // 事务成功后计数必然与实际一致（原先逐条累加，异常时提示的数字与实际不符）
-            db.withTransaction {
-                archivedShifts.forEach { shiftRepo.delete(it.id) }
-                archivedStatuses.filter { !it.builtIn }.forEach { statusRepo.delete(it.id) }
-                archivedExtras.forEach { extraRepo.delete(it.id) }
-            }
-            val deletedCount = archivedShifts.size +
-                archivedStatuses.count { !it.builtIn } +
-                archivedExtras.size + archivedBreaks.size
-
+            // 判定与扫描共用 OrphanDataCleaner（避免「看到的」与「删掉的」不一致）
+            val deletedCount = orphanCleaner.clean()
             _uiEvent.send(StorageUiEvent.ShowMessage("已清理 $deletedCount 条废弃数据"))
             // 重新扫描
             scanOrphanData()

@@ -362,6 +362,36 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                                             OrphanDetailRow(item.name, item.extra)
                                         }
                                     }
+                                    // 因历史排班仍被引用而必须保留的归档项（不可清理）
+                                    val keptTotal = state.keptShiftsCount + state.keptStatusesCount + state.keptExtrasCount
+                                    if (keptTotal > 0) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            "以下 $keptTotal 项已被归档，但历史排班仍引用它们" +
+                                                "（改动班次/状态/项目采用「归档旧记录 + 新编号」，历史记录指向旧编号）。" +
+                                                "它们是历史工时与薪资的计算依据，不能删除。",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (state.keptShifts.isNotEmpty()) {
+                                            OrphanGroupHeader("保留·历史班次", state.keptShifts.size)
+                                            state.keptShifts.forEach { item ->
+                                                OrphanDetailRow(item.name, item.extra, item.color)
+                                            }
+                                        }
+                                        if (state.keptStatuses.isNotEmpty()) {
+                                            OrphanGroupHeader("保留·历史状态", state.keptStatuses.size)
+                                            state.keptStatuses.forEach { item ->
+                                                OrphanDetailRow(item.name, item.extra, item.color)
+                                            }
+                                        }
+                                        if (state.keptExtras.isNotEmpty()) {
+                                            OrphanGroupHeader("保留·历史项目", state.keptExtras.size)
+                                            state.keptExtras.forEach { item ->
+                                                OrphanDetailRow(item.name, item.extra)
+                                            }
+                                        }
+                                    }
                                 }
                                 Spacer(Modifier.height(6.dp))
                             }

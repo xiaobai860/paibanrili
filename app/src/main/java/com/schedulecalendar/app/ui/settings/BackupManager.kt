@@ -8,9 +8,13 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import androidx.room.withTransaction
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
-import com.google.gson.InstanceCreator
+import com.schedulecalendar.app.data.compat.AppDataBackup
+import com.schedulecalendar.app.data.compat.BackupCompat
+import com.schedulecalendar.app.data.compat.BackupGson
+import com.schedulecalendar.app.data.compat.BackupKind
+import com.schedulecalendar.app.data.compat.DataFormat
+import com.schedulecalendar.app.data.compat.DataIntegrityChecker
+import com.schedulecalendar.app.data.compat.ShiftConfigBackup
 import com.schedulecalendar.app.data.db.AppDatabase
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.*
@@ -41,6 +45,7 @@ class BackupManager @Inject constructor(
     private val statusRepo:   ShiftStatusRepository,
     private val extraRepo:    ExtraItemRepository,
     private val calcProfileRepo: CalcProfileRepository,
+    private val integrityChecker: DataIntegrityChecker,
     private val prefs:        AppPreferences
 ) {
     private val gson = BackupGson.instance
@@ -399,25 +404,36 @@ class BackupManager @Inject constructor(
         return result.distinctBy { it.path }
     }
 
-    /** 从外部 JSON 内容恢复（由导入功能调用） */
+    /**
+     * 从外部 JSON 内容恢复（由导入功能调用）。
+     *
+     * 流程：**版本闸门 → 格式转换 → 恢复 → 校验 →（失败则回滚）**
+     *
+     * - 版本闸门：低于当前支持的最低格式版本 → **直接拒绝**（明确报错好过「恢复了但算错」）；
+     * - 格式转换：[BackupCompat] 把任意历史格式改写成当前格式后再落库；
+     * - 校验：恢复完检查行数/JSON/口径，失败则用恢复前的快照回滚。
+     */
     suspend fun restoreFromJson(json: String): String {
         // 按顶层 key 集合判断备份类型，避免用子串猜测导致备注里带关键字就误判
         val root = runCatching {
             com.google.gson.JsonParser.parseString(json).asJsonObject
         }.getOrNull() ?: throw IllegalArgumentException("JSON 解析失败")
-        val keys = root.keySet()
-        return when {
-            "scheduleRecords" in keys -> {
-                // restoreAppData 可能返回旧版备份的注意事项（如只含 12 个月排班），需透出给用户
-                val note = restoreAppData(json)
-                if (note != null) "应用数据恢复成功（$note）" else "应用数据恢复成功"
-            }
-            "shifts" in keys -> {
-                restoreShiftConfig(json)
-                "班次配置恢复成功"
-            }
-            else -> throw IllegalArgumentException("无法识别的备份格式")
+        val kind = BackupCompat.detectKind(root) ?: throw IllegalArgumentException("无法识别的备份格式")
+        val srcVersion = BackupCompat.detectVersion(root)
+        val minVersion = DataFormat.minSupportedBackupVersion(kind)
+        if (srcVersion < minVersion) {
+            throw IllegalArgumentException(
+                "该备份为 v$srcVersion，已低于当前版本支持的最低格式（v$minVersion）。" +
+                    "请先在兼容版中导出备份，再升级到当前版本。"
+            )
         }
+        val upgraded = BackupCompat.upgrade(json)
+        val result = when (kind) {
+            BackupKind.APP_DATA -> restoreAppData(upgraded.json)
+            BackupKind.SHIFT_CONFIG -> restoreShiftConfig(upgraded.json)
+        }
+        // 转换说明要透出给用户（如「旧备份仅含最近 12 个月排班」「已生成初始计算口径」）
+        return if (upgraded.notes.isEmpty()) result else "$result（${upgraded.notes.joinToString("；")}）"
     }
 
     /** 删除备份文件（兼容 SAF URI 和普通文件路径） */
@@ -441,7 +457,7 @@ class BackupManager @Inject constructor(
         // 全量备份：导出所有排班记录（含历史与未来），不再仅限最近 12 个月，避免恢复后更早数据丢失
         val allRecords = scheduleRepo.getAll()
         val backup = AppDataBackup(
-            version = 4, exportTime = now,
+            version = DataFormat.APP_DATA_BACKUP, exportTime = now,
             scheduleRecords = allRecords,
             shifts = shiftRepo.getAll().filter { !it.builtIn },
             globalBreaks = breakRepo.getAll(),
@@ -478,8 +494,8 @@ class BackupManager @Inject constructor(
 
     private suspend fun buildShiftConfigJson(): String {
         val now = LocalDateTime.now().format(exportFormatter)
-        val data = com.schedulecalendar.app.ui.shifts.ShiftExportData(
-            version = 6, exportTime = now,
+        val data = ShiftConfigBackup(
+            version = DataFormat.SHIFT_CONFIG_BACKUP, exportTime = now,
             shifts = shiftRepo.getAll().filter { !it.builtIn },
             globalBreaks = breakRepo.getAll(),
             shiftStatuses = statusRepo.getAll().filter { !it.builtIn },
@@ -496,22 +512,36 @@ class BackupManager @Inject constructor(
     }
 
     /**
-     * 恢复应用数据。
-     * @return 需要提醒用户的注意事项（旧版备份的固有缺失），无则 null
+     * 恢复应用数据（入参必须是**当前格式**的 JSON —— 旧格式已由 [BackupCompat] 转换）。
+     *
+     * 恢复前自动生成一份快照 → 恢复后校验 → 校验不通过就用快照回滚。
      */
-    private suspend fun restoreAppData(json: String): String? {
+    private suspend fun restoreAppData(json: String): String {
         val backup = gson.fromJson(json, AppDataBackup::class.java)
             ?: throw IllegalArgumentException("JSON 解析失败")
-        // v1/v2 时代的备份只序列化最近 12 个月排班（旧实现 (-11..0)，2026-08-22 起才改为全量导出），
-        // 而恢复是「整表替换」→ 更早历史在备份里本就不存在、恢复后直接消失，必须显式告知用户
-        val legacyNote = if (backup.version <= 2) {
-            "该备份为旧版本格式，仅含最近 12 个月排班，更早的历史已不在备份中"
-        } else null
         // 恢复前自动生成一份「应用数据」快照，万一恢复结果不符合预期可回退（幂等，失败仅告警不阻断）
-        runCatching { createAppDataBackup() }
-            .onFailure { android.util.Log.w("BackupManager", "pre-restore snapshot failed", it) }
+        val snapshot = createAppDataBackup().getOrNull()
+        applyAppData(backup)
 
-        // DB 部分放在同一事务内：任一步失败整体回滚，避免「排班已写、休息已删」的半套数据
+        // 恢复后校验：数据是否还完整可用（行数、引用 JSON、口径档案）
+        val report = integrityChecker.check(null)
+        if (!report.ok) {
+            snapshot?.let { file ->
+                runCatching {
+                    gson.fromJson(file.readText(), AppDataBackup::class.java)?.let { applyAppData(it) }
+                }.onFailure { android.util.Log.w("BackupManager", "rollback after failed restore", it) }
+            }
+            throw IllegalStateException("恢复后数据校验未通过，已回滚到恢复前的数据：${report.summary()}")
+        }
+        return "应用数据恢复成功"
+    }
+
+    /**
+     * 把一份**当前格式**的应用数据写进 DB 与偏好（不做校验，供恢复与回滚复用）。
+     *
+     * DB 部分放在同一事务内：任一步失败整体回滚，避免「排班已写、休息已删」的半套数据。
+     */
+    private suspend fun applyAppData(backup: AppDataBackup) {
         db.withTransaction {
             // 排班记录按「整表替换」恢复：原先只upsert 合并，备份里已删除的旧排班会残留，
             // 恢复结果不是备份当时的快照（与其余表的替换语义保持一致）
@@ -537,7 +567,7 @@ class BackupManager @Inject constructor(
                 extraRepo.deleteAll()
                 backup.extraItems.forEach { extraRepo.save(it) }
             }
-            // 计算口径档案（v4）：整表替换，保证恢复后历史日期用的口径与备份时完全一致。
+            // 计算口径档案（v4+）：整表替换，保证恢复后历史日期用的口径与备份时完全一致。
             // 旧备份没有该字段时保持现状（不删已有档案）。
             backup.calcProfiles?.let { calcProfileRepo.replaceAll(it) }
         }
@@ -573,11 +603,10 @@ class BackupManager @Inject constructor(
         // ── 恢复颜色索引 ──
         if (backup.shiftColorIndex != null) prefs.saveShiftColorIndex(backup.shiftColorIndex)
         if (backup.statusColorIndex != null) prefs.saveStatusColorIndex(backup.statusColorIndex)
-        return legacyNote
     }
 
-    private suspend fun restoreShiftConfig(json: String) {
-        val data = gson.fromJson(json, com.schedulecalendar.app.ui.shifts.ShiftExportData::class.java)
+    private suspend fun restoreShiftConfig(json: String): String {
+        val data = gson.fromJson(json, ShiftConfigBackup::class.java)
             ?: throw IllegalArgumentException("JSON 解析失败")
         runCatching { createShiftConfigBackup() }
             .onFailure { android.util.Log.w("BackupManager", "pre-restore snapshot failed", it) }
@@ -624,6 +653,7 @@ class BackupManager @Inject constructor(
         data.breakOrder?.let { prefs.saveBreakOrder(it) }
         data.shiftColorIndex?.let { prefs.saveShiftColorIndex(it) }
         data.statusColorIndex?.let { prefs.saveStatusColorIndex(it) }
+        return "班次配置恢复成功"
     }
 
     private fun listBackupFiles(type: BackupType, dir: File): List<BackupFile> {
@@ -723,78 +753,7 @@ class BackupManager @Inject constructor(
     }
 }
 
-/**
- * 完整 AppData 备份包（内部数据结构）v2（+ 提醒设置/排序/颜色索引/快捷方式）
- *
- * ⚠️ 列表字段用 `List<...>?` 而非默认 `emptyList()`，以便区分
- * 「备份中确实没有该字段（旧版备份 / 手工编辑）」与「备份中该列表为空」。
- * 恢复时：字段缺失 → 保持现状不动；字段存在 → 全量替换。
- */
-private data class AppDataBackup(
-    val version: Int = 2,
-    val exportTime: String = "",
-    val scheduleRecords: List<ScheduleRecord>? = null,
-    val shifts: List<Shift>? = null,
-    val globalBreaks: List<ShiftBreak>? = null,
-    val shiftStatuses: List<ShiftStatus>? = null,
-    val extraItems: List<ExtraItem>? = null,
-    val salaryConfig: SalaryConfig? = null,
-    val attendConfig: AttendConfig? = null,
-    val scheduleRule: ScheduleRule? = null,
-    val displaySchemes: List<DisplayScheme>? = null,
-    val disabledAccountIds: List<Long>? = null,
-    val accountCategories: Map<String, String>? = null,
-    val accountsInitialized: Boolean? = null,
-    // ── v2 新增字段 ──
-    val reminderEnabled: Boolean? = null,
-    val reminderMethod: String? = null,
-    val reminderClockIn: Boolean? = null,
-    val reminderClockOut: Boolean? = null,
-    val reminderClockInMinutes: Int? = null,
-    val reminderClockOutMinutes: Int? = null,
-    val reminderNotifyBar: Boolean? = null,
-    // ── v4 新增：计算口径档案（薪资/考勤/休息时段的带生效日快照）──
-    // 可空：旧备份没有该字段时保持现状（不强制建档案），恢复后由 ensureInitialProfile 兜底
-    val calcProfiles: List<com.schedulecalendar.app.domain.model.CalcProfile>? = null,
-    val shiftOrder: List<String>? = null,
-    val statusOrder: List<String>? = null,
-    val extraOrder: List<String>? = null,
-    val breakOrder: List<String>? = null,
-    val shiftColorIndex: Int? = null,
-    val statusColorIndex: Int? = null
-)
+// 注：备份载荷（[AppDataBackup] / [ShiftConfigBackup]）与 [BackupGson] 已迁到
+// com.schedulecalendar.app.data.compat —— 它们是「数据格式」的一部分，
+// 与格式转换器 [BackupCompat] 放在同一个包里，避免「格式定义」与「格式转换」分家。
 
-/**
- * 备份序列化专用 Gson：与 `AppPreferences` 同一策略——为所有领域模型注册 [InstanceCreator]，
- * 保证**旧备份缺字段时落 Kotlin 默认值**（"" / emptyList / false / 0.0）而非 JVM null。
- *
- * ⚠️ 为什么必须注册：Gson 对「无无参构造器」的 Kotlin data class 用 Unsafe 分配实例，
- * JSON 里缺失的字段保持 JVM 默认值（对象字段 = null）。v1/v2 时代的备份缺
- * `ShiftStatus.startTime/endTime`（非空 + NOT NULL 列）、`Shift.linkedExtraIds`（非空列表）
- * 等字段，不注册会导致这些备份恢复时撞 Room 约束直接失败，或把 null 泄漏进计算链路。
- *
- * 注册后行为：JSON 中存在的字段照常反射赋值；缺失的字段保留此处给定的默认值
- * （与 Kotlin data class 的默认参数一致）。
- */
-internal object BackupGson {
-    val instance: Gson = GsonBuilder()
-        .registerTypeAdapter(DisplayScheme::class.java, InstanceCreator { DisplayScheme() })
-        .registerTypeAdapter(DataRowConfig::class.java, InstanceCreator { DataRowConfig() })
-        .registerTypeAdapter(SalaryConfig::class.java, InstanceCreator { SalaryConfig() })
-        .registerTypeAdapter(AttendConfig::class.java, InstanceCreator { AttendConfig() })
-        .registerTypeAdapter(ScheduleRule::class.java, InstanceCreator { ScheduleRule() })
-        .registerTypeAdapter(Shift::class.java, InstanceCreator { Shift(id = "", name = "") })
-        .registerTypeAdapter(ShiftStatus::class.java, InstanceCreator { ShiftStatus(id = "", name = "", color = "") })
-        .registerTypeAdapter(ShiftBreak::class.java, InstanceCreator { ShiftBreak(id = "", label = "", startTime = "", endTime = "") })
-        .registerTypeAdapter(ExtraItem::class.java, InstanceCreator { ExtraItem(id = "", name = "", type = "", amount = 0.0) })
-        .registerTypeAdapter(ScheduleRecord::class.java, InstanceCreator { ScheduleRecord(date = "") })
-        .registerTypeAdapter(AppliedStatus::class.java, InstanceCreator { AppliedStatus(statusId = "") })
-        .registerTypeAdapter(CalcProfile::class.java, InstanceCreator {
-            CalcProfile(
-                id = "", name = "",
-                salary = SalaryConfig(), attend = AttendConfig(),
-                breaks = emptyList(), effectiveFrom = ""
-            )
-        })
-        .create()
-}

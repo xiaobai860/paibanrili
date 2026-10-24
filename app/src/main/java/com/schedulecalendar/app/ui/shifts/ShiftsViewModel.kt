@@ -38,28 +38,12 @@ data class ShiftsState(
 )
 
 /**
- * 导出数据包 v6（v5 + 增加排序顺序与颜色索引，覆盖班次 Tab 内全部配置）
+ * 导出数据包。
  *
- * ⚠️ 可空性约定（关乎数据安全）：
- * 列表字段用 `List<...>?` 而非 `List<...> = emptyList()`，以便区分
- * 「备份中确实没有该字段（旧版备份 / 手工编辑）」与「备份中该列表为空」。
- * 恢复时：字段缺失 → 保持现状不动；字段存在 → 全量替换。
- * 若用默认 `emptyList()`，旧版备份恢复会把用户的休息时段/补贴项目**全部清空**。
+ * ⚠️ 载荷类已迁到 com.schedulecalendar.app.data.compat.ShiftConfigBackup（与格式转换器同包，
+ * 便于「格式定义」与「格式转换」不分家）；这里是给 UI 层用的内部别名。
  */
-data class ShiftExportData(
-    val version: Int                     = 6,
-    val exportTime: String               = "",
-    val shifts: List<Shift>?             = null,
-    val globalBreaks: List<ShiftBreak>?  = null,
-    val shiftStatuses: List<ShiftStatus>? = null,
-    val extraItems: List<ExtraItem>?     = null,
-    val shiftOrder: List<String>?        = null,
-    val statusOrder: List<String>?       = null,
-    val extraOrder: List<String>?        = null,
-    val breakOrder: List<String>?        = null,
-    val shiftColorIndex: Int?            = null,
-    val statusColorIndex: Int?           = null
-)
+internal typealias ShiftExportData = com.schedulecalendar.app.data.compat.ShiftConfigBackup
 
 @HiltViewModel
 class ShiftsViewModel @Inject constructor(
@@ -193,39 +177,31 @@ class ShiftsViewModel @Inject constructor(
     }
 
     // ── 全局不计时段 CRUD ──────────────────────────────────────────
+    /**
+     * 保存休息时段。
+     *
+     * 实际落库与「生成新口径」的联动在 [CalcProfileRepository.saveBreakWithProfile] 里
+     * （先建档后落库；建档失败抛异常 → 本次修改撤销）。
+     *
+     * ⚠️ 休息时段**没有引用锚点**，编辑时原地更新（id 不变），
+     * 不做「归档旧记录 + 新 UUID」——那样每次编辑都会留下一条归档垃圾。
+     */
     fun saveBreak(item: ShiftBreak) = viewModelScope.launch {
-        // 编辑时：归档旧记录 + 创建新ID的新记录
-        val current = breakRepo.getAll()
-        val existing = current.find { it.id == item.id }
-        val isEdit = existing != null
-        val newItem = if (isEdit) item.copy(id = UUID.randomUUID().toString()) else item
-        // 新口径的时段集合 = 当前有效集合（编辑时用新项替换旧项）
-        val newBreaks = if (isEdit) current.filter { it.id != existing.id } + newItem else current + newItem
-        // 休息时段参与工时计算 → 改动必须同步生成新口径档案（今天生效），
-        // 否则「设置里改了午休、计算却仍读旧档案」会前后不一致。
-        // 顺序：**先建档案再落库**，建档失败则不落库（避免表改了但计算没生效）。
         val today = com.schedulecalendar.app.domain.util.DateFormats.date(java.time.LocalDate.now())
-        val profileOk = runCatching {
-            profileRepo.createDerivedProfile(
-                effectiveFrom = today,
-                name = "${today.take(7)} 时段调整",
-                breaks = newBreaks
+        runCatching {
+            profileRepo.saveBreakWithProfile(
+                item = item,
+                today = today,
+                profileName = "${today.take(7)} 时段调整"
             )
         }.onFailure {
-            android.util.Log.w("ShiftsViewModel", "create profile for breaks failed", it)
-        }.isSuccess
-        if (!profileOk) {
             _uiEvent.send(ShiftsUiEvent.ShowError("保存失败：无法生成新口径，本次修改已撤销"))
             return@launch
         }
-        if (isEdit) {
-            breakRepo.archive(existing.id)
-        }
-        breakRepo.save(newItem)
-        // 新增项目时置顶
+        // 新增项目时置顶（id 不变 → 排序列表无需改动）
         val currentOrder = _breakOrder.value
-        if (newItem.id !in currentOrder) {
-            val newOrder = listOf(newItem.id) + currentOrder
+        if (item.id !in currentOrder) {
+            val newOrder = listOf(item.id) + currentOrder
             _breakOrder.value = newOrder
             prefs.saveBreakOrder(newOrder)
         }
@@ -233,24 +209,18 @@ class ShiftsViewModel @Inject constructor(
         _uiEvent.send(ShiftsUiEvent.ShowMessage("已生成新口径（自 $today 起生效），历史月份仍按原时段计算"))
     }
     fun deleteBreak(id: String) = viewModelScope.launch {
-        val current = breakRepo.getAll()
-        val newBreaks = current.filter { it.id != id }
         val today = com.schedulecalendar.app.domain.util.DateFormats.date(java.time.LocalDate.now())
-        // 同样先建档案（时段集合少了这一条），失败则不删
-        val profileOk = runCatching {
-            profileRepo.createDerivedProfile(
-                effectiveFrom = today,
-                name = "${today.take(7)} 时段调整",
-                breaks = newBreaks
+        // 建档 + 归档落库都在仓库层：建档失败会抛异常 → 本次删除撤销
+        runCatching {
+            profileRepo.deleteBreakWithProfile(
+                id = id,
+                today = today,
+                profileName = "${today.take(7)} 时段调整"
             )
         }.onFailure {
-            android.util.Log.w("ShiftsViewModel", "create profile for breaks failed", it)
-        }.isSuccess
-        if (!profileOk) {
             _uiEvent.send(ShiftsUiEvent.ShowError("删除失败：无法生成新口径，本次删除已撤销"))
             return@launch
         }
-        breakRepo.archive(id)
         backupManager.autoBackupShiftConfig()
         _uiEvent.send(ShiftsUiEvent.ShowMessage("已生成新口径（自 $today 起生效），历史月份仍按原时段计算"))
     }
@@ -337,7 +307,7 @@ class ShiftsViewModel @Inject constructor(
         runCatching {
             val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
             val payload = ShiftExportData(
-                version       = 6,
+                version       = com.schedulecalendar.app.data.compat.DataFormat.SHIFT_CONFIG_BACKUP,
                 exportTime    = now,
                 shifts        = shiftRepo.getAll().filter { !it.builtIn },
                 globalBreaks  = breakRepo.getAll(),
@@ -354,7 +324,9 @@ class ShiftsViewModel @Inject constructor(
     // ── 导入：由 UI 层读取文件后传入 JSON 字符串 ──────────────────
     fun importFromJson(json: String, overwrite: Boolean = false) = viewModelScope.launch {
         runCatching {
-            val data = com.google.gson.Gson().fromJson(json, ShiftExportData::class.java)
+            // 旧版本备份先经兼容层转换成当前格式（字段名/默认值/时间段补齐），再落库
+            val upgraded = com.schedulecalendar.app.data.compat.BackupCompat.upgrade(json)
+            val data = com.google.gson.Gson().fromJson(upgraded.json, ShiftExportData::class.java)
                 ?: throw IllegalArgumentException("JSON 格式错误")
             var importedShifts   = 0
             var importedBreaks   = 0
@@ -406,8 +378,9 @@ class ShiftsViewModel @Inject constructor(
                     android.util.Log.w("ShiftsViewModel", "sync profile after import failed", it)
                 }
             }
+            val note = if (upgraded.notes.isEmpty()) "" else "（${upgraded.notes.joinToString("；")}）"
             _uiEvent.send(ShiftsUiEvent.ShowMessage(
-                "导入成功：班次 $importedShifts，时段 $importedBreaks，状态 $importedStatuses，项目 $importedExtras"
+                "导入成功：班次 $importedShifts，时段 $importedBreaks，状态 $importedStatuses，项目 $importedExtras$note"
             ))
         }.onFailure {
             _uiEvent.send(ShiftsUiEvent.ShowError("导入失败：${it.message}"))

@@ -138,10 +138,11 @@ class CalcProfilesViewModel @Inject constructor(
      * 休息时段有**两份数据**：档案里的 JSON 快照（计算用）+ shift_break 表（编辑器读的）。
      * 之前只做了「改时段 → 先建档案再落库」一个方向，反方向（复制/删除口径）漏了同步，
      * 导致档案已回退、但时段编辑器仍显示改动后的集合。
+     *
+     * 实现已收口到 [CalcProfileRepository.syncBreaksToTable]（便于测试覆盖这条链路）。
      */
     private suspend fun syncBreaksToTable(breaks: List<ShiftBreak>) {
-        breakRepo.getAll().forEach { breakRepo.archive(it.id) }
-        breaks.forEach { breakRepo.save(it) }
+        profileRepo.syncBreaksToTable(breaks)
     }
 
     /** 把某个档案复制为「今天生效」的新档案（回滚到旧口径 / 基于旧口径微调） */

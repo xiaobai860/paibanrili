@@ -26,7 +26,9 @@ import com.schedulecalendar.app.data.db.entity.ShiftStatusEntity
         ShiftStatusEntity::class,
         CalcProfileEntity::class
     ],
-    version = 6,
+    // v7 = 中转兼容版：结构与 v6 相同，但 MIGRATION_6_7 会把旧格式数据归一化到当前格式。
+    // 版本号必须与 DataFormat.CURRENT 保持一致（见 data/compat/DataFormat.kt）。
+    version = 7,
     exportSchema = true   // 导出 schema 至 app/schemas/，便于版本迁移追踪
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -69,6 +69,23 @@ class AppPreferences @Inject constructor(
         val KEY_ACCOUNTS_INITIALIZED     = stringPreferencesKey("accounts_initialized")
         // ── 首次启动权限申请 ──
         val KEY_INITIAL_PERMISSIONS_DONE = stringPreferencesKey("initial_permissions_done")
+        /**
+         * 数据格式版本戳：记录当前数据已被转换到哪个格式版本。
+         *
+         * 兼容版升级成功后会写入 [com.schedulecalendar.app.data.compat.DataFormat.CURRENT]；
+         * 后续版本据此判断「这份数据是否已经转换过」，
+         * 低于 fence 的数据说明它还带着旧格式包袱（需要兼容版处理过）。
+         */
+        val KEY_DATA_FORMAT_VERSION = intPreferencesKey("data_format_version")
+    }
+
+    /** 读取数据格式版本（0 = 从未升级过，即仍是最初的格式） */
+    suspend fun getDataFormatVersion(): Int =
+        context.dataStore.data.first()[KEY_DATA_FORMAT_VERSION] ?: 0
+
+    /** 写入数据格式版本戳 */
+    suspend fun setDataFormatVersion(version: Int) = context.dataStore.edit {
+        it[KEY_DATA_FORMAT_VERSION] = version
     }
 
     // ── 薪资配置 ───────────────────────────────────

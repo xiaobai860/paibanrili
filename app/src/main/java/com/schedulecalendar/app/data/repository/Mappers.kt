@@ -67,7 +67,14 @@ private data class AppliedStatusJson(
     val isOvertime: Boolean = false
 )
 
-/** 解析单个附加状态：兼容旧版数组格式（取第一个）和新版单对象格式 */
+/**
+ * 解析单个附加状态：兼容旧版数组格式（取第一个）和新版单对象格式
+ *
+ * ⚠️ 数组分支是**兼容版专属的历史包袱**：
+ * 兼容版的迁移（MIGRATION_6_7）已把库里的旧数组格式改写成单对象，
+ * 备份侧也由 [com.schedulecalendar.app.data.compat.BackupCompat] 在读入时统一转换，
+ * 因此新数据一律是单对象。后续版本（fence 之后）可删除数组分支。
+ */
 fun parseAppliedStatus(json: String): AppliedStatus? {
     val trimmed = json.trim()
     if (trimmed.isEmpty() || trimmed == "null" || trimmed == "\"\"") return null

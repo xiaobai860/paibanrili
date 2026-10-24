@@ -1,5 +1,6 @@
 package com.schedulecalendar.app.ui.settings
 
+import com.schedulecalendar.app.data.compat.BackupGson
 import com.schedulecalendar.app.domain.model.AppliedStatus
 import com.schedulecalendar.app.domain.model.CalcProfile
 import com.schedulecalendar.app.domain.model.ExtraItem

@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -20,6 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.schedulecalendar.app.data.compat.CompatGate
+import com.schedulecalendar.app.ui.compat.CompatOverlay
 import com.schedulecalendar.app.ui.navigation.AppNavHost
 import com.schedulecalendar.app.ui.theme.ScheduleCalendarTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -31,6 +34,9 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var appPreferences: com.schedulecalendar.app.data.prefs.AppPreferences
+
+    /** 数据兼容闸门（升级中/失败时用遮罩挡住界面，避免用户看到半转换的数据） */
+    @Inject lateinit var compatGate: CompatGate
 
     companion object {
         const val ACTION_CLOCK_IN = "com.schedulecalendar.app.ACTION_CLOCK_IN"
@@ -111,6 +117,22 @@ class MainActivity : ComponentActivity() {
                     }
 
                     AppNavHost()
+
+                    // 数据升级遮罩：升级中/失败时挡住界面，避免用户看到「半转换」的中间态
+                    val compatState by compatGate.state.collectAsStateWithLifecycle()
+                    var compatErrorDismissed by remember { mutableStateOf(false) }
+                    LaunchedEffect(compatState) { compatErrorDismissed = false }
+                    val showCompatOverlay = when (compatState) {
+                        is CompatGate.State.Idle, is CompatGate.State.Ready -> false
+                        is CompatGate.State.Failed -> !compatErrorDismissed
+                        else -> true
+                    }
+                    if (showCompatOverlay) {
+                        CompatOverlay(
+                            state = compatState,
+                            onDismissError = { compatErrorDismissed = true }
+                        )
+                    }
                 }
             }
         }

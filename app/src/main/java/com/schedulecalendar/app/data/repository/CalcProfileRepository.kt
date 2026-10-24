@@ -276,6 +276,57 @@ class CalcProfileRepository @Inject constructor(
 
     suspend fun deleteAll() { dao.deleteAll() }
 
+    // ── 休息时段 ↔ 口径档案 的联动 ─────────────────────────────────────
+    // 这三个方法原本散落在 UI 层（ShiftsViewModel / CalcProfilesScreen 的私有函数），
+    // 导致「时段残留」这条链路无法被测试覆盖 → 统一收口到仓库层。
+
+    /**
+     * 保存一个休息时段，并同步生成新口径档案（今天生效）。
+     *
+     * 顺序：**先建档案再落库**；建档失败会抛异常（调用方据此撤销本次修改并提示），
+     * 避免「表改了但计算没生效」。
+     *
+     * ⚠️ 休息时段**没有引用锚点**（历史排班不引用时段；历史口径由档案里冻结的 JSON 快照决定），
+     * 因此编辑时**原地覆盖**（id 不变），不需要「归档旧记录 + 新 UUID」。
+     */
+    suspend fun saveBreakWithProfile(item: ShiftBreak, today: String, profileName: String) {
+        val current = breakRepo.getAll()
+        val existing = current.find { it.id == item.id }
+        // 新口径的时段集合 = 当前有效集合（编辑时用新项替换旧项）
+        val newBreaks = if (existing != null) current.filter { it.id != existing.id } + item else current + item
+        createDerivedProfile(effectiveFrom = today, name = profileName, breaks = newBreaks)
+        breakRepo.save(item)
+    }
+
+    /**
+     * 删除（归档）一个休息时段，并同步生成新口径档案（今天生效）。
+     *
+     * 注意：这里用的是**归档**（逻辑删除）而不是物理删除 →
+     * 该行会变成「已归档且无任何排班引用」的废弃数据，
+     * 需由「设置 → 数据管理 → 清理废弃数据」统一物理清理。
+     * （时段没有引用锚点 → 它退出计算不依赖任何引用关系，删除是安全的。）
+     */
+    suspend fun deleteBreakWithProfile(id: String, today: String, profileName: String) {
+        val current = breakRepo.getAll()
+        val newBreaks = current.filter { it.id != id }
+        createDerivedProfile(effectiveFrom = today, name = profileName, breaks = newBreaks)
+        breakRepo.archive(id)
+    }
+
+    /**
+     * 把一份档案的休息时段集合同步回 `shift_break` 表（删除/复制档案后调用）。
+     *
+     * 做法：先归档当前**有效**时段，再按档案里的集合保存
+     * （id 相同 → upsert 覆盖回有效；id 不同 → 另存为新行）。
+     *
+     * ⚠️ 归档而非物理删除：物理删除统一交给「清理废弃数据」，
+     * 避免在改档案时顺手删掉用户数据。
+     */
+    suspend fun syncBreaksToTable(breaks: List<ShiftBreak>) {
+        breakRepo.getAll().forEach { breakRepo.archive(it.id) }
+        breaks.forEach { breakRepo.save(it) }
+    }
+
     /** 整表替换（备份恢复用） */
     suspend fun replaceAll(profiles: List<CalcProfile>) {
         dao.deleteAll()

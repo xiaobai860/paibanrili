@@ -34,6 +34,13 @@ class ScheduleApp : Application() {
     /** 计算口径档案仓库（迁移后幂等创建初始档案） */
     @Inject lateinit var calcProfileRepository: com.schedulecalendar.app.data.repository.CalcProfileRepository
 
+    /**
+     * 数据兼容闸门（兼容版的升级入口）。
+     *
+     * 必须在任何业务逻辑读库**之前**跑完：它负责版本检查、旧数据格式转换、迁移后校验与回滚。
+     */
+    @Inject lateinit var compatGate: com.schedulecalendar.app.data.compat.CompatGate
+
     /** 前台 Activity 计数：归零表示应用已完全退到后台（桌面可见） */
     private var foregroundCount = 0
 
@@ -51,10 +58,15 @@ class ScheduleApp : Application() {
         widgetRefreshScheduler = ep.widgetRefreshScheduler()
         // 小组件周期刷新兜底：事件驱动为主，WorkManager 15min 周期兜底
         scheduleWidgetPeriodicRefresh()
+        // 数据兼容闸门：先完成「版本检查 → 旧数据格式转换 → 迁移后校验 →（必要时）回滚」，
+        // 再让业务逻辑读库。后续所有启动任务都 await 它，保证读到的一定是转换后的数据。
+        appScope.launch {
+            runSafely("ensureUpgraded") { compatGate.ensureUpgraded() }
+        }
         // 计算口径档案：首次启动（含 v5→v6 迁移后）幂等创建初始档案，
         // 内容取迁移时刻的现值（薪资/考勤/休息时段）→ 保证历史月份计算结果逐分不变
         appScope.launch {
-            runSafely("ensureInitialProfile") { calcProfileRepository.ensureInitialProfile() }
+            runSafely("ensureInitialProfile") { compatGate.awaitReady(); calcProfileRepository.ensureInitialProfile() }
             // 接力自愈：修复早期版本「重复复制导致多条同时生效中」的坏数据。
             // 只重设生效区间（+ 清理同日重复的残留），不改变任何档案内容。
             runSafely("repairRelay") { calcProfileRepository.repairRelay() }
@@ -140,6 +152,8 @@ class ScheduleApp : Application() {
         // 冷启动往往是被闹钟/组件在后台唤醒的，无可见 Activity，进程随时可能被系统回收；
         // 若延迟注册，进程在延迟窗口内被杀就会导致提醒闹钟一直缺失（表现为「不提醒」）。
         appScope.launch {
+            // 等兼容闸门放行：数据没升级完之前不排提醒，避免按旧数据算出错误的提醒时间
+            compatGate.awaitReady()
             // 两个调度并行执行：原先串行 await，冷启动要等两轮（含各自的 DB/DataStore 读取）
             val reminders = async { runSafely("scheduleActiveReminders(coldStart)") { reminderScheduler.scheduleActiveReminders() } }
             val widgets = async { runSafely("scheduleWidgetRefreshes(coldStart)") { widgetRefreshScheduler.scheduleWidgetRefreshes() } }
@@ -149,6 +163,7 @@ class ScheduleApp : Application() {
         // 组件数据回源同步可稍延迟（避免冷启动抢资源，留时间给进程稳定），保留 1s
         appScope.launch {
             delay(COLD_START_SYNC_DELAY_MS)
+            compatGate.awaitReady()
             runSafely("syncAllWidgets(coldStart)") { syncAllWidgets(this@ScheduleApp) }
         }
     }
