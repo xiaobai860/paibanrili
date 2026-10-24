@@ -157,7 +157,7 @@ private fun CalendarWidgetContent(
     Box(
         modifier = GlanceModifier.fillMaxSize()
             .background(ColorProvider(ubg))
-            .cornerRadius(12.dp)
+            .cornerRadius(6.dp)
             .padding(if (isLarge) 4.dp else 4.dp),
         contentAlignment = Alignment.TopCenter
     ) {

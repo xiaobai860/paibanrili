@@ -433,7 +433,7 @@ private fun ClockInWidgetContent() {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(ubg))
-            .cornerRadius(12.dp),
+            .cornerRadius(6.dp),
         contentAlignment = Alignment.TopStart
     ) {
         Column(
