@@ -52,13 +52,6 @@ import com.schedulecalendar.app.ui.calendar.HuangLiScreen
 
 /**
  * Tab 配置（使用类型安全路由 Any 统一持有）
- *
- * @param isSelected 是否为当前 destination。
- *   ⚠️ 类型安全路由（kotlinx.serialization）的 `destination.route` 是**路由模板**，
- *   带参数的路由形如 `…RouteTodo?focusMonth={focusMonth}` 或 `…RouteTodo/{focusMonth}?`，
- *   **与类名不相等** → 直接拿 route 字符串比类名会漏判（底部导航栏不显示、Tab 高亮丢失）。
- *   模板总是以「路由类名」开头，故用 `startsWith(类名)` 判定，两种模板形式都成立，
- *   且不依赖 Navigation 具体的模板拼接规则。
  */
 data class TabItem(
     val route: Any,
@@ -67,8 +60,21 @@ data class TabItem(
     val isSelected: (NavDestination?) -> Boolean
 )
 
-private fun NavDestination?.isTabRoute(routeName: String): Boolean =
-    this?.route?.startsWith(routeName) == true
+/**
+ * 精确的 Tab 路由判定（类型安全路由）。
+ *
+ * `destination.route` 对「带参数的路由」是模板串（形如 `RouteTodo?focusMonth={focusMonth}`
+ * 或 `RouteTodo/{focusMonth}?`），不能用裸 `startsWith(类名)` 匹配 —— 否则
+ * `RouteCalendarAccountSettings` 会以 `RouteCalendar` 开头，被误判成日历 Tab：
+ * 既让底部导航栏在该子页面不隐藏，又使 `BackHandler` 被错误启用、按返回直接退出应用。
+ *
+ * 这里用「类名 + 边界」精确匹配：仅当 route 等于类名、或紧接着 `?`(query 参数)/`/`(path 参数)
+ * 时才算命中；前缀相同但名字更长的（如 RouteCalendarAccountSettings）不会命中。
+ */
+private fun NavDestination?.isTabRoute(qualifiedName: String): Boolean {
+    val r = this?.route ?: return false
+    return r == qualifiedName || r.startsWith("$qualifiedName?") || r.startsWith("$qualifiedName/")
+}
 
 private val tabs = listOf(
     TabItem(RouteCalendar,   "日历",  Icons.Filled.CalendarMonth) { d -> d.isTabRoute(RouteCalendar::class.qualifiedName.orEmpty()) },
