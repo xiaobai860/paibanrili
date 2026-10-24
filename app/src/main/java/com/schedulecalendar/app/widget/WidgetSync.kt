@@ -481,14 +481,11 @@ private suspend fun refreshCalendarWidgets(
     shifts: List<Shift>,
     statusMap: Map<String, ShiftStatus>
 ) {
-    val prefs = context.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
-    val stored = prefs.getString(KEY_CALENDAR_WIDGET_JSON, "")?.let {
-        runCatching { Gson().fromJson(it, CalendarWidgetInfo::class.java) }.getOrNull()
-    }
-    // 无存储数据（如刚添加的组件）时默认渲染当前月份，保证初始化
+    // 组件**恒显示当前月**：日历组件没有翻月交互，
+    // 若沿用上次存储的月份，跨月后会自锁在旧月份（曾出现「10 月仍显示 9 月」）。
     val today = LocalDate.now()
-    val year = stored?.year?.takeIf { it > 0 } ?: today.year
-    val month = stored?.month?.takeIf { it > 0 } ?: today.monthValue
+    val year = today.year
+    val month = today.monthValue
 
     val ym = YearMonth.of(year, month)
     val daysInMonth = ym.lengthOfMonth()

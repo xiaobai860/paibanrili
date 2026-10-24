@@ -554,20 +554,24 @@ class BackupManager @Inject constructor(
      * 恢复应用数据（入参必须是**当前格式**的 JSON —— 旧格式已由 [BackupCompat] 转换）。
      *
      * 恢复前自动生成一份快照 → 恢复后校验 → 校验不通过就用快照回滚。
+     *
+     * ⚠️ 快照**只留在内存里**，不落盘成备份文件：
+     *    否则每次恢复都会在列表里多出一条「手动备份」（用户看到的"恢复后凭空多出备份"），
+     *    而且它其实是内部回滚底牌，不该混进用户的备份列表、也不该占保留份数。
      */
     private suspend fun restoreAppData(json: String): String {
         val backup = gson.fromJson(json, AppDataBackup::class.java)
             ?: throw IllegalArgumentException("JSON 解析失败")
-        // 恢复前自动生成一份「应用数据」快照，万一恢复结果不符合预期可回退（幂等，失败仅告警不阻断）
-        val snapshot = createAppDataBackup().getOrNull()
+        // 恢复前的快照（内存态，失败仅告警不阻断）
+        val snapshotJson = runCatching { buildAppDataJson() }.getOrNull()
         applyAppData(backup)
 
         // 恢复后校验：数据是否还完整可用（行数、引用 JSON、口径档案）
         val report = integrityChecker.check(null)
         if (!report.ok) {
-            snapshot?.let { file ->
+            snapshotJson?.let { snap ->
                 runCatching {
-                    gson.fromJson(file.readText(), AppDataBackup::class.java)?.let { applyAppData(it) }
+                    gson.fromJson(snap, AppDataBackup::class.java)?.let { applyAppData(it) }
                 }.onFailure { android.util.Log.w("BackupManager", "rollback after failed restore", it) }
             }
             throw IllegalStateException("恢复后数据校验未通过，已回滚到恢复前的数据：${report.summary()}")
@@ -681,8 +685,9 @@ class BackupManager @Inject constructor(
     private suspend fun restoreShiftConfig(json: String): String {
         val data = gson.fromJson(json, ShiftConfigBackup::class.java)
             ?: throw IllegalArgumentException("JSON 解析失败")
-        runCatching { createShiftConfigBackup() }
-            .onFailure { android.util.Log.w("BackupManager", "pre-restore snapshot failed", it) }
+        // 班次配置恢复是**整表替换**且在单个事务内完成（失败整体回滚），不需要额外快照。
+        // 原先这里会落一份「班次配置_*_manual.json」当恢复前快照，但它根本没被用于回滚，
+        // 只会让用户看到"恢复后凭空多出一条手动备份" → 已移除。
 
         db.withTransaction {
             // 与 restoreAppData 保持一致：字段存在即「整表替换」。
