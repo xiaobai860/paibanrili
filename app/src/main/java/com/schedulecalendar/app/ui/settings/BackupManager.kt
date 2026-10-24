@@ -440,8 +440,24 @@ class BackupManager @Inject constructor(
         // 按顶层 key 集合判断备份类型，避免用子串猜测导致备注里带关键字就误判
         val root = runCatching {
             com.google.gson.JsonParser.parseString(json).asJsonObject
-        }.getOrNull() ?: throw IllegalArgumentException("JSON 解析失败")
-        val kind = BackupCompat.detectKind(root) ?: throw IllegalArgumentException("无法识别的备份格式")
+        }.getOrNull() ?: run {
+            // 解析失败：把内容前段写进日志，否则用户只看到一句「JSON 解析失败」，无从排查
+            android.util.Log.e("BackupManager", "restore: JSON 解析失败，前 200 字符：${json.take(200)}")
+            throw IllegalArgumentException("JSON 解析失败（文件可能不是本应用导出的备份，或带有 BOM/UTF-16 编码）")
+        }
+        val kind = BackupCompat.detectKind(BackupCompat.unwrapOnce(root) ?: root)
+        if (kind == null) {
+            // 识别失败：**必须说清文件长什么样**，否则用户无从判断是不是选错了文件
+            val keys = root.keySet().joinToString(", ").ifBlank { "（空）" }
+            android.util.Log.e(
+                "BackupManager",
+                "restore: 无法识别备份格式，顶层字段=[$keys]，前 200 字符：${json.take(200)}"
+            )
+            throw IllegalArgumentException(
+                "无法识别的备份格式（文件顶层字段：$keys）。" +
+                    "请选择本应用「存储与备份」导出的 .json 文件。"
+            )
+        }
         val srcVersion = BackupCompat.detectVersion(root)
         val minVersion = DataFormat.minSupportedBackupVersion(kind)
         if (srcVersion < minVersion) {

@@ -2,6 +2,7 @@
 package com.schedulecalendar.app.data.repository
 
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import com.schedulecalendar.app.data.db.entity.ExtraItemEntity
 import com.schedulecalendar.app.data.db.entity.ScheduleRecordEntity
@@ -59,12 +60,23 @@ fun ShiftStatus.toEntity()       = ShiftStatusEntity(id, name, color, builtIn, r
 
 // ── AppliedStatus (JSON helper) ───────────────────────────────────────
 
-private data class AppliedStatusJson(
-    val statusId: String,
-    val startTime: String?,
-    val endTime: String?,
+/**
+ * 附加状态在 Room `appliedStatusesJson` 列里的 JSON 形状。
+ *
+ * ⚠️ **字段名是数据库数据格式的一部分**（已写进用户设备的历史数据），
+ *    绝不能被 R8 混淆 —— 否则 release 包读历史排班时附加状态会全部读成默认值（静默丢失）。
+ *    双保险：proguard 精确 keep（见 proguard-rules.pro）+ 这里的 @SerializedName 钉死名字
+ *    （注解值与历史数据里的 key 完全一致 → 向后兼容）。
+ *
+ * ⚠️ 可见性必须是 **internal 而不是 private**：proguard 规则按类全名引用它，
+ *    private 类在 IDE 的 proguard 检查里会报「Unresolved class name」（R8 本身不介意）。
+ */
+internal data class AppliedStatusJson(
+    @SerializedName("statusId") val statusId: String,
+    @SerializedName("startTime") val startTime: String?,
+    @SerializedName("endTime") val endTime: String?,
     /** 旧数据无此字段 → Gson 反序列化后为 false，天然向后兼容 */
-    val isOvertime: Boolean = false
+    @SerializedName("isOvertime") val isOvertime: Boolean = false
 )
 
 /**

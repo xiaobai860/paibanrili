@@ -4,6 +4,7 @@ package com.schedulecalendar.app.data.compat
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.InstanceCreator
+import com.google.gson.annotations.SerializedName
 import com.schedulecalendar.app.domain.model.AppliedStatus
 import com.schedulecalendar.app.domain.model.AttendConfig
 import com.schedulecalendar.app.domain.model.CalcProfile
@@ -37,35 +38,35 @@ enum class BackupKind {
  * 「读进来」时抹平，因此这里不需要（也不应该）再出现任何历史分支。
  */
 internal data class AppDataBackup(
-    val version: Int = DataFormat.APP_DATA_BACKUP,
-    val exportTime: String = "",
-    val scheduleRecords: List<ScheduleRecord>? = null,
-    val shifts: List<Shift>? = null,
-    val globalBreaks: List<ShiftBreak>? = null,
-    val shiftStatuses: List<ShiftStatus>? = null,
-    val extraItems: List<ExtraItem>? = null,
-    val salaryConfig: SalaryConfig? = null,
-    val attendConfig: AttendConfig? = null,
-    val scheduleRule: ScheduleRule? = null,
-    val displaySchemes: List<DisplayScheme>? = null,
-    val disabledAccountIds: List<Long>? = null,
-    val accountCategories: Map<String, String>? = null,
-    val accountsInitialized: Boolean? = null,
-    val reminderEnabled: Boolean? = null,
-    val reminderMethod: String? = null,
-    val reminderClockIn: Boolean? = null,
-    val reminderClockOut: Boolean? = null,
-    val reminderClockInMinutes: Int? = null,
-    val reminderClockOutMinutes: Int? = null,
-    val reminderNotifyBar: Boolean? = null,
+    @SerializedName("version") val version: Int = DataFormat.APP_DATA_BACKUP,
+    @SerializedName("exportTime") val exportTime: String = "",
+    @SerializedName("scheduleRecords") val scheduleRecords: List<ScheduleRecord>? = null,
+    @SerializedName("shifts") val shifts: List<Shift>? = null,
+    @SerializedName("globalBreaks") val globalBreaks: List<ShiftBreak>? = null,
+    @SerializedName("shiftStatuses") val shiftStatuses: List<ShiftStatus>? = null,
+    @SerializedName("extraItems") val extraItems: List<ExtraItem>? = null,
+    @SerializedName("salaryConfig") val salaryConfig: SalaryConfig? = null,
+    @SerializedName("attendConfig") val attendConfig: AttendConfig? = null,
+    @SerializedName("scheduleRule") val scheduleRule: ScheduleRule? = null,
+    @SerializedName("displaySchemes") val displaySchemes: List<DisplayScheme>? = null,
+    @SerializedName("disabledAccountIds") val disabledAccountIds: List<Long>? = null,
+    @SerializedName("accountCategories") val accountCategories: Map<String, String>? = null,
+    @SerializedName("accountsInitialized") val accountsInitialized: Boolean? = null,
+    @SerializedName("reminderEnabled") val reminderEnabled: Boolean? = null,
+    @SerializedName("reminderMethod") val reminderMethod: String? = null,
+    @SerializedName("reminderClockIn") val reminderClockIn: Boolean? = null,
+    @SerializedName("reminderClockOut") val reminderClockOut: Boolean? = null,
+    @SerializedName("reminderClockInMinutes") val reminderClockInMinutes: Int? = null,
+    @SerializedName("reminderClockOutMinutes") val reminderClockOutMinutes: Int? = null,
+    @SerializedName("reminderNotifyBar") val reminderNotifyBar: Boolean? = null,
     /** 计算口径档案（薪资/考勤/休息时段的带生效日快照） */
-    val calcProfiles: List<CalcProfile>? = null,
-    val shiftOrder: List<String>? = null,
-    val statusOrder: List<String>? = null,
-    val extraOrder: List<String>? = null,
-    val breakOrder: List<String>? = null,
-    val shiftColorIndex: Int? = null,
-    val statusColorIndex: Int? = null
+    @SerializedName("calcProfiles") val calcProfiles: List<CalcProfile>? = null,
+    @SerializedName("shiftOrder") val shiftOrder: List<String>? = null,
+    @SerializedName("statusOrder") val statusOrder: List<String>? = null,
+    @SerializedName("extraOrder") val extraOrder: List<String>? = null,
+    @SerializedName("breakOrder") val breakOrder: List<String>? = null,
+    @SerializedName("shiftColorIndex") val shiftColorIndex: Int? = null,
+    @SerializedName("statusColorIndex") val statusColorIndex: Int? = null
 )
 
 /**
@@ -75,18 +76,18 @@ internal data class AppDataBackup(
  * 「字段缺失（旧版备份）→ 保持现状」与「字段存在但为空 → 全量替换」必须能区分开。
  */
 internal data class ShiftConfigBackup(
-    val version: Int = DataFormat.SHIFT_CONFIG_BACKUP,
-    val exportTime: String = "",
-    val shifts: List<Shift>? = null,
-    val globalBreaks: List<ShiftBreak>? = null,
-    val shiftStatuses: List<ShiftStatus>? = null,
-    val extraItems: List<ExtraItem>? = null,
-    val shiftOrder: List<String>? = null,
-    val statusOrder: List<String>? = null,
-    val extraOrder: List<String>? = null,
-    val breakOrder: List<String>? = null,
-    val shiftColorIndex: Int? = null,
-    val statusColorIndex: Int? = null
+    @SerializedName("version") val version: Int = DataFormat.SHIFT_CONFIG_BACKUP,
+    @SerializedName("exportTime") val exportTime: String = "",
+    @SerializedName("shifts") val shifts: List<Shift>? = null,
+    @SerializedName("globalBreaks") val globalBreaks: List<ShiftBreak>? = null,
+    @SerializedName("shiftStatuses") val shiftStatuses: List<ShiftStatus>? = null,
+    @SerializedName("extraItems") val extraItems: List<ExtraItem>? = null,
+    @SerializedName("shiftOrder") val shiftOrder: List<String>? = null,
+    @SerializedName("statusOrder") val statusOrder: List<String>? = null,
+    @SerializedName("extraOrder") val extraOrder: List<String>? = null,
+    @SerializedName("breakOrder") val breakOrder: List<String>? = null,
+    @SerializedName("shiftColorIndex") val shiftColorIndex: Int? = null,
+    @SerializedName("statusColorIndex") val statusColorIndex: Int? = null
 )
 
 /**

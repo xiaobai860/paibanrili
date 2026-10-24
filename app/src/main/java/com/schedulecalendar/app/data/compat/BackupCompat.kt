@@ -63,11 +63,38 @@ object BackupCompat {
     /**
      * 判断备份种类。
      * 按**顶层 key 集合**判断（不按子串猜测），否则备注里带关键字就会误判。
+     *
+     * 除两个主特征外，还按**内容特征兜底**（文件被二次处理/套了一层壳时顶层 key 会变样）：
+     * - 应用数据：`calcProfiles` / `salaryConfig` / `attendConfig` / `displaySchemes` / `accountCategories`；
+     * - 班次配置：`shiftOrder` / `breakOrder` / `extraOrder` / `shiftColorIndex`（弱特征，仅在前者都不存在时用）。
      */
-    fun detectKind(root: JsonObject): BackupKind? = when {
-        root.has("scheduleRecords") -> BackupKind.APP_DATA
-        root.has("shifts") -> BackupKind.SHIFT_CONFIG
-        else -> null
+    fun detectKind(root: JsonObject): BackupKind? {
+        if (root.has("scheduleRecords")) return BackupKind.APP_DATA
+        if (root.has("shifts")) return BackupKind.SHIFT_CONFIG
+        // ── 兜底：应用数据的强特征 ──
+        if (root.has("calcProfiles") || root.has("salaryConfig") || root.has("attendConfig") ||
+            root.has("displaySchemes") || root.has("accountCategories")
+        ) return BackupKind.APP_DATA
+        // ── 兜底：班次配置的弱特征 ──
+        if (root.has("shiftOrder") || root.has("breakOrder") ||
+            root.has("extraOrder") || root.has("shiftColorIndex")
+        ) return BackupKind.SHIFT_CONFIG
+        return null
+    }
+
+    /**
+     * 尝试「解包」一层：某些工具会把 JSON 再套一层（如 `{"data": {...}}`），
+     * 导致顶层 key 变成 "data" 而识别不出种类。
+     *
+     * @return 解包后的对象；若无需解包或解不出来则返回 null
+     */
+    fun unwrapOnce(root: JsonObject): JsonObject? {
+        val entries = root.entrySet().toList()
+        if (entries.size != 1) return null
+        val value = entries.first().value
+        if (!value.isJsonObject) return null
+        val inner = value.asJsonObject
+        return if (inner.has("scheduleRecords") || inner.has("shifts")) inner else null
     }
 
     /** 读取备份的格式版本；字段缺失/非法一律按 v1 处理（最老格式，交给转换器兜底） */
@@ -93,12 +120,14 @@ object BackupCompat {
     fun upgrade(json: String): UpgradeResult {
         val root = runCatching { JsonParser.parseString(json).asJsonObject }.getOrNull()
             ?: throw IllegalArgumentException("JSON 解析失败")
-        val kind = detectKind(root) ?: throw IllegalArgumentException("无法识别的备份格式")
-        val from = detectVersion(root)
+        // 套了一层壳（如 {"data":{...}}）→ 先解包再判定
+        val effectiveRoot = unwrapOnce(root) ?: root
+        val kind = detectKind(effectiveRoot) ?: throw IllegalArgumentException("无法识别的备份格式")
+        val from = detectVersion(effectiveRoot)
         val notes = mutableListOf<String>()
         val out = when (kind) {
-            BackupKind.APP_DATA -> canonicalizeAppData(root, from, notes)
-            BackupKind.SHIFT_CONFIG -> canonicalizeShiftConfig(root, from, notes)
+            BackupKind.APP_DATA -> canonicalizeAppData(effectiveRoot, from, notes)
+            BackupKind.SHIFT_CONFIG -> canonicalizeShiftConfig(effectiveRoot, from, notes)
         }
         return UpgradeResult(kind, from, currentVersion(kind), out.toString(), notes)
     }

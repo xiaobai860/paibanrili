@@ -1,86 +1,76 @@
 # 排班日历 ProGuard 规则
+#
+# ── 总则 ────────────────────────────────────────────────────────────────────────
+# 凡是**字段名会被写进用户数据**的类（备份文件 / 数据库里的 JSON 列 / SharedPreferences），
+# 字段名就属于「数据格式」的一部分，**绝不能被混淆**：
+#   ① 对应类加精确 keep；② 关键字段再加 @SerializedName 钉死名字（双保险，混淆也改不了 key）。
+#   守护：ProguardBackupRulesTest 会自动发现载荷类/JSON 载体类并断言它们在 keep 名单里。
+# ⚠️ 混淆类问题在 debug 包上**测不出来**（debug 不混淆）→ 验收看 R8 映射表：
+#    app/build/outputs/mapping/release/mapping.txt 里字段应是 `getXxx -> getXxx`（而非 `-> b`）。
+#
 # Jetpack Compose 不需要额外规则（AGP 已内置）
 
-# ── Hilt ─────────────────────────────────────────────────────────────────────
+# ── Hilt ────────────────────────────────────────────────────────────────────────
 -keepattributes *Annotation*
 -keepclassmembers,allowobfuscation class * {
     @javax.inject.Inject <init>(...);
 }
 
-# ── Room ──────────────────────────────────────────────────────────────────────
+# ── Room ────────────────────────────────────────────────────────────────────────
+# 保留 RoomDatabase 子类的 public 抽象方法（Room 生成的 DAO 方法）。
+# 用官方 `<methods>` 伪代码，别写 `public abstract *;`（IDE 检查会判成语法错）。
 -keep class * extends androidx.room.RoomDatabase
 -keepclassmembers class * extends androidx.room.RoomDatabase {
-    abstract *;
+    public abstract <methods>;
 }
 
-# ── Gson（DataStore 序列化模型）────────────────────────────────────────────────
+# ── Gson ────────────────────────────────────────────────────────────────────────
 -keepattributes Signature
-# 注：-keepattributes *Annotation* 已在文件上方 Hilt 段落声明过一次，此处不再重复
 -dontwarn sun.misc.**
--keep class com.google.gson.** { *; }
--keep class * implements com.google.gson.TypeAdapterFactory
--keep class * implements com.google.gson.JsonSerializer
--keep class * implements com.google.gson.JsonDeserializer
-# 保留所有 domain model 数据类（用于 Gson 反序列化）
+# Gson 2.11.0 **自带 consumer 规则**（META-INF/proguard/gson.pro，AGP 自动合并），
+# 已覆盖 TypeToken / @JsonAdapter / 各 TypeAdapter 的无参构造器 / @SerializedName 字段
+# → 不要手写 `-keep class com.google.gson.**`（重复覆盖 + 触发 IDE「规则过宽」提示）。
+# 我们自己的模型必须 keep：domain model 是备份与 DataStore 的载荷。
 -keepclassmembers class com.schedulecalendar.app.domain.model.** { *; }
 -keep class com.schedulecalendar.app.domain.model.** { *; }
 
-# ── Glance Widget（Gson 序列化数据类 + Widget 组件）────────────────────────────────
+# ── Glance Widget ───────────────────────────────────────────────────────────────
+# 小组件数据以 JSON 存在 SharedPreferences → widget 包下的数据类字段名不能被混淆。
 -keep class * extends androidx.glance.appwidget.GlanceAppWidget
 -keep class * extends androidx.glance.appwidget.GlanceAppWidgetReceiver
-# 保留 widget 包下所有 Gson 序列化的数据类字段（CalendarWidgetInfo / CalendarWidgetDay / ClockInWidgetData）
 -keepclassmembers class com.schedulecalendar.app.widget.** { *; }
 -keep class com.schedulecalendar.app.widget.** { *; }
 
-# ── Glance 运行时（Action / Composition / 内部 Provider，防止 R8 破坏反射路径）────
-# ⚠️ 这两条全量 keep 是历史踩坑后的修复：收窄后 release 包小组件会「载入出错」，
-#    改动必须真机验证组件能正常加载与后台刷新，勿轻易删改。
+# ── Glance 运行时 ───────────────────────────────────────────────────────────────
+# ⚠️ 必须全量 keep，勿收窄：glance-appwidget 自带的 consumer 规则**只覆盖 protobuf 与
+#    ActionCallback**，不覆盖 Glance 运行时（Composition / Provider / Action 内部类），
+#    收窄后 release 包小组件会「载入出错」。改动必须真机验证小组件加载与后台刷新。
 -keep class androidx.glance.** { *; }
 -keepclassmembers class androidx.glance.** { *; }
-# Glance 通过 WorkManager 在后台进程执行 provideGlance 的 composition，
-# 必须保留 androidx.work 全部类及其无参构造，否则 OverwritingInputMerger 等
-# 内部类被 R8 破坏 → worker 实例化失败 → widget 永远"载入出错"
--keep class androidx.work.** { *; }
--keepclassmembers class androidx.work.** { *; }
--keep class * extends androidx.work.InputMerger { *; }
--keep class * extends androidx.work.Worker { *; }
--keep class * extends androidx.work.ListenableWorker { *; }
+
+# ── WorkManager ────────────────────────────────────────────────────────────────
+# work-runtime 自带 consumer 规则（AAR 内 proguard.txt），已覆盖 worker/InputMerger 的
+# 类名与构造器、WorkerParameters → 只需精确 keep 我们自己的 worker（按类名反射实例化）。
+-keepnames class com.schedulecalendar.app.widget.WidgetRefreshWorker
 -dontwarn androidx.work.**
 
-# ── 备份管理 Gson 数据类（AppDataBackup / ShiftExportData）───────────────────────
--keepclassmembers class com.schedulecalendar.app.ui.settings.** { *; }
--keep class com.schedulecalendar.app.ui.settings.** { *; }
--keepclassmembers class com.schedulecalendar.app.ui.shifts.** { *; }
--keep class com.schedulecalendar.app.ui.shifts.** { *; }
+# ── 备份载荷类（应用数据 / 班次配置）──────────────────────────────────────────
+# 备份文件的字段名是数据格式的一部分：混淆后导出的备份无法恢复（曾因此事故）。
+# 精确 keep + 字段 @SerializedName 双保险；不要改回整包 keep（挪包会失效且掩盖问题）。
+-keep class com.schedulecalendar.app.data.compat.AppDataBackup { *; }
+-keep class com.schedulecalendar.app.data.compat.ShiftConfigBackup { *; }
 
-# ── data.repository Gson 数据类（AppliedStatusJson Room 序列化）────────────────
--keepclassmembers class com.schedulecalendar.app.data.repository.** { *; }
--keep class com.schedulecalendar.app.data.repository.** { *; }
+# ── 数据库 JSON 列的载体类 ─────────────────────────────────────────────────────
+# AppliedStatusJson 的字段名被直接写进 Room 的 appliedStatusesJson 列 → 必须 keep。
+-keep class com.schedulecalendar.app.data.repository.AppliedStatusJson { *; }
 
-# ── MainActivity 返回键状态字段与访问方法（防止 R8 内联优化导致状态同步失效）──
-# Kotlin 属性编译为 getter/setter 方法，R8 全程序优化可能内联这些方法
-# 使 Activity ↔ Composable 之间的状态同步失效
--keepclassmembers class com.schedulecalendar.app.MainActivity {
-    boolean isOnTabPage;
-    boolean calendarSubModeActive;
-    boolean getIsOnTabPage();
-    void setIsOnTabPage(boolean);
-    boolean getCalendarSubModeActive();
-    void setCalendarSubModeActive(boolean);
-    androidx.activity.OnBackPressedCallback tabBackCallback;
-}
+# ── Coroutines ─────────────────────────────────────────────────────────────────
+# 这两个类由协程库按名字反射查找 → 只保类名即可（-keepnames 不带成员列表）。
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler
 
-# ── OnBackPressedDispatcher 回调（保证 handleOnBackPressed 不被 R8 裁剪）─────────
--keepclassmembers class com.schedulecalendar.app.MainActivity$** {
-    void handleOnBackPressed();
-}
--keep class com.schedulecalendar.app.MainActivity$** extends androidx.activity.OnBackPressedCallback { *; }
-
-# ── Coroutines ────────────────────────────────────────────────────────────────
--keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
--keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
-
-# ── Navigation Route objects（防止 R8 重命名导致 ::class.qualifiedName 与 route 不匹配）──
+# ── Navigation Route objects ────────────────────────────────────────────────────
+# 防止 R8 重命名导致 ::class.qualifiedName 与 route 不匹配。
 -keepnames class com.schedulecalendar.app.ui.navigation.Route*
 
 # ── kotlinx-serialization ─────────────────────────────────────────────────────
