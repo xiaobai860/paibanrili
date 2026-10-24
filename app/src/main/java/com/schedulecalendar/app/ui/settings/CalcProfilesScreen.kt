@@ -151,6 +151,8 @@ class CalcProfilesViewModel @Inject constructor(
             val src = _profiles.value.firstOrNull { it.id == id }
                 ?: throw IllegalArgumentException("口径不存在")
             val today = DateFormats.date(LocalDate.now())
+            // 记录档案数：用于判断「相邻重复合并」是否命中（命中时不会新建档案）
+            val countBefore = profileRepo.countAll()
             val created = profileRepo.createDerivedProfile(
                 effectiveFrom = today,
                 name = copyAsName(src.name, today),
@@ -158,16 +160,30 @@ class CalcProfilesViewModel @Inject constructor(
                 attend = src.attend,
                 breaks = src.breaks
             )
+            val reused = profileRepo.countAll() == countBefore
             // 同步回 DataStore 现值：设置页读的是现值，不同步就会出现
             // 「档案已换成旧口径、但设置页仍显示新参数」的不一致
             prefs.saveSalaryConfig(created.salary)
             prefs.saveAttendConfig(created.attend)
+            // 时段集合同步到该口径的快照：
+            // ⚠️ 当前有效时段里**不在该口径快照中**的那些会被归档（退出生效），
+            //    它们变成「已归档 + 无引用」的废弃数据，需由「数据管理 → 清理废弃数据」清理。
+            //    数量 = |当前有效时段集合 \ 该口径快照|，固定不变、不会累积。
             syncBreaksToTable(created.breaks)
             refresh()
             _uiEvent.send(
-                CalcProfilesUiEvent.ShowMessage(
-                    "已创建新口径「${created.name}」，自 $today 起生效；之前的记录不变"
-                )
+                if (reused) {
+                    // 相邻重复合并：内容与当前生效口径完全一致 → 实际没有新建档案，
+                    // 若照旧提示「已创建新口径」会误导用户以为多了一份
+                    CalcProfilesUiEvent.ShowMessage(
+                        "该口径内容与当前生效口径完全一致，未新建档案；" +
+                            "现值与休息时段已同步为该口径（之前的记录不变）"
+                    )
+                } else {
+                    CalcProfilesUiEvent.ShowMessage(
+                        "已创建新口径「${created.name}」，自 $today 起生效；之前的记录不变"
+                    )
+                }
             )
         }.onFailure {
             _uiEvent.send(CalcProfilesUiEvent.ShowError("操作失败：${it.message}"))

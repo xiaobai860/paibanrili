@@ -171,6 +171,14 @@ class CalcProfileRepository @Inject constructor(
      * 归档档案（= 停用）。
      * 若归档的是「当前正在生效」的档案，会自动以归档日接续一份同内容副本，
      * 避免出现「某段日期没有任何口径可用」的空档。
+     *
+     * ⚠️ **这不是「废弃数据」**：口径档案表没有 `archivedAt`（不存在"标记废弃但没物理删"）。
+     * 本方法做的是「让这份口径从某天起不再使用」，被归档的那份**仍然留在表里**，
+     * 因为它承载了那段时间的计算结果（按 [deletability] 规则属于不可删的历史口径）。
+     * 若要真正删除一份档案，走 [deleteIfUnused]（物理 DELETE）。
+     *
+     * ⚠️ 当前 UI **没有**「停用口径」这个入口，本方法暂无调用方；
+     * 启用前需要先想清楚：接续副本 `_succ_` 与内容相同的相邻档案如何去重展示。
      */
     suspend fun archiveProfile(id: String, atDate: String): Boolean {
         val target = dao.getAll().firstOrNull { it.id == id } ?: return false
