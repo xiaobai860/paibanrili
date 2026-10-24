@@ -77,7 +77,7 @@ class CalendarGlanceWidget : GlanceAppWidget() {
             context.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
                 .edit { putString(KEY_CALENDAR_WIDGET_JSON, gson.toJson(data)) }
             manager.getGlanceIds(CalendarGlanceWidget::class.java).forEach { gid ->
-                widget.update(context, gid)
+                widget.updateSerialized(context, gid)
             }
         }
     }
@@ -354,12 +354,12 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
             // 3x3 widget
             val ids3x3 = manager.getGlanceIds(CalendarGlanceWidget::class.java)
             ids3x3.forEach { gid ->
-                CalendarGlanceWidget().update(context, gid)
+                CalendarGlanceWidget().updateSerialized(context, gid)
             }
             // 3x4 widget
             val ids3x4 = manager.getGlanceIds(Calendar3x4GlanceWidget::class.java)
             ids3x4.forEach { gid ->
-                Calendar3x4GlanceWidget().update(context, gid)
+                Calendar3x4GlanceWidget().updateSerialized(context, gid)
             }
             // 实例数日志：排查「组件没重绘 / 点不到按钮」时，确认更新确实覆盖了所有实例
             android.util.Log.d(

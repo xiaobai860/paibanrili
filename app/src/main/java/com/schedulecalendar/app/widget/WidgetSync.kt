@@ -4,8 +4,9 @@ package com.schedulecalendar.app.widget
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
+import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
-import com.google.gson.Gson
+import androidx.glance.GlanceId
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
@@ -19,7 +20,6 @@ import java.time.YearMonth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -55,6 +55,26 @@ private fun getRepos(context: Context): Triple<ScheduleRepository, ShiftReposito
 
 /** 互斥锁：防止「打卡直调 + 全局信号」等多路并发同步同时执行，避免组件渲染竞争 */
 private val syncMutex = Mutex()
+
+/**
+ * Glance 组合互斥：串行化所有 widget.update()/updateAll()，保证任意时刻只有一个组件在进行
+ * provideGlance 组合。
+ *
+ * [syncMutex] 串行化的是「回源重算」这一层；这里进一步下沉到「Glance 组合」本身，并同时覆盖
+ * 系统 onUpdate（新增/开机/尺寸或配置变更触发的重绘）与 APP 内同步两条路径，避免两条路径的组合
+ * 相互重叠：上一次组合未结束就被下一次 update 取消时，Glance 会抛
+ * "The coroutine scope left the composition"（非致命、被各 provideGlance 的 runCatching 兜住并保留
+ * 上次快照，但会刷 error 日志）。
+ *
+ * 锁序约定：APP 内路径总是先持 [syncMutex] 再持本锁（顺序固定），系统 onUpdate 路径只持本锁，
+ * 因此不会死锁。
+ */
+internal val widgetComposeMutex = Mutex()
+
+/** 串行执行单个实例的 Glance update（APP 内同步路径：等前一个组合结束再启动本次）。 */
+suspend fun GlanceAppWidget.updateSerialized(context: Context, id: GlanceId) {
+    widgetComposeMutex.withLock { update(context, id) }
+}
 
 /**
  * 小组件「手动刷新」动作的统一实现：回源同步 + 结果提示。

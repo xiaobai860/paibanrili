@@ -31,7 +31,6 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
-import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.domain.model.*
 import java.time.LocalDate
 import java.time.LocalTime
@@ -46,7 +45,6 @@ import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.reminder.ReminderScheduler
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // ── 打开小组件样式配置页 ──────────────────────────────────────────
@@ -111,6 +109,9 @@ data class ClockInWidgetData(
 private const val WIDGET_DATA_PREFS = "widget_action_data_prefs"
 private const val KEY_WIDGET_JSON = "widget_json"
 
+/** 打卡后兜底补刷延迟：等过桌面「交互窗口期」再补一次单路更新（毫秒） */
+private const val WIDGET_FALLBACK_RESYNC_DELAY_MS = 1200L
+
 // ── 快捷打卡 Glance 小组件 ─────────────────────────────────────────
 
 class ScheduleGlanceWidget : GlanceAppWidget() {
@@ -133,7 +134,7 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
             val widget = ScheduleGlanceWidget()
             val manager = GlanceAppWidgetManager(context)
             manager.getGlanceIds(ScheduleGlanceWidget::class.java).forEach { glanceId ->
-                widget.update(context, glanceId)
+                widget.updateSerialized(context, glanceId)
             }
         }
     }
@@ -160,7 +161,7 @@ class WidgetClockInAction : ActionCallback {
         // 直接写入等于把「今天的打卡」写到历史记录上 → 非今天一律走 fallback
         val todayStr = DateFormats.date(LocalDate.now())
         if (data.clockInDate.isBlank() || data.clockInDate != todayStr) {
-            fallbackClock(context, glanceId, true)
+            fallbackClock(context, true)
             return
         }
 
@@ -208,12 +209,12 @@ class WidgetClockInAction : ActionCallback {
         }, 500)
         // 兜底：信号同步可能落在桌面「交互窗口期」被丢弃，延迟补一次单路更新
         widgetFallbackScope.launch {
-            delay(1200)
+            delay(WIDGET_FALLBACK_RESYNC_DELAY_MS)
             runCatching { syncAllWidgets(context.applicationContext) }
         }
     }
 
-    private suspend fun fallbackClock(context: Context, glanceId: GlanceId, isClockIn: Boolean) {
+    private suspend fun fallbackClock(context: Context, isClockIn: Boolean) {
         val today = LocalDate.now()
         val todayStr = DateFormats.date(today)
         val now = LocalTime.now()
@@ -253,7 +254,7 @@ class WidgetClockOutAction : ActionCallback {
             .getOrElse { ClockInWidgetData() }
 
         if (data.clockInDate.isBlank()) {
-            fallbackClock(context, glanceId, false)
+            fallbackClock(context, false)
             return
         }
 
@@ -301,12 +302,12 @@ class WidgetClockOutAction : ActionCallback {
         }, 500)
         // 兜底：信号同步可能落在桌面「交互窗口期」被丢弃，延迟补一次单路更新
         widgetFallbackScope.launch {
-            delay(1200)
+            delay(WIDGET_FALLBACK_RESYNC_DELAY_MS)
             runCatching { syncAllWidgets(context.applicationContext) }
         }
     }
 
-    private suspend fun fallbackClock(context: Context, glanceId: GlanceId, isClockIn: Boolean) {
+    private suspend fun fallbackClock(context: Context, isClockIn: Boolean) {
         val today = LocalDate.now()
         val todayStr = DateFormats.date(today)
         val now = LocalTime.now()
@@ -373,7 +374,7 @@ private fun getHolidayCountdownText(): String {
 @Suppress("LocalContextConfigurationRead")
 @Composable
 private fun ClockInWidgetContent() {
-    val prefs = androidx.glance.LocalContext.current.getSharedPreferences(WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
+    val prefs = LocalContext.current.getSharedPreferences(WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
     val jsonStr = prefs.getString(KEY_WIDGET_JSON, "")
     val data = if (!jsonStr.isNullOrBlank())
         runCatching { Gson().fromJson(jsonStr, ClockInWidgetData::class.java) }
@@ -416,7 +417,6 @@ private fun ClockInWidgetContent() {
 
     // 内置班次（休息/调休）+ 附加状态（内置或自定义）：打卡与显示均以附加状态时间段为准
     val isBuiltInWithStatus = data.isBuiltInShift && data.appliedStatusId.isNotBlank()
-    val statusHasTime = data.statusStartTime.isNotEmpty() || data.statusEndTime.isNotEmpty()
     val statusTimeText = when {
         data.statusStartTime.isNotEmpty() && data.statusEndTime.isNotEmpty() ->
             "${data.statusStartTime}–${data.statusEndTime}"
@@ -454,7 +454,7 @@ private fun ClockInWidgetContent() {
                         .clickable(actionRunCallback<OpenAppAction>())
                 ) {
                     Text(
-                        text = if (data.shiftName.isNotEmpty()) data.shiftName else "今日无排班",
+                        text = data.shiftName.ifEmpty { "今日无排班" },
                         style = if (data.shiftName.isNotEmpty())
                             TextStyle(
                                 color = if (isDark) ColorProvider(shiftColor.copy(alpha = 0.95f)) else ColorProvider(shiftColor),
@@ -659,7 +659,6 @@ interface WidgetClockEntryPoint {
     fun shiftStatusRepository(): ShiftStatusRepository
     fun shiftBreakRepository(): ShiftBreakRepository
     fun extraItemRepository(): ExtraItemRepository
-    fun appPreferences(): AppPreferences
     fun calcInputResolver(): com.schedulecalendar.app.data.repository.CalcInputResolver
     fun reminderScheduler(): ReminderScheduler
     fun widgetRefreshScheduler(): WidgetRefreshScheduler
