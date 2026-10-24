@@ -103,10 +103,7 @@ class OpenDateAction : ActionCallback {
 /** 小组件刷新动作回调：回源数据库重新计算并写入数据 */
 class RefreshWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        val ok = syncAllWidgets(context)
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, if (ok) "刷新成功" else "刷新失败", Toast.LENGTH_SHORT).show()
-        }
+        performManualRefresh(context)
     }
 }
 
@@ -140,7 +137,12 @@ private fun CalendarWidgetContent(
     val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     val today = LocalDate.now()
     val isCurMon = data.year == today.year && data.month == today.monthValue
-    val headerText = if (data.month > 0) "${data.year}年${data.month}月" else "${today.year}年${today.monthValue}月"
+    // 窄尺寸（3x3）只显示「10月」：给右侧两个按钮让出宽度，否则刷新图标会被挤出边界点不到
+    val headerText = if (data.month > 0) {
+        if (compact) "${data.month}月" else "${data.year}年${data.month}月"
+    } else {
+        if (compact) "${today.monthValue}月" else "${today.year}年${today.monthValue}月"
+    }
     val weekLabels = listOf("一", "二", "三", "四", "五", "六", "日")
     val tfs = if (isLarge) 18.sp else 16.sp
     val useBig = isLarge && !compact
@@ -161,36 +163,47 @@ private fun CalendarWidgetContent(
     ) {
         Column(modifier = GlanceModifier.fillMaxSize()) {
             // Header: 左对齐年月 + 右侧设置/刷新按钮
+            // ⚠️ 3x3 很窄（约 110dp）：「2026年10月」+ 齿轮 + 刷新会超出宽度，
+            //    刷新图标被挤出组件边界 → **点不到**（真机实测：点击后 action 根本没派发，
+            //    日志里没有任何记录；且尺寸越小的实例越明显）。
+            //    对策：① 标题占满弹性空间并允许压缩；② compact 尺寸只显示「10月」；
+            //         ③ 两个图标用 28dp 的点击热区包 20dp 的视觉图标（更好点中）。
             Row(
                 modifier = GlanceModifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = headerText,
-                    style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = headerFs, fontWeight = FontWeight.Bold)
+                    style = TextStyle(color = if (isDark) ColorProvider(utcDark) else ColorProvider(utc), fontSize = headerFs, fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    modifier = GlanceModifier.defaultWeight()
                 )
-                Spacer(modifier = GlanceModifier.defaultWeight())
-                widgetIcon(
-                    context = context,
-                    resId = com.schedulecalendar.app.R.drawable.ic_widget_gear,
-                    color = if (isDark) utcDark else utc,
-                    modifier = GlanceModifier
-                        .size(20.dp)
-                        .clickable(
-                            actionRunCallback<OpenWidgetConfigAction>(
-                                parameters = actionParametersOf(KEY_TYPE to WIDGET_TYPE_CALENDAR)
-                            )
+                Box(
+                    modifier = GlanceModifier.size(28.dp).clickable(
+                        actionRunCallback<OpenWidgetConfigAction>(
+                            parameters = actionParametersOf(KEY_TYPE to WIDGET_TYPE_CALENDAR)
                         )
-                )
-                Spacer(modifier = GlanceModifier.width(4.dp))
-                widgetIcon(
-                    context = context,
-                    resId = com.schedulecalendar.app.R.drawable.ic_widget_refresh,
-                    color = if (isDark) utcDark else utc,
-                    modifier = GlanceModifier
-                        .size(20.dp)
-                        .clickable(actionRunCallback<RefreshWidgetAction>())
-                )
+                    ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    widgetIcon(
+                        context = context,
+                        resId = com.schedulecalendar.app.R.drawable.ic_widget_gear,
+                        color = if (isDark) utcDark else utc,
+                        modifier = GlanceModifier.size(20.dp)
+                    )
+                }
+                Box(
+                    modifier = GlanceModifier.size(28.dp).clickable(actionRunCallback<RefreshWidgetAction>()),
+                    contentAlignment = Alignment.Center
+                ) {
+                    widgetIcon(
+                        context = context,
+                        resId = com.schedulecalendar.app.R.drawable.ic_widget_refresh,
+                        color = if (isDark) utcDark else utc,
+                        modifier = GlanceModifier.size(20.dp)
+                    )
+                }
             }
             Row(modifier = GlanceModifier.fillMaxWidth()) {
                 weekLabels.forEachIndexed { i, label ->
@@ -348,13 +361,21 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
                 .edit { putString(KEY_CALENDAR_WIDGET_JSON, gson.toJson(data)) }
             val manager = GlanceAppWidgetManager(context)
             // 3x3 widget
-            manager.getGlanceIds(CalendarGlanceWidget::class.java).forEach { gid ->
+            val ids3x3 = manager.getGlanceIds(CalendarGlanceWidget::class.java)
+            ids3x3.forEach { gid ->
                 CalendarGlanceWidget().update(context, gid)
             }
             // 3x4 widget
-            manager.getGlanceIds(Calendar3x4GlanceWidget::class.java).forEach { gid ->
+            val ids3x4 = manager.getGlanceIds(Calendar3x4GlanceWidget::class.java)
+            ids3x4.forEach { gid ->
                 Calendar3x4GlanceWidget().update(context, gid)
             }
+            // 实例数日志：排查「组件没重绘 / 点不到按钮」时，确认更新确实覆盖了所有实例
+            android.util.Log.d(
+                "WIDGET_SYNC",
+                "calendar widgets updated: 3x3=${ids3x3.size}, 3x4=${ids3x4.size}, " +
+                    "month=${data.year}-${data.month}"
+            )
         }
     }
 }

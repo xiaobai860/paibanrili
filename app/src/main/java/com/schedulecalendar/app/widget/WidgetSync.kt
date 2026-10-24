@@ -3,6 +3,7 @@ package com.schedulecalendar.app.widget
 
 import android.content.Context
 import android.util.Log
+import android.widget.Toast
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import com.google.gson.Gson
 import com.schedulecalendar.app.data.repository.ScheduleRepository
@@ -11,6 +12,7 @@ import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
 import com.schedulecalendar.app.domain.util.DateFormats
 import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -53,6 +55,26 @@ private fun getRepos(context: Context): Triple<ScheduleRepository, ShiftReposito
 
 /** 互斥锁：防止「打卡直调 + 全局信号」等多路并发同步同时执行，避免组件渲染竞争 */
 private val syncMutex = Mutex()
+
+/**
+ * 小组件「手动刷新」动作的统一实现：回源同步 + 结果提示。
+ *
+ * 三个组件（2x1 打卡 / 3x3 / 3x4 日历）的刷新按钮都走这里，避免三份重复实现走偏。
+ *
+ * ⚠️ 提示必须**在主线程**显示（Toast 的内部 Handler 绑定创建它的 Looper），
+ * 这里用 [withContext] 而不是 `Handler.post`：后者在主线程繁忙时会把提示排到队尾，
+ * 叠加组件重载的耗时后容易被"吃掉"（曾出现「只有第一次刷新有提示，之后点什么都没反应」）。
+ */
+internal suspend fun performManualRefresh(context: Context) {
+    Log.d("WIDGET_SYNC", "manual refresh: action start")
+    val ok = syncAllWidgets(context)
+    Log.d("WIDGET_SYNC", "manual refresh: sync finished, ok=$ok")
+    withContext(Dispatchers.Main) {
+        Log.d("WIDGET_SYNC", "manual refresh: showing toast")
+        Toast.makeText(context, if (ok) "刷新成功" else "刷新失败", Toast.LENGTH_SHORT).show()
+        Log.d("WIDGET_SYNC", "manual refresh: toast shown")
+    }
+}
 
 /**
  * 兜底协程作用域：用于「打卡等组件动作后延迟补发一次更新」。

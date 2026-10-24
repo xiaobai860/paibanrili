@@ -69,10 +69,7 @@ class OpenWidgetConfigAction : ActionCallback {
 /** 2x1 打卡组件手动刷新：回源数据库重新计算并写入数据 */
 class RefreshScheduleWidgetAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        val ok = syncAllWidgets(context)
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, if (ok) "刷新成功" else "刷新失败", Toast.LENGTH_SHORT).show()
-        }
+        performManualRefresh(context)
     }
 }
 
