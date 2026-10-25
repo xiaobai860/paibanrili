@@ -132,6 +132,50 @@ class ProguardBackupRulesTest {
         }
     }
 
+    /**
+     * **小组件的 Glance 回调类**必须被 keep（类名保留）。
+     *
+     * Glance 的 `actionRunCallback<T>()` 会把 `T::class.java.name` 写进 Intent，
+     * 用户点击组件按钮时，Glance 再用 `Class.forName(那个名字)` 把回调类找回来并实例化。
+     * → **回调类的类名一旦被混淆，点击就会静默失效**（不崩、没反应，极难排查）。
+     *
+     * 这类「藏在普通类里、但类名是运行期契约」的东西最容易漏登记，
+     * 所以这里**自动发现**它们并断言被 keep 覆盖。
+     */
+    @Test
+    fun glanceActionCallbacksAreInKeepList() {
+        val text = rules()
+        val widgetDir = locateFile(
+            "app/src/main/java/com/schedulecalendar/app/widget",
+            "../src/main/java/com/schedulecalendar/app/widget",
+            "src/main/java/com/schedulecalendar/app/widget"
+        )
+        val callbackClasses = mutableSetOf<String>()
+        widgetDir.listFiles { f -> f.isFile && f.name.endsWith(".kt") }?.forEach { f ->
+            val src = f.readText()
+            // 形如：class XxxAction : ActionCallback {   /   class XxxAction : ActionCallback {
+            Regex("""class\s+(\w+)\s*:\s*ActionCallback\b""").findAll(src).forEach {
+                callbackClasses.add(it.groupValues[1])
+            }
+        }
+        assertTrue(
+            "应能从 widget 包下解析出 ActionCallback 子类（Glance 靠类名反射实例化它们）",
+            callbackClasses.isNotEmpty()
+        )
+        // 允许两种保留方式：① 整包 keep widget；② 精确列出该类名
+        val widgetPackageKept = text.contains("com.schedulecalendar.app.widget.**")
+        for (cls in callbackClasses) {
+            val explicitlyKept = text.contains("com.schedulecalendar.app.widget.$cls")
+            assertTrue(
+                "$cls 是 Glance ActionCallback 子类，其类名会被写进 Intent 并在点击时反射找回，" +
+                    "必须被 keep（否则点组件按钮静默失效）。" +
+                    "当前 proguard-rules.pro 既没有整包 keep com.schedulecalendar.app.widget.**，" +
+                    "也没有精确列出 $cls。",
+                widgetPackageKept || explicitlyKept
+            )
+        }
+    }
+
     private fun locateFile(vararg candidates: String): File =
         candidates.map { File(it) }.firstOrNull { it.exists() }
             ?: error("找不到文件（尝试过：${candidates.toList()}）")

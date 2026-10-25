@@ -81,8 +81,8 @@
 | 异步 | Kotlin Coroutines + Flow |
 | 桌面组件 | Glance 1.2.0 + WorkManager 2.12.0 |
 | 序列化 | Gson（配置/组件数据 JSON）+ kotlinx-serialization（Navigation 路由） |
-| 农历/节气/黄历 | tyme4j 1.5.1（`cn.6tail:tyme4j`，依据紫金山天文台《农历的编算和颁行》） |
-| 单元测试 | JUnit 4（13 个测试类 / 116 例：法定节假日表 + 历法数据对账 + 加班判定与三档计薪金额映射 + 计算口径档案区间选择 + 备份反序列化默认值 + 备份往返 + 数据格式栅栏 + ProGuard 规则） |
+| 农历/节气/黄历 | tyme4j 1.5.2（`cn.6tail:tyme4j`，依据紫金山天文台《农历的编算和颁行》） |
+| 单元测试 | JUnit 4（13 个测试类 / 117 例：法定节假日表 + 历法数据对账 + 加班判定与三档计薪金额映射 + 计算口径档案区间选择 + 备份反序列化默认值 + 备份往返 + 数据格式栅栏 + ProGuard 规则） |
 | 仪器测试 | AndroidX Test Runner（5 个测试类，需连真机：档案删除残留 / 孤儿数据清理 / 薪资考勤一致性） |
 
 ## 构建环境与版本信息
@@ -120,7 +120,7 @@
 # 发布版（改过资源/混淆敏感代码后务必加参数关闭缓存）
 ./gradlew assembleRelease --rerun-tasks --no-build-cache
 
-# 单元测试（116 例：节假日/历法/计薪/档案/备份格式守护；改过 HolidayData / LunarCalendar / CalcUtils / 备份载荷后必跑）
+# 单元测试（117 例：节假日/历法/计薪/档案/备份格式守护；改过 HolidayData / LunarCalendar / CalcUtils / 备份载荷后必跑）
 ./gradlew testDebugUnitTest
 
 # 仪器测试（5 例，必须连真机；改过档案删除、孤儿数据清理、薪资考勤一致性后必跑）
@@ -149,20 +149,28 @@ RELEASE_KEY_PASSWORD=your_password
 ```
 
 ### ⚠️ R8/ProGuard 关键注意事项
-`app/proguard-rules.pro` **只保留必要规则**：Hilt / Room / Gson / coroutines / WorkManager 的规则**已由各库自带的
-consumer 规则覆盖**（AGP 自动合并 AAR/JAR 内的 proguard 文件），不再重复声明。
+`app/proguard-rules.pro` **只保留必要规则**（当前 9 条）：Hilt / Room / Gson / coroutines / WorkManager / Glance
+的通用规则**已由各库自带的 consumer 规则覆盖**（AGP 自动合并 AAR/JAR 内的 proguard 文件），不再重复声明。
 
 **必须永久保留**（删掉会出事）：
-- `-keep class androidx.glance.** { *; }` —— Glance **运行时本体**（Composition / Provider / Action 内部类）
-  **不在**其 consumer 规则内，删了 release 包小组件会「载入出错」（真机已复现）
-- `-keep class com.schedulecalendar.app.domain.model.**` 与 `...app.widget.**` —— 领域模型与小组件数据的
-  **字段名会被写进用户数据**（备份 JSON / SharedPreferences），混淆即数据损坏
-- `-keep class ...data.compat.AppDataBackup` / `ShiftConfigBackup` —— 备份载荷类字段名就是数据格式
-  （曾出事故：release 包导出的备份全部不可恢复）
-- `-keep class ...data.repository.AppliedStatusJson` —— 其字段名被直接写进 Room 的 `appliedStatusesJson` 列
-- `-keepnames class ...ui.navigation.Route*` —— 类型安全路由的 serialName 取自类全名，改名会导致 route 串不匹配
-- `-keepnames class ...widget.WidgetRefreshWorker` —— WorkManager 按类名反射实例化
-- `-keepattributes Signature / *Annotation* / RuntimeVisibleAnnotations,AnnotationDefault` —— Gson 泛型签名与序列化注解
+
+| 规则 | 为什么不能删 |
+|---|---|
+| `-keep class com.schedulecalendar.app.domain.model.**` | 领域模型的**字段名会进用户数据**（备份 JSON / DataStore），混淆即数据损坏 |
+| `-keep class com.schedulecalendar.app.widget.**` | ① 组件数据以 JSON 存在 SharedPreferences；② **Glance 靠类名反射实例化我们的 `ActionCallback`**（类名被改 → 点按钮静默失效）；③ WorkManager 靠类名实例化 `WidgetRefreshWorker` |
+| `-keep class ...data.compat.AppDataBackup` / `ShiftConfigBackup` | 备份载荷类的字段名就是**数据格式**（曾出事故：release 包导出的备份全部不可恢复） |
+| `-keep class ...data.repository.AppliedStatusJson` | 其字段名被直接写进 Room 的 `appliedStatusesJson` 列 |
+| `-keepnames class ...ui.navigation.Route*` | 类型安全路由的 serialName 取自类全名，改名会导致 route 串不匹配 |
+| `-keepattributes *Annotation*` | kotlinx-serialization（Navigation 路由）需要运行时可见的 `@Serializable` 注解 |
+| `-keepattributes Signature` | Gson 反序列化集合字段要读泛型签名（`List<Shift>` → `Shift`） |
+| `-keepclassmembers @kotlinx.serialization.Serializable class ** { *** Companion; }` | Navigation 的 `serializer<T>()` 靠 companion 上的 `serializer()` 反射解析 |
+
+> **Glance 不再整包 keep**（2026-10-26 审计）：`glance` / `glance-appwidget-external-protobuf` 自带
+> 「safe to shrink」声明，`glance-appwidget` 的 consumer 规则已保 protobuf 字段与 ActionCallback 子类，
+> 而 Glance 依赖的反射入口（`ActionTrampolineActivity` / `ActionCallbackBroadcastReceiver` 等）
+> 都在其 AAR manifest 里声明 → 由 AGP 自动 keep。**去掉后 APK 从 7,242,117 B 降到 5,898,356 B（-18.6%）**，
+> R8 零告警，真机小组件在新包下重新组装成功。
+> ⚠️ 升级 Glance 版本后必须重跑：构建无 R8 告警 + 三个组件能新增/刷新 + 点组件按钮（打卡/刷新/打开 App）能触发。
 
 **改动这些规则后必须真机验证**（Hilt 注入 / Room 打开 / 小组件加载 / WorkManager 运行），
 并看 R8 映射表 `app/build/outputs/mapping/release/mapping.txt`：
@@ -201,7 +209,7 @@ app/src/main/java/com/schedulecalendar/app/
 │   └── navigation/          #   AppNavHost + 类型安全路由（Route*）
 └── widget/                  # Glance 小组件 + 数据同步 + 周期刷新 Worker
 
-app/src/test/java/com/schedulecalendar/app/          # 单元测试（13 个测试类，共 116 例）
+app/src/test/java/com/schedulecalendar/app/          # 单元测试（13 个测试类，共 117 例）
 │   ├── data/compat/            #   BackupRestoreRoundTrip / DataFormatFence / ProguardBackupRules
 │   ├── data/repository/        #   ReferenceIdParser
 │   ├── domain/model/           #   CalcProfile / CalcUtilsAttendance / CalcUtilsOvertime
@@ -303,7 +311,7 @@ app/src/androidTest/java/com/schedulecalendar/app/  # 仪器测试（5 个测试
 
 ### 单元测试守护
 
-`app/src/test/java/com/schedulecalendar/app/` 下有 **13 个测试类、共 116 个用例**：
+`app/src/test/java/com/schedulecalendar/app/` 下有 **13 个测试类、共 117 个用例**：
 
 **历法与节假日（`domain/model/`）**
 
@@ -356,7 +364,7 @@ app/src/androidTest/java/com/schedulecalendar/app/  # 仪器测试（5 个测试
 
 **`DataFormatFenceTest.kt`**（11 用例，锁定数据格式栅栏**只升不降**：DB 版本 / 应用数据备份版本 / 班次配置备份版本）
 **`BackupRestoreRoundTripTest.kt`**（11 用例，备份→还原→再备份的往返一致性）
-**`ProguardBackupRulesTest.kt`**（4 用例，守护备份载荷字段名的 keep 规则不被误删）
+**`ProguardBackupRulesTest.kt`**（5 用例，守护 keep 规则不被误删）：备份载荷类 / 数据库 JSON 列载体类 / 领域模型与小组件包都在 keep 名单里，且**小组件的 `ActionCallback` 子类**（Glance 靠类名反射实例化，漏了会「点按钮静默失效」）必须被覆盖；并禁止整包 keep 掩盖载荷挪包
 **`BackupGsonTest.kt`**（7 用例，守护备份反序列化的默认值与可空字段策略）
 **`ReferenceIdParserTest.kt`**（7 用例，守护归档记录引用的班次/状态 id 解析）
 
@@ -433,7 +441,7 @@ app/src/androidTest/java/com/schedulecalendar/app/  # 仪器测试（5 个测试
 
 ### tyme4j 能力清单
 
-`cn.6tail:tyme4j` 1.5.1 的包级能力与可用性评估：
+`cn.6tail:tyme4j` 1.5.2 的包级能力与可用性评估：
 
 | 包 / API | 能力 | 可用性 |
 |----------|------|--------|
@@ -621,6 +629,8 @@ Manifest 中 `<application android:enableOnBackInvokedCallback="false">`。
 
 1. **改 res 资源后必须 `--rerun-tasks --no-build-cache`**，否则构建缓存复用旧产物，改动不进 APK
 2. **涉及 Glance / WorkManager 的改动必须构建 release 验证**（debug 不混淆，掩盖 R8 导致的运行时崩溃）
+   —— 2026-10-26 起本项目**不再 keep `androidx.glance.**` 全包**（省 18.6% 体积）；
+   **升级 Glance 版本后**必须重跑：构建无 R8 告警 + 三个组件能新增/刷新 + 点组件按钮（打卡/刷新/打开 App）能触发
 3. **禁止在 ViewModel `init` 的默认 Main 协程里做 CPU 密集计算或同步 IO/Binder**——重活用 `withContext(Dispatchers.Default/IO)` 包住（历史卡顿根因）
 4. **调用组件刷新前先用脏数据指纹判断**，数据未变跳过（Glance `update()` 内部会切主线程做 Binder）
 5. **数据库升级只写一条前向迁移**：从当前版本（v7）到新版本；栅栏已抬到 v7，更老的数据格式一律**明确拒绝**（不转换、不兜底解析）
