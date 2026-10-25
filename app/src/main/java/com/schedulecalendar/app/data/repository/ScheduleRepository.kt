@@ -1,5 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/data/repository/ScheduleRepository.kt
 package com.schedulecalendar.app.data.repository
+import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import com.schedulecalendar.app.data.db.dao.ScheduleRecordDao
 import com.schedulecalendar.app.domain.model.ScheduleRecord
@@ -18,7 +20,11 @@ class ScheduleRepository @Inject constructor(
     private val _refreshSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val refreshSignal: Flow<Unit> = _refreshSignal.asSharedFlow()
 
-    private fun notifyChanged() = _refreshSignal.notifyChangedOrLog("ScheduleRepo")
+    private fun notifyChanged() {
+        if (!_refreshSignal.tryNotifyChanged()) {
+            AppLog.w(LogTags.SCHEDULE_REPOSITORY, "changeSignal emit dropped")
+        }
+    }
 
     /**
      * 把 "yyyy-MM" 转成该月的闭区间日期范围 [start, end]（"yyyy-MM-01" ~ "yyyy-MM-31"）。

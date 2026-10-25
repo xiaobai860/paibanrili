@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 import dagger.hilt.EntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.InstallIn
@@ -67,7 +68,7 @@ class AlarmReceiver : BroadcastReceiver() {
                         // 此处仅记录日志便于排查（授权引导由设置页提供）。
                         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         if (!nm.areNotificationsEnabled()) {
-                            AppLog.w("AlarmReceiver", "notifications disabled, skip remind")
+                            AppLog.w(LogTags.ALARM_RECEIVER, "notifications disabled, skip remind")
                             return@launch
                         }
 
@@ -111,7 +112,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
                         nm.notify(notificationId, notification)
                     } catch (e: Exception) {
-                        AppLog.e("AlarmReceiver", "reminder notify failed", e)
+                        AppLog.e(LogTags.ALARM_RECEIVER, "reminder notify failed", e)
                     } finally {
                         pr.finish()
                     }
@@ -120,7 +121,7 @@ class AlarmReceiver : BroadcastReceiver() {
         }
         // goAsync() 之前失败：记录日志即可（此时还没有 pendingResult 需要 finish）
         if (pendingResult.isFailure) {
-            pendingResult.exceptionOrNull()?.let { AppLog.e("AlarmReceiver", "reminder failed", it) }
+            pendingResult.exceptionOrNull()?.let { AppLog.e(LogTags.ALARM_RECEIVER, "reminder failed", it) }
         }
     }
 

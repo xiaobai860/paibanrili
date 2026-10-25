@@ -33,3 +33,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "排班日历"
 include(":app")
+include(":lint")

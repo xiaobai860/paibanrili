@@ -1,6 +1,8 @@
 // app/src/main/java/com/schedulecalendar/app/ScheduleApp.kt
 package com.schedulecalendar.app
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.FileLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import android.app.Activity
 import android.app.Application
@@ -58,6 +60,10 @@ class ScheduleApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // 日志的文件输出目标初始化（app 私有目录 → 无需任何存储权限）。
+        // ⚠️ 必须用编译期常量门控：`-PlogToFile=false` 时整个调用被 R8 剔除 →
+        //   FileLog 类随之被裁掉（零线程、零磁盘 IO、零目录创建）。
+        if (BuildConfig.LOG_TO_FILE) FileLog.init(filesDir, cacheDir)
         // 通过 Hilt EntryPoint 取得提醒调度器与小组件刷新调度器（与小组件数据变更信号复用同一入口）
         val ep = EntryPointAccessors.fromApplication(this, WidgetClockEntryPoint::class.java)
         reminderScheduler = ep.reminderScheduler()
@@ -204,7 +210,7 @@ class ScheduleApp : Application() {
      */
     private suspend fun runSafely(tag: String, block: suspend () -> Unit) {
         runCatching { block() }.onFailure {
-            AppLog.w("ScheduleApp", "$tag failed", it)
+            AppLog.w(LogTags.APP, "$tag failed", it)
         }
     }
 

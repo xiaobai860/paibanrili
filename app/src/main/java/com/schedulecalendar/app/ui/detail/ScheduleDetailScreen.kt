@@ -3,6 +3,7 @@ package com.schedulecalendar.app.ui.detail
 import androidx.compose.ui.res.stringResource
 import com.schedulecalendar.app.R
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 import com.schedulecalendar.app.ui.util.currentLocale
 
 import androidx.core.graphics.toColorInt
@@ -46,7 +47,7 @@ fun ScheduleDetailScreen(
 ) {
     val state       by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.date) {
-        AppLog.d("WBD","detail: composed date=" + state.date)
+        AppLog.d(LogTags.SCHEDULE_DETAIL_SCREEN, "detail: composed date=" + state.date)
     }
     val snackbar     = remember { SnackbarHostState() }
     val scrollState  = rememberScrollState()
@@ -78,7 +79,7 @@ fun ScheduleDetailScreen(
     BackHandler(
         enabled = showShiftPicker || showStatusPicker || showStatusEditor != null || timeDialogConfig != null
     ) {
-        AppLog.d("WBD","detail: back -> close overlays")
+        AppLog.d(LogTags.SCHEDULE_DETAIL_SCREEN, "detail: back -> close overlays")
         showShiftPicker  = false
         showStatusPicker = false
         showStatusEditor = null
@@ -119,7 +120,7 @@ fun ScheduleDetailScreen(
         topBar = {
             ScheduleTopBar(
                 title   = stringResource(R.string.detail_title),
-                onBack  = { AppLog.d("WBD","detail: topbar back"); navController.popBackStack() },
+                onBack  = { AppLog.d(LogTags.SCHEDULE_DETAIL_SCREEN, "detail: topbar back"); navController.popBackStack() },
                 actions = {
                     // 清除按钮（左侧）
                     if (record?.shiftId != null) {
@@ -194,7 +195,7 @@ fun ScheduleDetailScreen(
             Row(
                 Modifier.fillMaxWidth()
                     .clip(MaterialTheme.shapes.medium)
-                    .clickable { AppLog.d("WBD","detail: click shift row"); showShiftPicker = true }
+                    .clickable { AppLog.d(LogTags.SCHEDULE_DETAIL_SCREEN, "detail: click shift row"); showShiftPicker = true }
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     // 与附加状态行高一致（min 52dp）
                     .heightIn(min = 52.dp)
@@ -324,7 +325,7 @@ fun ScheduleDetailScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
                         // 点击行主体 / > 图标 → 弹出附加状态选择页（与选择班次一致）
-                        .clickable { AppLog.d("WBD","detail: click status row"); showStatusPicker = true }
+                        .clickable { AppLog.d(LogTags.SCHEDULE_DETAIL_SCREEN, "detail: click status row"); showStatusPicker = true }
                 ) {
                     Row(
                         // heightIn 保证「无附加状态」与已选状态行高一致
@@ -496,7 +497,7 @@ fun ScheduleDetailScreen(
         ShiftPickerSheet(
             shifts   = state.shifts,
             onSelect = { id -> vm.setShift(id); showShiftPicker = false },
-            onDismiss = { AppLog.d("WBD","detail: shift sheet dismiss"); showShiftPicker = false }
+            onDismiss = { AppLog.d(LogTags.SCHEDULE_DETAIL_SCREEN, "detail: shift sheet dismiss"); showShiftPicker = false }
         )
     }
 
@@ -510,7 +511,7 @@ fun ScheduleDetailScreen(
                 if (id == null) vm.clearStatus() else vm.toggleStatus(id, null, null)
                 showStatusPicker = false
             },
-            onDismiss = { AppLog.d("WBD","detail: status sheet dismiss"); showStatusPicker = false }
+            onDismiss = { AppLog.d(LogTags.SCHEDULE_DETAIL_SCREEN, "detail: status sheet dismiss"); showStatusPicker = false }
         )
     }
 

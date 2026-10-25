@@ -1,5 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/data/repository/ExtraItemRepository.kt
 package com.schedulecalendar.app.data.repository
+import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import com.schedulecalendar.app.data.db.dao.ExtraItemDao
 import com.schedulecalendar.app.domain.model.ExtraItem
@@ -22,7 +24,11 @@ class ExtraItemRepository @Inject constructor(
     private val _changeSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val changeSignal: Flow<Unit> = _changeSignal.asSharedFlow()
 
-    private fun notifyChanged() = _changeSignal.notifyChangedOrLog("ExtraItemRepo")
+    private fun notifyChanged() {
+        if (!_changeSignal.tryNotifyChanged()) {
+            AppLog.w(LogTags.EXTRA_ITEM_REPOSITORY, "changeSignal emit dropped")
+        }
+    }
 
     /** 观察有效（未归档）的项目，用于UI显示 */
     fun observeActive(): Flow<List<ExtraItem>> = dao.observeActive().map { it.map { e -> e.toDomain() } }

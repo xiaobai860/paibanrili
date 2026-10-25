@@ -1,5 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/data/repository/ShiftBreakRepository.kt
 package com.schedulecalendar.app.data.repository
+import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import com.schedulecalendar.app.data.db.dao.ShiftBreakDao
 import com.schedulecalendar.app.domain.model.ShiftBreak
@@ -22,7 +24,11 @@ class ShiftBreakRepository @Inject constructor(
     private val _changeSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val changeSignal: Flow<Unit> = _changeSignal.asSharedFlow()
 
-    private fun notifyChanged() = _changeSignal.notifyChangedOrLog("ShiftBreakRepo")
+    private fun notifyChanged() {
+        if (!_changeSignal.tryNotifyChanged()) {
+            AppLog.w(LogTags.SHIFT_BREAK_REPOSITORY, "changeSignal emit dropped")
+        }
+    }
 
     /** 观察有效（未归档）的时段 */
     fun observeActive(): Flow<List<ShiftBreak>> = dao.observeActive().map { it.map { e -> e.toDomain() } }

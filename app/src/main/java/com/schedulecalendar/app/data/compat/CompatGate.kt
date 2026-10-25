@@ -1,5 +1,6 @@
-﻿package com.schedulecalendar.app.data.compat
+package com.schedulecalendar.app.data.compat
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -96,7 +97,7 @@ private val checker: DataIntegrityChecker
             DataFormat.DbVersionDecision.UNSUPPORTED -> {
                 // 低于栅栏：明确拒绝，绝不尝试打开（Room 会因缺迁移而抛异常）
                 AppLog.e(
-                    "CompatGate",
+                    LogTags.COMPAT_GATE,
                     "数据版本 v$fileVersion 低于最低支持版本 v${DataFormat.MIN_SUPPORTED_DB_VERSION}，拒绝打开"
                 )
                 finished = true
@@ -111,6 +112,9 @@ private val checker: DataIntegrityChecker
             db.openHelper.writableDatabase
         } catch (e: Throwable) {
             finished = true
+            // 闸门失败会阻断整个 App 启动，必须留日志：否则现场只有「打不开」，
+            // 看不到真正的异常类型与栈（这正是需要排查的场景）
+            AppLog.e(LogTags.COMPAT_GATE, "数据库打开失败", e)
             _state.value = State.Failed(
                 "数据库打开失败：${e.message ?: e::class.java.simpleName}"
             )
@@ -119,15 +123,15 @@ private val checker: DataIntegrityChecker
 
         // 口径档案：必须有一份覆盖全部历史的初始档案，否则历史计算会回退到现值
         runCatching { calcProfileRepo.ensureInitialProfile() }
-            .onFailure { AppLog.w("CompatGate", "创建初始计算口径失败", it) }
+            .onFailure { AppLog.w(LogTags.COMPAT_GATE, "创建初始计算口径失败", it) }
         runCatching { calcProfileRepo.repairRelay() }
-            .onFailure { AppLog.w("CompatGate", "口径接力自愈失败", it) }
+            .onFailure { AppLog.w(LogTags.COMPAT_GATE, "口径接力自愈失败", it) }
 
         // 数据校验
         val report = checker.check()
         if (!report.ok) {
             // 失败必须留下日志：否则「校验失败」只有用户看得见弹窗，排查时无从下手
-            AppLog.e("CompatGate", "数据校验未通过：${report.summary()}")
+            AppLog.e(LogTags.COMPAT_GATE, "数据校验未通过：${report.summary()}")
             finished = true
             _state.value = State.Failed("数据校验未通过：${report.summary()}。请从备份恢复数据。")
             return@withLock
@@ -135,7 +139,7 @@ private val checker: DataIntegrityChecker
 
         finished = true
         // 校验警告写入日志：它们不影响使用，但排查数据问题时非常关键
-        report.warnings.forEach { AppLog.w("CompatGate", it) }
+        report.warnings.forEach { AppLog.w(LogTags.COMPAT_GATE, it) }
         _state.value = State.Ready(report)
     }
 

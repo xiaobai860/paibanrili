@@ -1,5 +1,6 @@
 package com.schedulecalendar.app.reminder
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import android.annotation.SuppressLint
 import android.app.AlarmManager
@@ -172,7 +173,7 @@ class ReminderScheduler @Inject constructor(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                AppLog.w("ReminderScheduler", "schedule failed, signature not committed", e)
+                AppLog.w(LogTags.REMINDER_SCHEDULER, "schedule failed, signature not committed", e)
             }
         }
     }
@@ -477,13 +478,13 @@ class ReminderScheduler @Inject constructor(
             // 脏数据（如 "8"、"08:"）会数组越界，必须先校验长度并记日志：
             // 否则异常被外层空 catch 吞掉，表现为「该日提醒静默不注册」
             if (timeParts.size < 2) {
-                AppLog.w("ReminderScheduler", "bad time format: $timeStr")
+                AppLog.w(LogTags.REMINDER_SCHEDULER, "bad time format: $timeStr")
                 return
             }
             val hour = timeParts[0].toIntOrNull()
             val minute = timeParts[1].toIntOrNull()
             if (hour == null || minute == null || hour !in 0..23 || minute !in 0..59) {
-                AppLog.w("ReminderScheduler", "bad time value: $timeStr")
+                AppLog.w(LogTags.REMINDER_SCHEDULER, "bad time value: $timeStr")
                 return
             }
 
@@ -521,7 +522,7 @@ class ReminderScheduler @Inject constructor(
         } catch (e: Exception) {
             // 精确闹钟不可用时（如用户关闭「闹钟和提醒」权限）必须留痕：
             // 否则该日提醒静默不注册，用户只看到「提醒没响」，无任何线索
-            AppLog.w("ReminderScheduler", "setAlarmClock failed: $date $timeStr", e)
+            AppLog.w(LogTags.REMINDER_SCHEDULER, "setAlarmClock failed: $date $timeStr", e)
         }
     }
 
@@ -577,13 +578,13 @@ class ReminderScheduler @Inject constructor(
             // 脏数据（如 "8"、"08:"）会数组越界，必须先校验长度并记日志：
             // 否则异常被外层空 catch 吞掉，表现为「该日提醒静默不注册」
             if (timeParts.size < 2) {
-                AppLog.w("ReminderScheduler", "bad time format: $timeStr")
+                AppLog.w(LogTags.REMINDER_SCHEDULER, "bad time format: $timeStr")
                 return
             }
             val hour = timeParts[0].toIntOrNull()
             val minute = timeParts[1].toIntOrNull()
             if (hour == null || minute == null || hour !in 0..23 || minute !in 0..59) {
-                AppLog.w("ReminderScheduler", "bad time value: $timeStr")
+                AppLog.w(LogTags.REMINDER_SCHEDULER, "bad time value: $timeStr")
                 return
             }
 
@@ -621,7 +622,7 @@ class ReminderScheduler @Inject constructor(
             throw e
         } catch (e: Exception) {
             // 日历提醒创建失败不能静默：否则用户表现为「提醒配了却从不响」且无线索
-            AppLog.w("ReminderScheduler", "scheduleCalendarReminder failed: $date $timeStr", e)
+            AppLog.w(LogTags.REMINDER_SCHEDULER, "scheduleCalendarReminder failed: $date $timeStr", e)
         }
     }
 
@@ -650,7 +651,7 @@ class ReminderScheduler @Inject constructor(
             throw e
         } catch (e: Exception) {
             // 清理失败必须留痕：残留事件会导致「明明关了提醒，通知还在弹」
-            AppLog.w("ReminderScheduler", "forceCleanupCalendarReminders failed", e)
+            AppLog.w(LogTags.REMINDER_SCHEDULER, "forceCleanupCalendarReminders failed", e)
         }
     }
 }

@@ -55,6 +55,8 @@ android {
             // 之前写 "false" 并靠 `BuildConfig.DEBUG || …` 兜底，会让 IDE 判定该布尔表达式"可简化"
             // （它按当前变体常量折叠），照改会破坏 release 的自动关闭语义，故直接收敛为单一常量。
             buildConfigField("boolean", "DIAGNOSTIC_LOGS", "true")
+            // 输出目标：debug 包额外写一份日志文件到 App 私有目录，便于抓取完整日志。
+            buildConfigField("boolean", "LOG_TO_FILE", "true")
         }
         release {
             isMinifyEnabled   = true
@@ -63,6 +65,10 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // 诊断日志默认关闭；`-PdiagLogs=true` 出"诊断版 release"（release 签名 + 诊断日志全局开）供现场调试
             buildConfigField("boolean", "DIAGNOSTIC_LOGS", (project.findProperty("diagLogs") == "true").toString())
+            // 输出目标：release **也写日志文件**（只收 w/e —— d/i 被 DIAGNOSTIC_LOGS=false
+            // 挡在门外），供「设置 → 关于 → 导出日志文件」做现场诊断；
+            // `-PlogToFile=false` 可显式关掉 → FileLog 类随之被 R8 裁掉。
+            buildConfigField("boolean", "LOG_TO_FILE", (project.findProperty("logToFile") != "false").toString())
         }
     }
 
@@ -71,8 +77,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // buildConfig=true：生成 BuildConfig.DEBUG，供仅 DEBUG 生效的调试日志使用；
-    // release 下常量为 false，R8 会折叠并剔除分支，生产包不会打印任何调试日志。
+    // buildConfig=true：生成 BuildConfig，供 AppLog 的两个**编译期常量门控**使用
+    // （DIAGNOSTIC_LOGS / LOG_TO_FILE）。
+    // ⚠️ 不要另起「用 BuildConfig.DEBUG 门控的日志」：那会形成第二套开关，release 下
+    //   难以保证统一关闭；且 IDE 会把 `BuildConfig.DEBUG || X` 判为可简化常量表达式，
+    //   一旦被人照改（硬编码 true），release 就会全量打印调试日志。
+    //   release 零调试输出**只认** DIAGNOSTIC_LOGS。
     buildFeatures {
         compose = true
         buildConfig = true
@@ -188,4 +198,7 @@ dependencies {
 
     // 单元测试：守护手工维护的法定节假日/调休数据（覆盖年份 + 一致性）
     testImplementation(libs.junit)
+    // 自定义 Lint 规则（实时守护日志规范：裸 Log / 参数化 TAG），配合 LoggingConventionTest 守护测试。
+    // lintChecks 让规则进入 app 的 lint 分析 + Android Studio 实时检查。
+    lintChecks(project(":lint"))
 }

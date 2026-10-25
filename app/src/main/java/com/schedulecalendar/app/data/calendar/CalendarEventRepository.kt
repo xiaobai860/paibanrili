@@ -12,6 +12,7 @@ import android.provider.CalendarContract
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.toColorInt
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDate
 import java.util.Calendar
@@ -138,7 +139,7 @@ class CalendarEventRepository @Inject constructor(
                 selection, selectionArgs, null
             )
         } catch (e: Exception) {
-            AppLog.w("CalendarEventRepo", "getAllAccounts query failed", e)
+            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "getAllAccounts query failed", e)
             null
         }
         cursor?.use {
@@ -285,7 +286,7 @@ class CalendarEventRepository @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            AppLog.w("CalendarEventRepo", "查询系统日历事件失败", e)
+            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "查询系统日历事件失败", e)
             return emptyList()
         }
         allEventsCache = events
@@ -349,7 +350,7 @@ class CalendarEventRepository @Inject constructor(
             }
         } catch (e: Exception) {
             // 静默返回空 Map 会让所有事件的日历名变空且无从排查，这里记日志
-            AppLog.w("CalendarEventRepo", "loadAllCalendarInfo failed", e)
+            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "loadAllCalendarInfo failed", e)
         }
         calendarInfoCache = map
         calendarInfoCacheTime = nowMs
@@ -403,7 +404,7 @@ class CalendarEventRepository @Inject constructor(
                         put(CalendarContract.Events.EVENT_COLOR, colorInt)
                     } catch (e: Exception) {
                         // 颜色解析失败不阻断事件创建，但需留痕，否则用户设的颜色被静默丢弃
-                        AppLog.w("CalendarEventRepo", "bad event color: $colorHex", e)
+                        AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "bad event color: $colorHex", e)
                     }
                 }
                 // 设置 HAS_ALARM 标志，通知系统此事件有提醒
@@ -428,7 +429,7 @@ class CalendarEventRepository @Inject constructor(
                     return -1L
                 }
                 if (propId == null) {
-                    AppLog.w("CalendarEventRepo", "extended property write failed for $eventId")
+                    AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "extended property write failed for $eventId")
                 }
             }
 
@@ -496,7 +497,10 @@ class CalendarEventRepository @Inject constructor(
                 if (cursor.moveToFirst()) return cursor.getLong(0)
             }
             null
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // 「查询失败」与「没有日历」在返回值上无法区分 → 必须留日志，
+            // 否则上层会误判成"还没建日历"，进而反复重建 / 静默不显示日程
+            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "查询现有日历失败", e)
             null
         }
     }
@@ -510,7 +514,9 @@ class CalendarEventRepository @Inject constructor(
     fun getOrCreateLocalCalendarId(): Long? {
         val appName = try {
             context.getString(context.applicationInfo.labelRes)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // 回退到内置账户名是安全的（仅影响日历显示名），但仍留一条日志便于追因
+            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "读取应用名失败，回退到内置账户名", e)
             ACCOUNT_NAME
         }
         val scheduleDisplayName = "$appName$SCHEDULE_SUFFIX"
@@ -627,7 +633,9 @@ class CalendarEventRepository @Inject constructor(
         cachedReminderCalendarId?.let { return it }
         val appName = try {
             context.getString(context.applicationInfo.labelRes)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // 回退到内置账户名是安全的（仅影响日历显示名），但仍留一条日志便于追因
+            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "读取应用名失败，回退到内置账户名", e)
             ACCOUNT_NAME
         }
         val displayName = "$appName$REMINDER_SUFFIX"
@@ -695,7 +703,9 @@ class CalendarEventRepository @Inject constructor(
     fun getOrCreateAnniversaryCalendarId(): Long? {
         val appName = try {
             context.getString(context.applicationInfo.labelRes)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // 回退到内置账户名是安全的（仅影响日历显示名），但仍留一条日志便于追因
+            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "读取应用名失败，回退到内置账户名", e)
             ACCOUNT_NAME
         }
         val displayName = "$appName$ANNIVERSARY_SUFFIX"
@@ -925,7 +935,7 @@ class CalendarEventRepository @Inject constructor(
                 "${CalendarContract.Events.DTSTART} ASC"
             )
         } catch (e: Exception) {
-            AppLog.w("CalendarEventRepo", "getAllEventsInRange query failed", e)
+            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "getAllEventsInRange query failed", e)
             null
         }
         cursor?.use {

@@ -1,4 +1,4 @@
-﻿// app/src/main/java/com/schedulecalendar/app/widget/CalendarGlanceWidget.kt
+// app/src/main/java/com/schedulecalendar/app/widget/CalendarGlanceWidget.kt
 @file:Suppress("RestrictedApi") // Glance 1.2.0 误将 ColorProvider 标为同 library group 限制，此处为已知问题的官方推荐绕过方式
 
 package com.schedulecalendar.app.widget
@@ -31,6 +31,7 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 import com.google.gson.annotations.SerializedName
 import com.schedulecalendar.app.MainActivity
 import java.time.LocalDate
@@ -80,7 +81,7 @@ class CalendarGlanceWidget : GlanceAppWidget() {
                     compact = true
                 )
             }
-        }.onFailure { AppLog.e("CalendarGlanceWidget", "provideGlance failed", it) }
+        }.onFailure { AppLog.e(LogTags.CALENDAR_GLANCE_WIDGET, "provideGlance failed", it) }
     }
     companion object {
         suspend fun updateWidgetData(context: Context, data: CalendarWidgetInfo) {
@@ -333,7 +334,7 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
                     maxVisibleRows = Int.MAX_VALUE
                 )
             }
-        }.onFailure { AppLog.e("Calendar3x4GlanceWidget", "provideGlance failed", it) }
+        }.onFailure { AppLog.e(LogTags.CALENDAR_3X4_GLANCE_WIDGET, "provideGlance failed", it) }
     }
 
     companion object {
@@ -342,7 +343,7 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
             // P1：周期性后台同步内容未变则跳过（无谓 prefs 写 + Glance 组合 + IPC）；
             // payload 已含 todayDay，跨天会变 → 仍能准时刷新高亮。交互路径传 false 强制推。
             if (allowSkipUnchanged && json == lastPushedCalendarJson) {
-                AppLog.d("WIDGET_SYNC", "calendar update skipped (unchanged)")
+                AppLog.d(LogTags.WIDGET_SYNC, "calendar update skipped (unchanged)")
                 return
             }
             context.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
@@ -360,7 +361,7 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
             }
             // 实例数日志：排查「组件没重绘 / 点不到按钮」时，确认更新确实覆盖了所有实例
             AppLog.d(
-                "WIDGET_SYNC",
+                LogTags.WIDGET_SYNC,
                 "calendar widgets updated: 3x3=${ids3x3.size}, 3x4=${ids3x4.size}, " +
                     "month=${data.year}-${data.month}"
             )

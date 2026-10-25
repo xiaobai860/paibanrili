@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -53,7 +54,7 @@ fun WidgetIcon(
         drawable.colorFilter = PorterDuffColorFilter(argb, PorterDuff.Mode.SRC_IN)
         drawable.draw(canvas)
         bitmap
-    }.onFailure { AppLog.w("WidgetIcon", "render icon failed, fallback to resource", it) }.getOrNull() }
+    }.onFailure { AppLog.w(LogTags.WIDGET_ICON, "render icon failed, fallback to resource", it) }.getOrNull() }
 
     Image(
         provider = bmp?.let { ImageProvider(it) } ?: ImageProvider(resId),

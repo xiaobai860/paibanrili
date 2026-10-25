@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import com.schedulecalendar.app.ScheduleApp
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -36,7 +37,7 @@ class WidgetRefreshReceiver : BroadcastReceiver() {
                 // 防止 ROM 清理导致的提醒闹钟缺失长期得不到恢复。
                 ep.reminderScheduler().scheduleActiveReminders(force = true)
             } catch (e: Exception) {
-                AppLog.e("WidgetRefreshReceiver", "widget refresh failed", e)
+                AppLog.e(LogTags.WIDGET_REFRESH_RECEIVER, "widget refresh failed", e)
             } finally {
                 pendingResult.finish()
             }

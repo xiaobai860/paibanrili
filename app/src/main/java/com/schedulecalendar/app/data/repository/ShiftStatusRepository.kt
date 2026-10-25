@@ -1,6 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/data/repository/ShiftStatusRepository.kt
 package com.schedulecalendar.app.data.repository
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import com.schedulecalendar.app.data.db.dao.ShiftStatusDao
 import com.schedulecalendar.app.domain.model.BUILTIN_STATUSES
@@ -21,7 +22,11 @@ class ShiftStatusRepository @Inject constructor(
     private val _changeSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val changeSignal: Flow<Unit> = _changeSignal.asSharedFlow()
 
-    private fun notifyChanged() = _changeSignal.notifyChangedOrLog("ShiftStatusRepo")
+    private fun notifyChanged() {
+        if (!_changeSignal.tryNotifyChanged()) {
+            AppLog.w(LogTags.SHIFT_STATUS_REPOSITORY, "changeSignal emit dropped")
+        }
+    }
 
     /** 观察有效（未归档）的状态 */
     fun observeActive(): Flow<List<ShiftStatus>> =
@@ -63,7 +68,7 @@ class ShiftStatusRepository @Inject constructor(
      */
     suspend fun save(item: ShiftStatus): Boolean {
         if (item.builtIn) {
-            AppLog.w("ShiftStatusRepo", "skip save of builtIn status: ${item.id}")
+            AppLog.w(LogTags.SHIFT_STATUS_REPOSITORY, "skip save of builtIn status: ${item.id}")
             return false
         }
         dao.upsert(item.toEntity()); notifyChanged()

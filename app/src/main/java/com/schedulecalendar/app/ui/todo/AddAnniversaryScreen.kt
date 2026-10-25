@@ -1,5 +1,6 @@
 package com.schedulecalendar.app.ui.todo
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -248,7 +249,7 @@ fun AddAnniversaryScreen(
                                 } catch (e: Exception) {
                                     // 转换失败若继续切换模式，农历三项会停留在旧值而公历已变，
                                     // 用户会存下错误的纪念日；这里提示并保持原模式
-                                    AppLog.w("AddAnniversary", "solarToLunar failed", e)
+                                    AppLog.w(LogTags.ADD_ANNIVERSARY_SCREEN, "solarToLunar failed", e)
                                     android.widget.Toast.makeText(
                                         context, "该日期不支持农历转换", android.widget.Toast.LENGTH_SHORT
                                     ).show()
@@ -262,7 +263,7 @@ fun AddAnniversaryScreen(
                                     selectedMonth = s.month
                                     selectedDay = s.day
                                 } catch (e: Exception) {
-                                    AppLog.w("AddAnniversary", "lunarToSolar failed", e)
+                                    AppLog.w(LogTags.ADD_ANNIVERSARY_SCREEN, "lunarToSolar failed", e)
                                     android.widget.Toast.makeText(
                                         context, "该农历日期不支持转换", android.widget.Toast.LENGTH_SHORT
                                     ).show()

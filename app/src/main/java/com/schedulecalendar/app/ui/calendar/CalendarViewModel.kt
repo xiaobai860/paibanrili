@@ -1,6 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/ui/calendar/CalendarViewModel.kt
 package com.schedulecalendar.app.ui.calendar
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import com.schedulecalendar.app.domain.util.DateFormats
 
@@ -432,7 +433,7 @@ class CalendarViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 // 记日志：静默清空会让「明明有事件却显示无事件」无从排查
-                AppLog.w("CalendarViewModel", "loadSelectedDateEvents failed: $date", e)
+                AppLog.w(LogTags.CALENDAR_VIEW_MODEL, "loadSelectedDateEvents failed: $date", e)
                 emptyList()
             }
             // 回写前校验仍是当前选中日期：慢查询返回时用户可能已切到别的日期，
@@ -487,7 +488,7 @@ class CalendarViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                AppLog.w("CalendarViewModel", "loadDatesWithEvents failed", e)
+                AppLog.w(LogTags.CALENDAR_VIEW_MODEL, "loadDatesWithEvents failed", e)
                 // 失败时保留上一次结果：直接清空会让日历格上的事件指示点全部消失，误导用户
                 return@launch
             }

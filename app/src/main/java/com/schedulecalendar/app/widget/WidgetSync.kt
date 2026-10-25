@@ -11,6 +11,7 @@ import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 import com.schedulecalendar.app.domain.util.DateFormats
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.withContext
@@ -130,13 +131,13 @@ internal fun currentWidgetDataVersion(): Int = widgetDataVersion
  * 叠加组件重载的耗时后容易被"吃掉"（曾出现「只有第一次刷新有提示，之后点什么都没反应」）。
  */
 internal suspend fun performManualRefresh(context: Context) {
-    AppLog.d("WIDGET_SYNC", "manual refresh: action start")
+    AppLog.d(LogTags.WIDGET_SYNC, "manual refresh: action start")
     val ok = syncAllWidgets(context)
-    AppLog.d("WIDGET_SYNC", "manual refresh: sync finished, ok=$ok")
+    AppLog.d(LogTags.WIDGET_SYNC, "manual refresh: sync finished, ok=$ok")
     withContext(Dispatchers.Main) {
-        AppLog.d("WIDGET_SYNC", "manual refresh: showing toast")
+        AppLog.d(LogTags.WIDGET_SYNC, "manual refresh: showing toast")
         Toast.makeText(context, if (ok) "刷新成功" else "刷新失败", Toast.LENGTH_SHORT).show()
-        AppLog.d("WIDGET_SYNC", "manual refresh: toast shown")
+        AppLog.d(LogTags.WIDGET_SYNC, "manual refresh: toast shown")
     }
 }
 
@@ -149,7 +150,7 @@ internal val widgetFallbackScope = CoroutineScope(SupervisorJob() + Dispatchers.
 
 /** 重新计算并写入所有小组件（2x1 打卡 + 3x3 / 3x4 日历）。成功返回 true，供刷新按钮提示。 */
 suspend fun syncAllWidgets(context: Context, allowSkipUnchanged: Boolean = false): Boolean = syncMutex.withLock {
-    AppLog.d("WIDGET_SYNC", "syncAllWidgets start")
+    AppLog.d(LogTags.WIDGET_SYNC, "syncAllWidgets start")
     return@withLock try {
         val (scheduleRepo, shiftRepo, statusRepo) = getRepos(context)
         // P2：班次/状态用缓存（含归档+builtin），仅班次/状态 changeSignal 到达才重载；
@@ -180,25 +181,25 @@ suspend fun syncAllWidgets(context: Context, allowSkipUnchanged: Boolean = false
         repairS4DefaultStatus(scheduleRepo, shifts, fmtDate(today))
 
         val widgetData = computeClockInWidgetData(shifts, schedules, statusMap)
-        AppLog.d("WIDGET_SYNC", "syncAllWidgets 2x1 shift=${widgetData.shiftName} showIn=${widgetData.showClockIn} showOut=${widgetData.showClockOut} rest=${widgetData.restMessage}")
+        AppLog.d(LogTags.WIDGET_SYNC, "syncAllWidgets 2x1 shift=${widgetData.shiftName} showIn=${widgetData.showClockIn} showOut=${widgetData.showClockOut} rest=${widgetData.restMessage}")
 
         // 2x1 与日历各自独立：一类失败不影响另一类，并分别记录便于定位是哪类出问题
         var ok = true
         runCatching { ScheduleGlanceWidget.updateWidgetData(context, widgetData, allowSkipUnchanged) }
-            .onFailure { ok = false; AppLog.e("WIDGET_SYNC", "sync 2x1 widget failed", it) }
+            .onFailure { ok = false; AppLog.e(LogTags.WIDGET_SYNC, "sync 2x1 widget failed", it) }
         // 日历组件：仅当存在日历组件实例时才回源重算整月（无实例则跳过，省一次整月查询+逐日计算）
         if (hasCalendarWidgetInstance(context)) {
             runCatching { refreshCalendarWidgets(context, scheduleRepo, shifts, statusMap, allowSkipUnchanged) }
-                .onFailure { ok = false; AppLog.e("WIDGET_SYNC", "sync calendar widgets failed", it) }
+                .onFailure { ok = false; AppLog.e(LogTags.WIDGET_SYNC, "sync calendar widgets failed", it) }
         }
         if (ok) lastWidgetSyncSuccessAt = System.currentTimeMillis()
-        AppLog.d("WIDGET_SYNC", "syncAllWidgets done, ok=$ok")
+        AppLog.d(LogTags.WIDGET_SYNC, "syncAllWidgets done, ok=$ok")
         ok
     } catch (e: kotlinx.coroutines.CancellationException) {
         // 协程取消必须原样抛出：被吞掉会破坏取消语义（调用方无法停止本轮同步）
         throw e
     } catch (e: Exception) {
-        AppLog.e("WIDGET_SYNC", "syncAllWidgets failed", e)
+        AppLog.e(LogTags.WIDGET_SYNC, "syncAllWidgets failed", e)
         false
     }
 }
@@ -218,7 +219,7 @@ private suspend fun repairS4DefaultStatus(
         val shift = rec.shiftId?.let { id -> shifts.find { it.id == id } } ?: return
         if (shift.startTime.isEmpty() || shift.endTime.isEmpty()) return
         scheduleRepo.save(rec.copy(appliedStatus = ap.copy(startTime = shift.startTime, endTime = shift.endTime)))
-        AppLog.d("WIDGET_SYNC", "S4 default status filled $todayStr ${shift.startTime}-${shift.endTime}")
+        AppLog.d(LogTags.WIDGET_SYNC, "S4 default status filled $todayStr ${shift.startTime}-${shift.endTime}")
     }
 }
 
@@ -619,7 +620,7 @@ private suspend fun refreshCalendarWidgets(
     val cacheKey = "$yearMonth:${DateFormats.date(today)}:v${currentWidgetDataVersion()}"
     val cached = cachedCalendarInfo
     val data = if (cached != null && cachedCalendarKey == cacheKey) {
-        AppLog.d("WIDGET_SYNC", "calendar cache hit ($cacheKey)")
+        AppLog.d(LogTags.WIDGET_SYNC, "calendar cache hit ($cacheKey)")
         cached
     } else run {
         val ym = YearMonth.of(year, month)
@@ -656,7 +657,7 @@ private suspend fun refreshCalendarWidgets(
         ).also {
             cachedCalendarKey = cacheKey
             cachedCalendarInfo = it
-            AppLog.d("WIDGET_SYNC", "calendar recomputed ($cacheKey)")
+            AppLog.d(LogTags.WIDGET_SYNC, "calendar recomputed ($cacheKey)")
         }
     }
     Calendar3x4GlanceWidget.updateAllCalendarWidgets(context, data, allowSkipUnchanged)
