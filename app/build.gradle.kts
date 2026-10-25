@@ -56,8 +56,10 @@ android {
             // 与 release 共存：仪器测试（Room 迁移测试）必须装 debug 变体，
             // 若共用 applicationId 会因签名不同而要求卸载 release（丢用户数据）。
             applicationIdSuffix = ".debug"
-            // debug 包本就 BuildConfig.DEBUG=true；此字段保持 BuildConfig.DIAGNOSTIC_LOGS 恒存在
-            buildConfigField("boolean", "DIAGNOSTIC_LOGS", "false")
+            // 诊断日志开关（AppLog 的唯一依据）：debug 包恒开；
+            // 之前写 "false" 并靠 `BuildConfig.DEBUG || …` 兜底，会让 IDE 判定该布尔表达式"可简化"
+            // （它按当前变体常量折叠），照改会破坏 release 的自动关闭语义，故直接收敛为单一常量。
+            buildConfigField("boolean", "DIAGNOSTIC_LOGS", "true")
         }
         release {
             isMinifyEnabled   = true

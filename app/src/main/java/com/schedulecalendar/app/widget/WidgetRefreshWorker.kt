@@ -2,7 +2,7 @@
 package com.schedulecalendar.app.widget
 
 import android.content.Context
-import android.util.Log
+import com.schedulecalendar.app.domain.util.AppLog
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dagger.hilt.android.EntryPointAccessors
@@ -49,7 +49,7 @@ class WidgetRefreshWorker(
             // 被取消不是失败：交回系统处理，不产生 Result（否则会屏蔽取消语义）
             throw e
         } catch (e: Exception) {
-            Log.w("WidgetRefreshWorker", "doWork failed", e)
+            AppLog.w("WidgetRefreshWorker", "doWork failed", e)
             // 只对「环境性失败」重试：数据/配置类异常重试无意义，
             // 原先一律 Result.retry() 会让永久性失败无限重试并伴随取消屏蔽
             if (isRetryable(e)) Result.retry() else Result.failure()
