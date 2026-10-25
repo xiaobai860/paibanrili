@@ -31,8 +31,8 @@ android {
         //   而 `-d` 只对 debuggable 包生效、release 包无效 → 只能「完整卸载（不带 -k）→ 安装」。
         //   （不要为此把 versionCode 改成日期型。）
         // 注意：Android 仅比较 versionCode 决定是否允许覆盖安装。
-        versionCode   = 221
-        versionName   = "2026102407"
+        versionCode   = 222
+        versionName   = "2026102501"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -56,12 +56,16 @@ android {
             // 与 release 共存：仪器测试（Room 迁移测试）必须装 debug 变体，
             // 若共用 applicationId 会因签名不同而要求卸载 release（丢用户数据）。
             applicationIdSuffix = ".debug"
+            // debug 包本就 BuildConfig.DEBUG=true；此字段保持 BuildConfig.DIAGNOSTIC_LOGS 恒存在
+            buildConfigField("boolean", "DIAGNOSTIC_LOGS", "false")
         }
         release {
             isMinifyEnabled   = true
             isShrinkResources = true
             signingConfig     = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // 诊断日志默认关闭；`-PdiagLogs=true` 出"诊断版 release"（release 签名 + 诊断日志全局开）供现场调试
+            buildConfigField("boolean", "DIAGNOSTIC_LOGS", (project.findProperty("diagLogs") == "true").toString())
         }
     }
 

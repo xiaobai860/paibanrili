@@ -30,6 +30,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
+import com.schedulecalendar.app.domain.util.AppLog
 import com.google.gson.annotations.SerializedName
 import com.schedulecalendar.app.MainActivity
 import java.time.LocalDate
@@ -79,7 +80,7 @@ class CalendarGlanceWidget : GlanceAppWidget() {
                     compact = true
                 )
             }
-        }.onFailure { android.util.Log.e("CalendarGlanceWidget", "provideGlance failed", it) }
+        }.onFailure { AppLog.e("CalendarGlanceWidget", "provideGlance failed", it) }
     }
     companion object {
         suspend fun updateWidgetData(context: Context, data: CalendarWidgetInfo) {
@@ -333,7 +334,7 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
                     maxVisibleRows = Int.MAX_VALUE
                 )
             }
-        }.onFailure { android.util.Log.e("Calendar3x4GlanceWidget", "provideGlance failed", it) }
+        }.onFailure { AppLog.e("Calendar3x4GlanceWidget", "provideGlance failed", it) }
     }
 
     companion object {
@@ -342,7 +343,7 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
             // P1：周期性后台同步内容未变则跳过（无谓 prefs 写 + Glance 组合 + IPC）；
             // payload 已含 todayDay，跨天会变 → 仍能准时刷新高亮。交互路径传 false 强制推。
             if (allowSkipUnchanged && json == lastPushedCalendarJson) {
-                android.util.Log.d("WIDGET_SYNC", "calendar update skipped (unchanged)")
+                AppLog.d("WIDGET_SYNC", "calendar update skipped (unchanged)")
                 return
             }
             context.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
@@ -359,7 +360,7 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
                 Calendar3x4GlanceWidget().updateSerialized(context, gid)
             }
             // 实例数日志：排查「组件没重绘 / 点不到按钮」时，确认更新确实覆盖了所有实例
-            android.util.Log.d(
+            AppLog.d(
                 "WIDGET_SYNC",
                 "calendar widgets updated: 3x3=${ids3x3.size}, 3x4=${ids3x4.size}, " +
                     "month=${data.year}-${data.month}"

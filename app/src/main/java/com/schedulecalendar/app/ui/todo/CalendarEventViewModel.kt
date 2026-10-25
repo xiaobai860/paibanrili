@@ -1,4 +1,5 @@
 package com.schedulecalendar.app.ui.todo
+import com.schedulecalendar.app.domain.util.AppLog
 
 import android.Manifest
 import android.content.Context
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 日程标签页状态
@@ -51,8 +53,8 @@ class CalendarEventViewModel @Inject constructor(
     val prefs: AppPreferences
 ) : ViewModel() {
 
-    /** 系统日历变更去抖窗口（毫秒）：合并连发的 onChange，避免重复全量重载 */
-    private val CALENDAR_CHANGE_DEBOUNCE_MS = 400L
+    /** 系统日历变更去抖窗口：合并连发的 onChange，避免重复全量重载 */
+    private val calendarChangeDebounce = 400.milliseconds
     /** ContentObserver 触发的重载任务（去抖用，新的触发会取消旧的） */
     private var reloadJob: Job? = null
 
@@ -136,6 +138,7 @@ class CalendarEventViewModel @Inject constructor(
                         calendarRepo.getAllAccounts()
                     }
                 } catch (e: SecurityException) {
+                    AppLog.w("CalendarEventVM", "init load accounts failed", e)
                     emptyList()
                 }
                 _accounts.value = accountsList
@@ -150,7 +153,7 @@ class CalendarEventViewModel @Inject constructor(
             combine(
                 prefs.accountCategoriesFlow,
                 prefs.disabledAccountIdsFlow
-            ) { _, _ -> Unit }
+            ) { _, _ -> }
             .drop(1) // 跳过首次发射（init 已处理初始加载）
             .collect {
                 rebuildCategoryMapping()
@@ -176,6 +179,7 @@ class CalendarEventViewModel @Inject constructor(
                     calendarRepo.getAllAccounts()
                 }
             } catch (e: SecurityException) {
+                AppLog.w("CalendarEventVM", "load accounts failed", e)
                 emptyList()
             }
             _accounts.value = accountsList
@@ -274,9 +278,8 @@ class CalendarEventViewModel @Inject constructor(
                 _rawEvents.value = events
                 rebuildCategoryMapping()
                 _state.update { it.copy(isLoading = false) }
-            } catch (e: SecurityException) {
-                _state.update { it.copy(isLoading = false) }
             } catch (e: Exception) {
+                AppLog.w("CalendarEventVM", "load events failed", e)
                 _state.update { it.copy(isLoading = false) }
             }
         }
@@ -293,7 +296,7 @@ class CalendarEventViewModel @Inject constructor(
                 // 卡顿与无谓 IO。这里做去抖：只保留最后一次触发，合并成一次重新加载。
                 reloadJob?.cancel()
                 reloadJob = viewModelScope.launch {
-                    delay(CALENDAR_CHANGE_DEBOUNCE_MS)
+                    delay(calendarChangeDebounce)
                     calendarRepo.invalidateEventsCache()
                     loadEvents()
                 }
@@ -307,7 +310,6 @@ class CalendarEventViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        super.onCleared()
         observer?.let {
             context.contentResolver.unregisterContentObserver(it)
         }
@@ -376,9 +378,8 @@ class CalendarEventViewModel @Inject constructor(
                 withContext(Dispatchers.IO) {
                     calendarRepo.getEventById(eventId)
                 }
-            } catch (e: SecurityException) {
-                null
             } catch (e: Exception) {
+                AppLog.w("CalendarEventVM", "load event by id failed", e)
                 null
             }
             _singleEvent.value = event
@@ -426,7 +427,7 @@ class CalendarEventViewModel @Inject constructor(
     fun updateEvent(updatedEvent: CalendarEventInfo, onResult: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
             val success = runCatching { calendarRepo.updateEvent(updatedEvent) }
-                .onFailure { android.util.Log.w("CalendarEventVM", "updateEvent failed", it) }
+                .onFailure { AppLog.w("CalendarEventVM", "updateEvent failed", it) }
                 .getOrDefault(false)
             if (success) {
                 loadEvents()
