@@ -3,9 +3,8 @@ package com.schedulecalendar.app.ui.shifts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.room.withTransaction
-import com.schedulecalendar.app.data.db.AppDatabase
 import com.schedulecalendar.app.data.prefs.AppPreferences
+import com.schedulecalendar.app.data.repository.CalcProfileRepository
 import com.schedulecalendar.app.data.repository.ExtraItemRepository
 import com.schedulecalendar.app.data.repository.ShiftBreakRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
@@ -16,8 +15,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.UUID
 import javax.inject.Inject
 
@@ -26,35 +23,18 @@ import javax.inject.Inject
 sealed class ShiftsUiEvent {
     data class NavigateToEditor(val shiftId: String?)  : ShiftsUiEvent()
     data class ShowDeleteConfirm(val shiftId: String)  : ShiftsUiEvent()
-    data class ExportReady(val json: String)            : ShiftsUiEvent()
     data class ShowMessage(val msg: String)             : ShiftsUiEvent()
     data class ShowError(val msg: String)               : ShiftsUiEvent()
 }
 
-data class ShiftsState(
-    val shifts: List<Shift>            = emptyList(),
-    val globalBreaks: List<ShiftBreak> = emptyList(),
-    val statuses: List<ShiftStatus>    = emptyList()
-)
-
-/**
- * 导出数据包。
- *
- * ⚠️ 载荷类已迁到 com.schedulecalendar.app.data.compat.ShiftConfigBackup（与格式转换器同包，
- * 便于「格式定义」与「格式转换」不分家）；这里是给 UI 层用的内部别名。
- */
-internal typealias ShiftExportData = com.schedulecalendar.app.data.compat.ShiftConfigBackup
-
 @HiltViewModel
 class ShiftsViewModel @Inject constructor(
     private val shiftRepo: ShiftRepository,
-    private val breakRepo: ShiftBreakRepository,
+    breakRepo: ShiftBreakRepository,
     private val statusRepo: ShiftStatusRepository,
-    private val extraRepo: ExtraItemRepository,
     private val backupManager: com.schedulecalendar.app.ui.settings.BackupManager,
     private val prefs: AppPreferences,
-    private val db: AppDatabase,
-    private val profileRepo: com.schedulecalendar.app.data.repository.CalcProfileRepository
+    private val profileRepo: CalcProfileRepository
 ) : ViewModel() {
 
     val shifts: StateFlow<List<Shift>> = shiftRepo.observeAllWithBuiltin()
@@ -302,91 +282,7 @@ class ShiftsViewModel @Inject constructor(
         updateBreakOrder(mutable.map { it.id })
     }
 
-    // ── 导出：生成 JSON 字符串，由 UI 层完成文件写入 ──────────────
-    fun prepareExport() = viewModelScope.launch {
-        runCatching {
-            val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
-            val payload = ShiftExportData(
-                version       = com.schedulecalendar.app.data.compat.DataFormat.SHIFT_CONFIG_BACKUP,
-                exportTime    = now,
-                shifts        = shiftRepo.getAll().filter { !it.builtIn },
-                globalBreaks  = breakRepo.getAll(),
-                shiftStatuses = statusRepo.getAll().filter { !it.builtIn },
-                extraItems    = extraRepo.getAll()
-            )
-            val json = com.google.gson.Gson().toJson(payload)
-            _uiEvent.send(ShiftsUiEvent.ExportReady(json))
-        }.onFailure {
-            _uiEvent.send(ShiftsUiEvent.ShowError("导出失败：${it.message}"))
-        }
     }
-
-    // ── 导入：由 UI 层读取文件后传入 JSON 字符串 ──────────────────
-    fun importFromJson(json: String, overwrite: Boolean = false) = viewModelScope.launch {
-        runCatching {
-            // 旧版本备份先经兼容层转换成当前格式（字段名/默认值/时间段补齐），再落库
-            val upgraded = com.schedulecalendar.app.data.compat.BackupCompat.upgrade(json)
-            val data = com.google.gson.Gson().fromJson(upgraded.json, ShiftExportData::class.java)
-                ?: throw IllegalArgumentException("JSON 格式错误")
-            var importedShifts   = 0
-            var importedBreaks   = 0
-            var importedStatuses = 0
-            var importedExtras   = 0
-            val existingIds = shiftRepo.getAll().map { it.id }.toSet()
-            val existingBreakIds = breakRepo.getAll().map { it.id }.toSet()
-            val existingStatusIds = statusRepo.getAll().filter { !it.builtIn }.map { it.id }.toSet()
-            val existingExtraIds = extraRepo.getAll().map { it.id }.toSet()
-            // 整个导入放进同一事务：原先逐条保存，中途失败会留下「班次已导入、时段没导入」的半成品
-            db.withTransaction {
-                // 字段缺失（旧版备份）按空列表处理，不影响其他字段导入
-                data.shifts.orEmpty().forEach { s ->
-                    if (overwrite || s.id !in existingIds) {
-                        shiftRepo.save(s.copy(builtIn = false)); importedShifts++
-                    }
-                }
-                if (overwrite) {
-                    breakRepo.deleteAll()
-                    data.globalBreaks.orEmpty().forEach { breakRepo.save(it) }
-                    importedBreaks = data.globalBreaks.orEmpty().size
-                } else {
-                    data.globalBreaks.orEmpty().filter { it.id !in existingBreakIds }.forEach {
-                        breakRepo.save(it); importedBreaks++
-                    }
-                }
-                data.shiftStatuses.orEmpty().filter { !it.builtIn }.forEach { st ->
-                    if (overwrite || st.id !in existingStatusIds) {
-                        statusRepo.save(st); importedStatuses++
-                    }
-                }
-                // 补上此前完全遗漏的补贴扣款项：导出会带上它们，导入却从不恢复
-                data.extraItems.orEmpty().forEach { e ->
-                    if (overwrite || e.id !in existingExtraIds) {
-                        extraRepo.save(e); importedExtras++
-                    }
-                }
-            }
-            // 导入可能改动了全局休息时段 → 同步生成新口径档案（今天生效），历史计算不受影响
-            if (importedBreaks > 0) {
-                val today = com.schedulecalendar.app.domain.util.DateFormats.date(java.time.LocalDate.now())
-                runCatching {
-                    profileRepo.createDerivedProfile(
-                        effectiveFrom = today,
-                        name = "${today.take(7)} 时段导入",
-                        breaks = breakRepo.getAll()
-                    )
-                }.onFailure {
-                    android.util.Log.w("ShiftsViewModel", "sync profile after import failed", it)
-                }
-            }
-            val note = if (upgraded.notes.isEmpty()) "" else "（${upgraded.notes.joinToString("；")}）"
-            _uiEvent.send(ShiftsUiEvent.ShowMessage(
-                "导入成功：班次 $importedShifts，时段 $importedBreaks，状态 $importedStatuses，项目 $importedExtras$note"
-            ))
-        }.onFailure {
-            _uiEvent.send(ShiftsUiEvent.ShowError("导入失败：${it.message}"))
-        }
-    }
-}
 
 // ── ShiftEditorViewModel ──────────────────────────────────────────────────────
 
@@ -411,8 +307,8 @@ data class ShiftEditorState(
 @HiltViewModel
 class ShiftEditorViewModel @Inject constructor(
     private val shiftRepo: ShiftRepository,
-    private val extraRepo: com.schedulecalendar.app.data.repository.ExtraItemRepository,
-    private val breakRepo: com.schedulecalendar.app.data.repository.ShiftBreakRepository,
+    private val extraRepo: ExtraItemRepository,
+    private val breakRepo: ShiftBreakRepository,
     private val backupManager: com.schedulecalendar.app.ui.settings.BackupManager,
     private val prefs: AppPreferences
 ) : ViewModel() {

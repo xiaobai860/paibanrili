@@ -1,5 +1,6 @@
 // app/src/main/java/com/schedulecalendar/app/ui/settings/StorageScreen.kt
 package com.schedulecalendar.app.ui.settings
+import com.schedulecalendar.app.domain.util.AppLog
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,7 +61,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                 vm.importFromJson(json)
             }
         }.onFailure { e ->
-            android.util.Log.w("StorageScreen", "import failed", e)
+            AppLog.w("StorageScreen", "import failed", e)
             importScope.launch { snackbar.showSnackbar("读取备份失败：${e.message ?: "未知错误"}") }
         }
     }
@@ -87,10 +88,10 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
             checkNotNull(activity) { "no activity" }
             activity.contentResolver.takePersistableUriPermission(
                 uri,
-                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
         }.onFailure {
-            android.util.Log.w("StorageScreen", "takePersistableUriPermission failed", it)
+            AppLog.w("StorageScreen", "takePersistableUriPermission failed", it)
         }.isSuccess
         if (!persisted) {
             importScope.launch { snackbar.showSnackbar("未获得该目录的长期访问权限，备份可能无法写入") }
@@ -163,7 +164,14 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                     backupCount    = state.appDataBackups.size,
                     keepUnit       = "天",
                     onKeepChange   = { vm.updateKeepCount(BackupType.APP_DATA, it) },
-                    onCreateBackup = { vm.createBackup(BackupType.APP_DATA) }
+                    onCreateBackup = { vm.createBackup(BackupType.APP_DATA) },
+                    statusLine     = when {
+                        state.lastAutoBackupError != null -> "上次备份失败：${state.lastAutoBackupError}"
+                        state.lastAutoBackupDate.length == 8 ->
+                            "上次自动备份：${state.lastAutoBackupDate.substring(0, 4)}-${state.lastAutoBackupDate.substring(4, 6)}-${state.lastAutoBackupDate.substring(6, 8)}"
+                        else -> null
+                    },
+                    manualHint     = "「立即备份」生成手动备份，不会被自动清理，需手动删除"
                 )
             }
             if (state.appDataBackups.isNotEmpty()) {
@@ -193,7 +201,8 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                     backupCount    = state.shiftConfigBackups.size,
                     keepUnit       = "份",
                     onKeepChange   = { vm.updateKeepCount(BackupType.SHIFT_CONFIG, it) },
-                    onCreateBackup = { vm.createBackup(BackupType.SHIFT_CONFIG) }
+                    onCreateBackup = { vm.createBackup(BackupType.SHIFT_CONFIG) },
+                    manualHint     = "「立即备份」生成手动备份，不会被自动清理，需手动删除"
                 )
             }
             if (state.shiftConfigBackups.isNotEmpty()) {
@@ -700,7 +709,9 @@ private fun BackupTypeCard(
     backupCount: Int,
     keepUnit: String,
     onKeepChange: (Int) -> Unit,
-    onCreateBackup: () -> Unit
+    onCreateBackup: () -> Unit,
+    statusLine: String? = null,
+    manualHint: String? = null
 ) {
     Card(
         Modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth(),
@@ -726,6 +737,12 @@ private fun BackupTypeCard(
                         }
                     }
                     Text(type.desc, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (statusLine != null) {
+                        Text(statusLine, fontSize = 12.sp,
+                            color = if (statusLine.startsWith("上次备份失败"))
+                                MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 Surface(
                     shape = RoundedCornerShape(8.dp),
@@ -762,6 +779,9 @@ private fun BackupTypeCard(
                 Icon(Icons.Default.Save, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("立即备份")
+            }
+            if (manualHint != null) {
+                Text(manualHint, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

@@ -3,7 +3,6 @@ package com.schedulecalendar.app.ui.shifts
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,8 +45,8 @@ import com.schedulecalendar.app.ui.navigation.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ShiftsScreen(navController: NavController, vm: ShiftsViewModel = hiltViewModel()) {
     val shifts       by vm.sortedShifts.collectAsStateWithLifecycle()
@@ -77,7 +75,6 @@ fun ShiftsScreen(navController: NavController, vm: ShiftsViewModel = hiltViewMod
                     deleteShiftTarget = ev.shiftId
                 is ShiftsUiEvent.ShowMessage -> snackbar.showSnackbar(ev.msg)
                 is ShiftsUiEvent.ShowError   -> snackbar.showSnackbar(ev.msg)
-                else -> {}
             }
         }
     }
@@ -144,7 +141,6 @@ fun ShiftsScreen(navController: NavController, vm: ShiftsViewModel = hiltViewMod
                 when (page) {
                     0 -> ShiftsTab(
                         shifts   = shifts,
-                        breaks  = globalBreaks,
                         onEdit   = { vm.onEditClick(it) },
                         onDelete = { vm.onDeleteClick(it) },
                         onMoveUp = { vm.moveShiftUp(it) },
@@ -239,7 +235,6 @@ private fun ReorderArrow(
 @Composable
 private fun ShiftsTab(
     shifts: List<com.schedulecalendar.app.domain.model.Shift>,
-    breaks: List<ShiftBreak>,
     onEdit: (String) -> Unit,
     onDelete: (String) -> Unit,
     onMoveUp: (String) -> Unit,
@@ -763,7 +758,7 @@ private fun ExtraItemEditorDialog(item: ExtraItem?, existingNames: List<String>,
                         if (fs.isFocused && amount.isEmpty()) {
                             suppressImeAutoFill = true
                             scope.launch {
-                                delay(150) // 覆盖 IME 自动填入的时间窗口
+                                delay(150.milliseconds) // 覆盖 IME 自动填入的时间窗口
                                 suppressImeAutoFill = false
                             }
                         }

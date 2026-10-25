@@ -2,7 +2,6 @@
 package com.schedulecalendar.app.ui.settings
 
 import android.content.Context
-import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
@@ -68,6 +67,10 @@ data class StorageUiState(
     val privateBackupBytes: Long = 0L,
     /** 备份文件份数（应用数据 + 班次配置） */
     val backupFileCount:    Int = 0,
+    /** 最近一次应用数据自动备份成功日期（yyyyMMdd，来自 prefs；空=从未） */
+    val lastAutoBackupDate: String = "",
+    /** 最近一次应用数据自动备份失败信息（本次进程内存态；null=无失败） */
+    val lastAutoBackupError: String? = null,
     val loading:            Boolean = true,
     // 废弃数据清理扫描结果
     val orphanShiftsCount:    Int = 0,
@@ -129,12 +132,16 @@ class StorageViewModel @Inject constructor(
             val appKeep = prefs.getAppDataKeepCount()
             val shiftKeep = prefs.getShiftConfigKeepCount()
             val customPath = prefs.getBackupCustomPath()
-            val defaultPath = java.io.File(context.filesDir, "backups").absolutePath
+            val defaultPath = File(context.filesDir, "backups").absolutePath
+            val lastBackupDate = prefs.getLastAppDataAutoBackupDate()
+            val lastBackupError = backupManager.lastAppBackupError
             _state.update { it.copy(
                 appDataKeepCount = appKeep,
                 shiftConfigKeepCount = shiftKeep,
                 customBackupPath = customPath,
-                defaultBackupPath = defaultPath
+                defaultBackupPath = defaultPath,
+                lastAutoBackupDate = lastBackupDate,
+                lastAutoBackupError = lastBackupError
             ) }
             // 仅列出文件，不执行裁剪（裁剪在自动备份时进行），确保页面秒开
             val appFiles = backupManager.listAppDataBackups()
@@ -162,9 +169,13 @@ class StorageViewModel @Inject constructor(
         val shiftFiles = backupManager.listShiftConfigBackups()
         val usage = computeStorageUsage()
         val backupSize = appFiles.sumOf { it.sizeBytes } + shiftFiles.sumOf { it.sizeBytes }
+        val lastBackupDate = prefs.getLastAppDataAutoBackupDate()
+        val lastBackupError = backupManager.lastAppBackupError
 
         _state.update {
             it.copy(
+                lastAutoBackupDate = lastBackupDate,
+                lastAutoBackupError = lastBackupError,
                 appDataBackups = appFiles.sortedByDescending { f -> f.createdAt },
                 shiftConfigBackups = shiftFiles.sortedByDescending { f -> f.createdAt },
                 backupSizeBytes = backupSize,
@@ -199,15 +210,15 @@ class StorageViewModel @Inject constructor(
      * - **缓存**：`cacheDir`（临时文件，可随时回收）。
      */
     private fun computeStorageUsage(): StorageUsage {
-        val total = dirSize(java.io.File(context.applicationInfo.dataDir))
+        val total = dirSize(File(context.applicationInfo.dataDir))
         val cache = dirSize(context.cacheDir)
-        val privateBackup = dirSize(java.io.File(context.filesDir, "backups"))
+        val privateBackup = dirSize(File(context.filesDir, "backups"))
         val data = (total - cache - privateBackup).coerceAtLeast(0L)
         return StorageUsage(total, data, cache, privateBackup)
     }
 
     /** 递归求目录内所有文件的总大小（字节） */
-    private fun dirSize(dir: java.io.File): Long {
+    private fun dirSize(dir: File): Long {
         if (!dir.exists()) return 0L
         if (dir.isFile) return dir.length()
         var sum = 0L
@@ -299,17 +310,6 @@ class StorageViewModel @Inject constructor(
     /** 将 SAF URI 字符串解析为可读的文件系统路径（统一实现见 [SafPathResolver]） */
     fun resolveDisplayPath(rawPath: String): String = SafPathResolver.toDisplayPath(rawPath)
 
-    /** 导出备份文件到 SAF URI */
-    fun prepareExportJson(file: BackupFile, onReady: (json: String, suggestedName: String) -> Unit) =
-        viewModelScope.launch {
-            runCatching {
-                val json = withContext(Dispatchers.IO) { backupManager.readBackupContent(file.path) }
-                onReady(json, file.name)
-            }.onFailure {
-                _uiEvent.send(StorageUiEvent.ShowError("读取失败：${it.message}"))
-            }
-        }
-
     /** 从外部 URI 导入备份 */
     fun importFromJson(json: String) = viewModelScope.launch {
         runCatching {
@@ -361,36 +361,36 @@ class StorageViewModel @Inject constructor(
                     orphanStatusesCount = scan.statuses.size,
                     orphanExtrasCount = scan.extras.size,
                     orphanBreaksCount = scan.breaks.size + scan.breaksInProfileSnapshots.size,
-                    orphanShifts = scan.shifts.map {
-                        OrphanItemInfo(it.id, it.name, it.color,
-                            if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
+                    orphanShifts = scan.shifts.map { sh ->
+                        OrphanItemInfo(sh.id, sh.name, sh.color,
+                            if (sh.startTime.isNotEmpty() && sh.endTime.isNotEmpty()) "${sh.startTime}-${sh.endTime}" else "")
                     },
-                    orphanStatuses = scan.statuses.map {
-                        OrphanItemInfo(it.id, it.name, it.color, it.reportType ?: "")
+                    orphanStatuses = scan.statuses.map { st ->
+                        OrphanItemInfo(st.id, st.name, st.color, st.reportType ?: "")
                     },
-                    orphanExtras = scan.extras.map {
-                        OrphanItemInfo(it.id, it.name, extra = "${if (it.type == "deduction") "-" else "+"}¥${"%.2f".format(it.amount)}")
+                    orphanExtras = scan.extras.map { ex ->
+                        OrphanItemInfo(ex.id, ex.name, extra = "${if (ex.type == "deduction") "-" else "+"}¥${"%.2f".format(ex.amount)}")
                     },
-                    orphanBreaks = scan.breaks.map {
-                        OrphanItemInfo(it.id, it.label, extra =
-                            if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
+                    orphanBreaks = scan.breaks.map { bk ->
+                        OrphanItemInfo(bk.id, bk.label, extra =
+                            if (bk.startTime.isNotEmpty() && bk.endTime.isNotEmpty()) "${bk.startTime}-${bk.endTime}" else "")
                     },
-                    orphanBreaksInProfiles = scan.breaksInProfileSnapshots.map {
-                        OrphanItemInfo(it.id, it.label, extra =
-                            if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
+                    orphanBreaksInProfiles = scan.breaksInProfileSnapshots.map { bk ->
+                        OrphanItemInfo(bk.id, bk.label, extra =
+                            if (bk.startTime.isNotEmpty() && bk.endTime.isNotEmpty()) "${bk.startTime}-${bk.endTime}" else "")
                     },
                     keptShiftsCount = scan.keptShifts.size,
                     keptStatusesCount = scan.keptStatuses.size,
                     keptExtrasCount = scan.keptExtras.size,
-                    keptShifts = scan.keptShifts.map {
-                        OrphanItemInfo(it.id, it.name, it.color,
-                            if (it.startTime.isNotEmpty() && it.endTime.isNotEmpty()) "${it.startTime}-${it.endTime}" else "")
+                    keptShifts = scan.keptShifts.map { sh ->
+                        OrphanItemInfo(sh.id, sh.name, sh.color,
+                            if (sh.startTime.isNotEmpty() && sh.endTime.isNotEmpty()) "${sh.startTime}-${sh.endTime}" else "")
                     },
-                    keptStatuses = scan.keptStatuses.map {
-                        OrphanItemInfo(it.id, it.name, it.color, it.reportType ?: "")
+                    keptStatuses = scan.keptStatuses.map { st ->
+                        OrphanItemInfo(st.id, st.name, st.color, st.reportType ?: "")
                     },
-                    keptExtras = scan.keptExtras.map {
-                        OrphanItemInfo(it.id, it.name, extra = "${if (it.type == "deduction") "-" else "+"}¥${"%.2f".format(it.amount)}")
+                    keptExtras = scan.keptExtras.map { ex ->
+                        OrphanItemInfo(ex.id, ex.name, extra = "${if (ex.type == "deduction") "-" else "+"}¥${"%.2f".format(ex.amount)}")
                     }
                 )
             }
