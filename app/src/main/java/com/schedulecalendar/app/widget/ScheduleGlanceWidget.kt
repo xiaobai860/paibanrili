@@ -31,6 +31,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.schedulecalendar.app.domain.model.*
 import java.time.LocalDate
 import java.time.LocalTime
@@ -74,34 +75,34 @@ class RefreshScheduleWidgetAction : ActionCallback {
 // ── 快捷打卡小组件数据模型 ──────────────────────────────────────────
 
 data class ClockInWidgetData(
-    val shiftName: String = "",
-    val startTime: String = "",
-    val endTime: String = "",
-    val tomorrowShiftName: String = "",
-    val tomorrowStatusName: String = "",
-    val actualStartTime: String = "",
-    val actualEndTime: String = "",
-    val shiftColor: String = "#059669",
-    val statusName: String = "",
+    @SerializedName("shiftName") val shiftName: String = "",
+    @SerializedName("startTime") val startTime: String = "",
+    @SerializedName("endTime") val endTime: String = "",
+    @SerializedName("tomorrowShiftName") val tomorrowShiftName: String = "",
+    @SerializedName("tomorrowStatusName") val tomorrowStatusName: String = "",
+    @SerializedName("actualStartTime") val actualStartTime: String = "",
+    @SerializedName("actualEndTime") val actualEndTime: String = "",
+    @SerializedName("shiftColor") val shiftColor: String = "#059669",
+    @SerializedName("statusName") val statusName: String = "",
     // ── 附加状态时间段（内置班次+附加状态场景的打卡与显示）──
-    val statusStartTime: String = "",
-    val statusEndTime: String = "",
+    @SerializedName("statusStartTime") val statusStartTime: String = "",
+    @SerializedName("statusEndTime") val statusEndTime: String = "",
     // ── 新增：打卡按钮规则控制字段 ──
-    val shiftId: String = "",
-    val isBuiltInShift: Boolean = false,
-    val appliedStatusId: String = "",
-    val isBuiltInStatus: Boolean = false,
-    val showClockIn: Boolean = false,
-    val showClockOut: Boolean = false,
-    val hasClockIn: Boolean = false,
-    val hasClockOut: Boolean = false,
-    val clockInDate: String = "",
-    val widgetClockInTime: String = "",
-    val widgetClockOutTime: String = "",
+    @SerializedName("shiftId") val shiftId: String = "",
+    @SerializedName("isBuiltInShift") val isBuiltInShift: Boolean = false,
+    @SerializedName("appliedStatusId") val appliedStatusId: String = "",
+    @SerializedName("isBuiltInStatus") val isBuiltInStatus: Boolean = false,
+    @SerializedName("showClockIn") val showClockIn: Boolean = false,
+    @SerializedName("showClockOut") val showClockOut: Boolean = false,
+    @SerializedName("hasClockIn") val hasClockIn: Boolean = false,
+    @SerializedName("hasClockOut") val hasClockOut: Boolean = false,
+    @SerializedName("clockInDate") val clockInDate: String = "",
+    @SerializedName("widgetClockInTime") val widgetClockInTime: String = "",
+    @SerializedName("widgetClockOutTime") val widgetClockOutTime: String = "",
     /** S1：休息/调休且无附加状态时第二行显示的文案 */
-    val restMessage: String = "",
+    @SerializedName("restMessage") val restMessage: String = "",
     /** 2x1 第三行：跨天班次提醒文案（夜班提醒规则，含「明天：xx」兜底格式）；空 = 不显示 */
-    val nextShiftFooter: String = ""
+    @SerializedName("nextShiftFooter") val nextShiftFooter: String = ""
 )
 
 // ── 存储键 ──────────────────────────────────────────────────
@@ -142,6 +143,31 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
 
 // ── Widget 上班打卡动作 ──────────────────────────────────────────
 
+/**
+ * 解析打卡应写入的目标日期（B1：跨午夜夜班打卡归属其所属日，而非今天的新班次）。
+ *
+ * 规则：
+ * - 空 / 今天 → 写今天（常规）。
+ * - 昨天且该班次跨午夜（结束早于开始，如 20:30→08:30）→ 写昨天：跨天班次仍在其打卡区间内，
+ *   组件按钮本就代表这个班次，打卡应归属班次开始日，绝不写进「今天的新班次」。
+ * - 其它（更早的陈旧数据，或非跨天的昨天班次）→ 返回 null，由调用方走「写今天」兜底，
+ *   避免组件跨零点未刷新时把今天的打卡误写到历史记录上。
+ */
+private fun resolveClockTargetDate(data: ClockInWidgetData): String? {
+    val clockInDate = data.clockInDate
+    if (clockInDate.isBlank()) return null
+    val todayStr = DateFormats.date(LocalDate.now())
+    if (clockInDate == todayStr) return todayStr
+    val yesterdayStr = DateFormats.date(LocalDate.now().minusDays(1))
+    if (clockInDate == yesterdayStr && isCrossMidnightShift(data.startTime, data.endTime)) return clockInDate
+    return null
+}
+
+/** 班次是否跨午夜（结束时刻早于开始时刻）；时间非法/缺失返回 false */
+private fun isCrossMidnightShift(startTime: String, endTime: String): Boolean =
+    startTime.isNotEmpty() && endTime.isNotEmpty() &&
+        runCatching { CalcUtils.timeToMin(endTime) < CalcUtils.timeToMin(startTime) }.getOrDefault(false)
+
 class WidgetClockInAction : ActionCallback {
     override suspend fun onAction(
         context: Context,
@@ -157,15 +183,13 @@ class WidgetClockInAction : ActionCallback {
         val data = runCatching { Gson().fromJson(prefsJson, ClockInWidgetData::class.java) }
             .getOrElse { ClockInWidgetData() }
 
-        // 组件数据跨零点未刷新时 clockInDate 会停在昨天/前天，
-        // 直接写入等于把「今天的打卡」写到历史记录上 → 非今天一律走 fallback
-        val todayStr = DateFormats.date(LocalDate.now())
-        if (data.clockInDate.isBlank() || data.clockInDate != todayStr) {
+        // B1：跨午夜夜班仍在打卡区间内时写入该班次所属日（昨天），而非今天的新班次；
+        // 仅当目标日为「今天」或「昨天的跨午夜班次」才写入，其它（陈旧数据）走写今天兜底。
+        val targetDate = resolveClockTargetDate(data)
+        if (targetDate == null) {
             fallbackClock(context, true)
             return
         }
-
-        val targetDate = data.clockInDate
         val isBuiltInShift = data.isBuiltInShift
         val hasCustomStatus = data.appliedStatusId.isNotBlank() && !data.isBuiltInStatus
         val hasBuiltInStatus = data.appliedStatusId.isNotBlank() && data.isBuiltInStatus
@@ -203,6 +227,8 @@ class WidgetClockInAction : ActionCallback {
             android.util.Log.e("WIDGET", "clockIn save failed", e)
         }
 
+        // 打卡反馈：Toast 即时提示（组件自身重渲染为主要反馈，Toast 作补充；
+        // 注：Android 12+ 后台 Toast 可能被部分 OEM 拦截，届时以组件按钮态变化为准）。
         // 刷新小组件：数据落库后由 ScheduleApp 全局变更信号自动触发同步（避免动作内多次 update 被桌面丢弃）
         Handler(Looper.getMainLooper()).postDelayed({
             Toast.makeText(context, "已打上班卡 $currentTime", Toast.LENGTH_SHORT).show()
@@ -210,6 +236,8 @@ class WidgetClockInAction : ActionCallback {
         // 兜底：信号同步可能落在桌面「交互窗口期」被丢弃，延迟补一次单路更新
         widgetFallbackScope.launch {
             delay(WIDGET_FALLBACK_RESYNC_DELAY_MS)
+            // 去重：若刚才已有一次成功的全量同步（如 changeSignal 已刷新），跳过本次兜底，避免每次打卡都双跑
+            if (recentWidgetSyncWithin(WIDGET_FALLBACK_RESYNC_DELAY_MS)) return@launch
             runCatching { syncAllWidgets(context.applicationContext) }
         }
     }
@@ -231,7 +259,7 @@ class WidgetClockInAction : ActionCallback {
                 else record.copy(actualEndTime = currentTime)
             scheduleRepo.save(updated)
         }
-        // 全局变更信号会自动触发同步
+        // 全局变更信号会自动触发同步；Toast 作即时反馈（后台可能被部分 OEM 拦截，以组件重渲染为准）
         Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
     }
 }
@@ -253,12 +281,12 @@ class WidgetClockOutAction : ActionCallback {
         val data = runCatching { Gson().fromJson(prefsJson, ClockInWidgetData::class.java) }
             .getOrElse { ClockInWidgetData() }
 
-        if (data.clockInDate.isBlank()) {
+        // B1：同上班卡——跨午夜夜班写其所属日；仅「今天」或「昨天的跨午夜班次」才写入，其余走写今天兜底。
+        val targetDate = resolveClockTargetDate(data)
+        if (targetDate == null) {
             fallbackClock(context, false)
             return
         }
-
-        val targetDate = data.clockInDate
         val isBuiltInShift = data.isBuiltInShift
         val hasCustomStatus = data.appliedStatusId.isNotBlank() && !data.isBuiltInStatus
         val hasBuiltInStatus = data.appliedStatusId.isNotBlank() && data.isBuiltInStatus
@@ -296,6 +324,8 @@ class WidgetClockOutAction : ActionCallback {
             android.util.Log.e("WIDGET", "clockOut save failed", e)
         }
 
+        // 打卡反馈：Toast 即时提示（组件自身重渲染为主要反馈，Toast 作补充；
+        // 注：Android 12+ 后台 Toast 可能被部分 OEM 拦截，届时以组件按钮态变化为准）。
         // 刷新小组件：数据落库后由 ScheduleApp 全局变更信号自动触发同步
         Handler(Looper.getMainLooper()).postDelayed({
             Toast.makeText(context, "已打下班卡 $currentTime", Toast.LENGTH_SHORT).show()
@@ -303,6 +333,8 @@ class WidgetClockOutAction : ActionCallback {
         // 兜底：信号同步可能落在桌面「交互窗口期」被丢弃，延迟补一次单路更新
         widgetFallbackScope.launch {
             delay(WIDGET_FALLBACK_RESYNC_DELAY_MS)
+            // 去重：若刚才已有一次成功的全量同步（如 changeSignal 已刷新），跳过本次兜底，避免每次打卡都双跑
+            if (recentWidgetSyncWithin(WIDGET_FALLBACK_RESYNC_DELAY_MS)) return@launch
             runCatching { syncAllWidgets(context.applicationContext) }
         }
     }
@@ -324,7 +356,7 @@ class WidgetClockOutAction : ActionCallback {
                 else record.copy(actualEndTime = currentTime)
             scheduleRepo.save(updated)
         }
-        // 全局变更信号会自动触发同步
+        // 全局变更信号会自动触发同步；Toast 作即时反馈（后台可能被部分 OEM 拦截，以组件重渲染为准）
         Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
     }
 }

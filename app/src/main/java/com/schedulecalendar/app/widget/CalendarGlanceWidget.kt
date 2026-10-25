@@ -6,7 +6,6 @@ package com.schedulecalendar.app.widget
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import com.schedulecalendar.app.domain.util.DateFormats
 import androidx.compose.runtime.Composable
 import androidx.core.content.edit
 import androidx.compose.ui.graphics.Color
@@ -31,23 +30,33 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.schedulecalendar.app.MainActivity
-import com.schedulecalendar.app.domain.model.HolidayData
-import com.schedulecalendar.app.domain.model.LunarCalendar
 import java.time.LocalDate
 
 internal const val CALENDAR_WIDGET_DATA_PREFS = "calendar_widget_data_prefs"
 internal const val KEY_CALENDAR_WIDGET_JSON = "calendar_widget_json"
 
 data class CalendarWidgetDay(
-    val day: Int = 0, val dateStr: String = "",
-    val shiftName: String = "", val shiftColor: String = "", val statusName: String = ""
+    @SerializedName("day") val day: Int = 0,
+    @SerializedName("dateStr") val dateStr: String = "",
+    @SerializedName("shiftName") val shiftName: String = "",
+    @SerializedName("shiftColor") val shiftColor: String = "",
+    @SerializedName("statusName") val statusName: String = "",
+    // 以下由 refreshCalendarWidgets 在单一同步路径预计算（节假日/农历文本），
+    // 组合期只读字符串，不再逐格重算 tyme4j/HolidayData（刷新频繁时省重复计算）
+    @SerializedName("isLegalHoliday") val isLegalHoliday: Boolean = false,
+    @SerializedName("isMakeupWorkday") val isMakeupWorkday: Boolean = false,
+    @SerializedName("isHolidayFirstDay") val isHolidayFirstDay: Boolean = false,
+    @SerializedName("subText") val subText: String = ""
 )
 
 data class CalendarWidgetInfo(
-    val year: Int = 0, val month: Int = 0,
-    val days: List<CalendarWidgetDay> = emptyList(),
-    val weekStartOffset: Int = 0, val totalRows: Int = 5
+    @SerializedName("year") val year: Int = 0,
+    @SerializedName("month") val month: Int = 0,
+    @SerializedName("days") val days: List<CalendarWidgetDay> = emptyList(),
+    @SerializedName("weekStartOffset") val weekStartOffset: Int = 0,
+    @SerializedName("totalRows") val totalRows: Int = 5
 )
 
 class CalendarGlanceWidget : GlanceAppWidget() {
@@ -226,7 +235,7 @@ private fun CalendarWidgetContent(
                                 .cornerRadius(cellCorner)
                             ) {
                                 if (day != null && day.day > 0) CalendarDayCellContent(
-                                    day, isToday, showLunar, showStatus, data.year, data.month, dfs, sfs, statusFontSize, lfs, utc, utcDark, bgAlpha, isDark, cellCorner)
+                                    day, isToday, showLunar, showStatus, dfs, sfs, statusFontSize, lfs, utc, utcDark, bgAlpha, isDark, cellCorner)
                             }
                         }
                     }
@@ -240,22 +249,13 @@ private fun CalendarWidgetContent(
 private fun CalendarDayCellContent(
     day: CalendarWidgetDay, isToday: Boolean,
     showLunar: Boolean, showStatus: Boolean,
-    year: Int, month: Int, dayNumberSize: TextUnit,
+    dayNumberSize: TextUnit,
     shiftFontSize: TextUnit, statusFontSize: TextUnit, lunarFontSize: TextUnit,
     textColor: Color, textColorDark: Color, bgAlpha: Float, isDark: Boolean,
     cellCorner: androidx.compose.ui.unit.Dp
 ) {
     val hasShift = day.shiftName.isNotEmpty()
     val hasStatus = day.statusName.isNotEmpty()
-    val dateStr = if (year > 0 && month > 0) DateFormats.date(year, month, day.day) else ""
-    val isLegalHoliday = dateStr.isNotEmpty() && HolidayData.isLegalHoliday(dateStr)
-    val isHolidayFirstDay = if (isLegalHoliday) {
-        val prevDate = try {
-            val p = LocalDate.of(year, month, day.day).minusDays(1)
-            DateFormats.date(p)
-        } catch (_: Exception) { null }
-        prevDate == null || !HolidayData.isLegalHoliday(prevDate)
-    } else false
     val cellBg: Color = when {
         isToday -> Color.Transparent  // 今日高亮由外层 Box 负责
         hasShift -> {
@@ -278,7 +278,7 @@ private fun CalendarDayCellContent(
         contentAlignment = Alignment.Center) {
         Column(modifier = GlanceModifier.fillMaxSize().padding(vertical = 0.dp),
             horizontalAlignment = Alignment.CenterHorizontally) {
-            // 1. 日期数字 + 假期标记
+            // 1. 日期数字 + 假期标记（节假日/补班标记来自预计算字段）
             Row(verticalAlignment = Alignment.Top) {
                 val dayColor = if (isToday) Color(0xFF2E7D32) else textColor
                 val dayColorD = if (isToday) Color(0xFF4ADE80) else textColorDark
@@ -286,29 +286,18 @@ private fun CalendarDayCellContent(
                     style = TextStyle(color = if (isDark) ColorProvider(dayColorD) else ColorProvider(dayColor), fontSize = dayNumberSize,
                         fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium))
                 // 法定假「假」/ 补班「补」：日期数字右侧（与数字并排），法定假每天标、补班日标「补」
-                val isMakeup = HolidayData.isTransferWorkday(dateStr)
-                if (isMakeup || isLegalHoliday) {
-                    Text(text = if (isMakeup) "补" else "假",
-                        style = TextStyle(color = ColorProvider(if (isMakeup) Color(0xFF2563EB) else Color(0xFFDC2626)), fontSize = 7.sp,
+                if (day.isMakeupWorkday || day.isLegalHoliday) {
+                    Text(text = if (day.isMakeupWorkday) "补" else "假",
+                        style = TextStyle(color = ColorProvider(if (day.isMakeupWorkday) Color(0xFF2563EB) else Color(0xFFDC2626)), fontSize = 7.sp,
                             fontWeight = FontWeight.Bold))
                 }
             }
-            // 2. 农历/节假日（仅 3x4 widget 显示）
-            if (showLunar && year > 0 && month > 0) {
-                val holidayName = if (isLegalHoliday) HolidayData.getHolidayName(dateStr) else null
-                val festivalInfo = runCatching { HolidayData.getFullFestivalInfo(dateStr) }.getOrDefault(emptyList())
-                val lunarText = runCatching { LunarCalendar.getLunarDayText(year, month, day.day) }.getOrDefault("")
-                val displayText = when {
-                    isHolidayFirstDay && holidayName != null -> holidayName
-                    festivalInfo.isNotEmpty() -> festivalInfo.first()
-                    lunarText.isNotEmpty() -> lunarText
-                    else -> ""
-                }
-                if (displayText.isNotEmpty()) {
-                    val txtColor = if (isHolidayFirstDay && holidayName != null) Color(0xFFDC2626) else Color(0xFF999999)
-                    val txtColorD = if (isHolidayFirstDay && holidayName != null) Color(0xFFEF4444) else Color(0xFF777777)
-                    Text(text = displayText, style = TextStyle(color = if (isDark) ColorProvider(txtColorD) else ColorProvider(txtColor), fontSize = lunarFontSize), maxLines = 1)
-                }
+            // 2. 农历/节假日（仅 3x4 widget 显示；文本已在 refreshCalendarWidgets 预计算，此处只读）
+            if (showLunar && day.subText.isNotEmpty()) {
+                val isHolidayTitle = day.isHolidayFirstDay && day.isLegalHoliday
+                val txtColor = if (isHolidayTitle) Color(0xFFDC2626) else Color(0xFF999999)
+                val txtColorD = if (isHolidayTitle) Color(0xFFEF4444) else Color(0xFF777777)
+                Text(text = day.subText, style = TextStyle(color = if (isDark) ColorProvider(txtColorD) else ColorProvider(txtColor), fontSize = lunarFontSize), maxLines = 1)
             }
             // 3. 班次名称（始终显示）
             if (hasShift) {

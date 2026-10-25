@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.jvm.Volatile
 
 /**
  * 真正的「手动刷新」：从数据库回源重新计算并写入各小组件数据。
@@ -74,6 +75,15 @@ internal val widgetComposeMutex = Mutex()
 /** 串行执行单个实例的 Glance update（APP 内同步路径：等前一个组合结束再启动本次）。 */
 suspend fun GlanceAppWidget.updateSerialized(context: Context, id: GlanceId) {
     widgetComposeMutex.withLock { update(context, id) }
+}
+
+/** 最近一次 [syncAllWidgets] 完全成功的时间戳（epoch ms），用于打卡兜底同步去重 */
+@Volatile private var lastWidgetSyncSuccessAt = 0L
+
+/** 最近 [windowMs] 内是否有过一次完全成功的全量同步；供打卡兜底判断是否跳过重复刷新 */
+internal fun recentWidgetSyncWithin(windowMs: Long): Boolean {
+    val last = lastWidgetSyncSuccessAt
+    return last > 0 && System.currentTimeMillis() - last in 0 until windowMs
 }
 
 /**
@@ -137,14 +147,19 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
 
         val widgetData = computeClockInWidgetData(shifts, schedules, statusMap)
         Log.d("WIDGET_SYNC", "syncAllWidgets 2x1 shift=${widgetData.shiftName} showIn=${widgetData.showClockIn} showOut=${widgetData.showClockOut} rest=${widgetData.restMessage}")
-        ScheduleGlanceWidget.updateWidgetData(context, widgetData)
 
+        // 2x1 与日历各自独立：一类失败不影响另一类，并分别记录便于定位是哪类出问题
+        var ok = true
+        runCatching { ScheduleGlanceWidget.updateWidgetData(context, widgetData) }
+            .onFailure { ok = false; Log.e("WIDGET_SYNC", "sync 2x1 widget failed", it) }
         // 日历组件：仅当存在日历组件实例时才回源重算整月（无实例则跳过，省一次整月查询+逐日计算）
         if (hasCalendarWidgetInstance(context)) {
-            refreshCalendarWidgets(context, scheduleRepo, shifts, statusMap)
+            runCatching { refreshCalendarWidgets(context, scheduleRepo, shifts, statusMap) }
+                .onFailure { ok = false; Log.e("WIDGET_SYNC", "sync calendar widgets failed", it) }
         }
-        Log.d("WIDGET_SYNC", "syncAllWidgets done")
-        true
+        if (ok) lastWidgetSyncSuccessAt = System.currentTimeMillis()
+        Log.d("WIDGET_SYNC", "syncAllWidgets done, ok=$ok")
+        ok
     } catch (e: kotlinx.coroutines.CancellationException) {
         // 协程取消必须原样抛出：被吞掉会破坏取消语义（调用方无法停止本轮同步）
         throw e
@@ -465,7 +480,7 @@ private fun computeClockInWidgetData(
     // - 今天白班 / 休息 / 无班             → 「明天：xx」原格式；明天无班则不显示
     val tNight = isNightCrossShift(todayShift)
     val tmNight = isNightCrossShift(tomorrowShift)
-    val tSs = if (tNight) CalcUtils.timeToMin(todayShift!!.startTime) else 0
+    val tSs = if (tNight) CalcUtils.timeToMin(todayShift?.startTime.orEmpty()) else 0
     val todayShiftName = todayShift?.name ?: ""
     val tomorrowShiftName2 = tomorrowShift?.name ?: ""
     val nextShiftFooter = when {
@@ -516,6 +531,40 @@ private suspend fun hasCalendarWidgetInstance(context: Context): Boolean = runCa
         manager.getGlanceIds(Calendar3x4GlanceWidget::class.java).isNotEmpty()
 }.getOrDefault(true)
 
+/** 日历单格预计算的节假日/农历文本（在 refreshCalendarWidgets 单路径计算，避免组合期逐格重算 tyme4j/HolidayData） */
+private data class CalendarDayExtras(
+    val isLegalHoliday: Boolean = false,
+    val isMakeupWorkday: Boolean = false,
+    val isHolidayFirstDay: Boolean = false,
+    val subText: String = ""
+)
+
+/**
+ * 预计算某日的节假日/补班/农历展示文本（原在 CalendarDayCellContent 组合期逐格计算，收敛到此）。
+ * 全程 runCatching 兜底：任何数据/解析异常都退化为默认值，绝不影响组件渲染。
+ */
+private fun computeCalendarDayExtras(dateStr: String, year: Int, month: Int, day: Int): CalendarDayExtras {
+    if (dateStr.isEmpty() || year <= 0 || month <= 0) return CalendarDayExtras()
+    val isLegalHoliday = runCatching { HolidayData.isLegalHoliday(dateStr) }.getOrDefault(false)
+    val isMakeup = runCatching { HolidayData.isTransferWorkday(dateStr) }.getOrDefault(false)
+    val isHolidayFirstDay = if (isLegalHoliday) {
+        val prevDate = runCatching { LocalDate.of(year, month, day).minusDays(1) }.getOrNull()
+        prevDate == null || runCatching { HolidayData.isLegalHoliday(DateFormats.date(prevDate)) }.getOrDefault(false).not()
+    } else false
+    val subText = runCatching {
+        val holidayName = if (isLegalHoliday) HolidayData.getHolidayName(dateStr) else null
+        val festivalInfo = HolidayData.getFullFestivalInfo(dateStr)
+        val lunarText = LunarCalendar.getLunarDayText(year, month, day)
+        when {
+            isHolidayFirstDay && holidayName != null -> holidayName
+            festivalInfo.isNotEmpty() -> festivalInfo.first()
+            lunarText.isNotEmpty() -> lunarText
+            else -> ""
+        }
+    }.getOrDefault("")
+    return CalendarDayExtras(isLegalHoliday, isMakeup, isHolidayFirstDay, subText)
+}
+
 /** 按已存储的显示月份，从数据库重新计算日历组件数据（覆盖 3x3 与 3x4）。 */
 private suspend fun refreshCalendarWidgets(
     context: Context,
@@ -540,12 +589,18 @@ private suspend fun refreshCalendarWidgets(
         val record = schedules[dateStr]
         val shift = record?.shiftId?.let { id -> shifts.find { it.id == id } }
         val appliedSt = record?.appliedStatus?.let { statusMap[it.statusId] }
+        // 节假日/农历文本在此单一同步路径预计算，组合期只读（见 computeCalendarDayExtras）
+        val extras = computeCalendarDayExtras(dateStr, year, month, d)
         CalendarWidgetDay(
             day = d,
             dateStr = dateStr,
             shiftName = shift?.name ?: "",
             shiftColor = shift?.color ?: "",
-            statusName = appliedSt?.name ?: ""
+            statusName = appliedSt?.name ?: "",
+            isLegalHoliday = extras.isLegalHoliday,
+            isMakeupWorkday = extras.isMakeupWorkday,
+            isHolidayFirstDay = extras.isHolidayFirstDay,
+            subText = extras.subText
         )
     }
 
