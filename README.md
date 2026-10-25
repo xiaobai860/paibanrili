@@ -82,7 +82,7 @@
 | 桌面组件 | Glance 1.2.0 + WorkManager 2.12.0 |
 | 序列化 | Gson（配置/组件数据 JSON）+ kotlinx-serialization（Navigation 路由） |
 | 农历/节气/黄历 | tyme4j 1.5.2（`cn.6tail:tyme4j`，依据紫金山天文台《农历的编算和颁行》） |
-| 单元测试 | JUnit 4（13 个测试类 / 117 例：法定节假日表 + 历法数据对账 + 加班判定与三档计薪金额映射 + 计算口径档案区间选择 + 备份反序列化默认值 + 备份往返 + 数据格式栅栏 + ProGuard 规则） |
+| 单元测试 | JUnit 4（15 个测试类 / 131 例：法定节假日表 + 历法数据对账 + 加班判定与三档计薪金额映射 + 计算口径档案区间选择 + 备份反序列化默认值 + 备份往返 + 数据格式栅栏 + ProGuard 规则 + 日志规范 + 日志文件滚动/导出） |
 | 仪器测试 | AndroidX Test Runner（5 个测试类，需连真机：档案删除残留 / 孤儿数据清理 / 薪资考勤一致性） |
 
 ## 构建环境与版本信息
@@ -120,7 +120,7 @@
 # 发布版（改过资源/混淆敏感代码后务必加参数关闭缓存）
 ./gradlew assembleRelease --rerun-tasks --no-build-cache
 
-# 单元测试（117 例：节假日/历法/计薪/档案/备份格式守护；改过 HolidayData / LunarCalendar / CalcUtils / 备份载荷后必跑）
+# 单元测试（131 例：节假日/历法/计薪/档案/备份格式/日志规范守护；改过 HolidayData / LunarCalendar / CalcUtils / 备份载荷后必跑）
 ./gradlew testDebugUnitTest
 
 # 仪器测试（5 例，必须连真机；改过档案删除、孤儿数据清理、薪资考勤一致性后必跑）
@@ -178,6 +178,116 @@ RELEASE_KEY_PASSWORD=your_password
 - **该类块内不应出现任何成员行** —— 成员没被改名就不会被写进映射表；
   一旦出现 `getShifts() -> b` 这类行，就说明字段名被混淆了（备份 JSON 会失效）
 
+## 日志规范与 release 策略
+
+### 唯一出口：AppLog
+
+全项目**只有** `domain/util/AppLog.kt` 一个日志出口，禁止裸用 `android.util.Log`、
+禁止 `printStackTrace()`、禁止 `System.out/err`、禁止 Timber。
+
+| 维度 | 取值 | 控制方式 |
+|---|---|---|
+| **开关** | `BuildConfig.DIAGNOSTIC_LOGS` | debug 恒开；release 默认关（`-PdiagLogs=true` 可出诊断版 release） |
+| **开关** | `BuildConfig.LOG_TO_FILE` | 是否额外写日志文件；debug 与 release **默认开**（`-PlogToFile=false` 关闭） |
+| **级别** | `d` / `i` = **调试信息**；`w` / `e` = **普通日志（真实错误）** | 按级别分流，不在调用点自己判断 |
+| **输出目标** | logcat（始终）+ 文件（`FileLog`，默认开） | 集中在 `AppLog` 一处决定 |
+
+### 级别口径（硬性）
+
+| 级别 | 含义 | release 包 |
+|---|---|---|
+| `AppLog.d` / `AppLog.i` | **调试/诊断信息**：流程追踪、缓存命中、跳过原因 | **自动关闭**（编译期常量门控 → R8 连同参数求值一起剔除，零开销） |
+| `AppLog.w` / `AppLog.e` | **真实错误/告警/异常**：备份失败、闹钟未响、组件同步失败 | **始终保留** —— 生产故障的唯一诊断生命线，**禁止为省开销而关闭** |
+
+> 热路径（15min Worker、changeSignal 同步、冷启动、精确闹钟、每次备份）上不要用 `w/e` 打调试内容。
+
+### TAG 规范
+
+TAG 全部集中定义在 `domain/util/LogTags.kt`，调用点必须写 `AppLog.x(LogTags.XXX, ...)`：
+
+- **常量名** = SCREAMING_SNAKE_CASE（`WIDGET_REFRESH_WORKER`）
+- **TAG 值** = CamelCase，**与所属类名严格一致**（`"WidgetRefreshWorker"`），且必须是**真实存在的类/文件名**
+  （禁止 `"ShiftRepo"` 这类缩写假名 —— 线上按 TAG 过滤日志时搜不到来源）
+- **一个 TAG 只归属一个类/模块**（唯一例外 `WIDGET_SYNC`：它表示「组件同步流程」这个跨组件概念）
+- **禁止参数化 TAG**：`AppLog.w(tag, ...)` 里的 `tag` 必须是 `LogTags.XXX` 常量，
+  不能是变量/表达式（参数化会让日志来源绕开 `LogTags` 规范与守护测试）
+
+### release 包的日志保留与关闭策略
+
+| 内容 | release 包 | 说明 |
+|---|---|---|
+| 调试/诊断日志（d/i） | **全部关闭** | 编译期常量 `DIAGNOSTIC_LOGS=false` → 整个分支连同字符串拼接被 R8 剔除 |
+| 错误/告警日志（w/e） | **全部保留** | 量低（只在出错时触发），是生产故障的唯一诊断线索 |
+| 日志文件输出 | **默认开启**（只收 w/e） | `LOG_TO_FILE=true` → 写到 App 私有目录 `files/logs/app-log.log`；d/i 被 `DIAGNOSTIC_LOGS=false` 挡在门外 → release **零调试信息落盘** |
+| 关闭日志文件 | 按需 | `gradlew assembleRelease -PlogToFile=false` → `FileLog` 类整个被裁剪 → 零线程、零磁盘 IO、零目录创建 |
+| 现场诊断 | 按需出**诊断版 release** | `gradlew assembleRelease -PdiagLogs=true`（release 签名 + R8，诊断日志全局开） |
+
+> ⚠️ **不要**在 `proguard-rules.pro` 里加 `-assumenosideeffects class android.util.Log { d; v; i; }`：
+> 实测（2026-10-26）该规则会让 R8 认为 `Log.d/i` 无副作用、返回值未使用 →
+> **把调用连同消息字符串一起剥掉** → 「诊断版 release」里**一条诊断日志都打不出来**
+> （包能装能跑，只是没日志，极难察觉）。release 零诊断输出靠 `DIAGNOSTIC_LOGS` 门控 +
+> `LoggingConventionTest` 守护（裸用 `Log` 直接让单测失败）。
+
+### 导出诊断日志（设置 → 关于 → 导出日志文件）
+
+release 包把 w/e 错误日志写入 App 私有目录；用户可从「设置 → 关于 → 导出日志文件」
+一键拉起系统分享面板把日志发出来（走 `FileProvider` —— Android 7+ 不能直接分享 `file://`）。
+
+| 项 | 规则 |
+|---|---|
+| 落盘范围 | **仅 w/e**（d/i 在 release 下压根不在包内，见下方 dex 实证） |
+| 文件位置 | `files/logs/app-log.log`（当前）+ `files/logs/app-log.1.log`（归档） |
+| 滚动策略 | 当前文件超 **512KB** 即整体轮转为归档（保留 **2 份**，占用 ≤ 1MB） |
+| 导出内容 | 归档在前、当前在后，合并为一份 `app-log-<时间戳>.txt`（cacheDir）后分享 |
+| 无日志时 | 提示「暂无日志文件」，不弹分享面板 |
+
+**开销评估**（release 常开的前提）：
+
+- 写盘量 = **只有真实错误才写**，正常一次会话几条到几十条；
+- 文件句柄常开复用（不是每条 open→write→close）；每条一次 `write` + 一次 `flush` ——
+  `flush` 是刻意保留的：进程被杀时缓冲区会丢，而 w/e 恰恰是崩溃诊断的关键线索；
+- 写盘在独立单线程 + 有界队列（256，满了丢最旧），**绝不阻塞调用方线程**；
+- 换算：每条日志的开销是 1~2 次 write 系统调用，一次会话总计 < 1ms CPU 时间，
+  **远小于一次 Glance 小组件刷新（几十 ms）**；且写日志必然发生在 App 已活跃的时刻，
+  不会因写日志而唤醒设备 → **电量影响可忽略**。
+
+### 守护测试
+
+`LoggingConventionTest`（10 例）把上述规范变成**可执行门禁**：零裸用 `Log`、零 `printStackTrace`、
+零 `System.out`/`println`、TAG 必须来自 `LogTags`、TAG 命名规范、`LogTags` 无废弃常量、
+**TAG 值必须是真实存在的类/文件名**、两个构建开关都在位、proguard 不得加 `-assumenosideeffects`、
+**release 的 `LOG_TO_FILE` 不得默认关闭**（否则「导出日志文件」入口形同虚设且不报错）。
+新增日志若违反规范 → 单测立刻失败。
+
+> 守护测试的扫描范围是 **main + test + androidTest 三套源码**，
+> 且按**整段源码**匹配（不是逐行）→ `AppLog.d(\n  "Tag",` 这种换行写法同样会被抓到；
+> **参数化 TAG**（`AppLog.w(tag, ...)`）也算违规 —— TAG 必须提到调用点写成 `LogTags.XXX`。
+
+### 自定义 Lint 实时检查（写代码时当场拦截）
+
+守护测试是「提交/发版前」的事后闸门；再叠一层**自定义 Lint 规则**（`lint/` 模块，通过 `app` 的 `lintChecks(project(":lint"))` 注册），让 Android Studio 在**写代码时当场标红**，从源头避免回归：
+
+| Issue ID | 触发条件 | 豁免 |
+|---|---|---|
+| `RawAndroidLog` | 裸 `android.util.Log.*`（不受 `DIAGNOSTIC_LOGS` / `LOG_TO_FILE` 门控，release 会打印） | 仅 `domain/util/AppLog.kt` 封装内部豁免 |
+| `LogTagMustBeConstant` | `AppLog.*` 的 TAG 参数不是 `LogTags.XXX` 常量（字符串字面量 / 变量均拦） | — |
+
+两条与 `LoggingConventionTest` 守护测试**互补**：单测守「事后」，Lint 守「实时」。新增日志相关代码后，Android Studio 实时检查或 `./gradlew lintDebug` 即可验证；`assembleRelease` 因 `checkReleaseBuilds=false` 不走 lint，但 IDE 实时检查始终生效。
+
+## 代码约定（2026-10-26 全项目审计后确立）
+
+以下几条是**审查会直接打回**的硬约定，每一条都对应一次真实踩坑：
+
+| 约定 | 说明 |
+|---|---|
+| **IO 必须离开主线程** | 文件读写、目录遍历、`ContentResolver` / `AccountManager` 的**同步 Binder IPC** → 一律 `withContext(Dispatchers.IO)`。**仓库层的 suspend 函数自己切 IO**，不要指望每个调用方都记得切 |
+| **离页任务用应用级 scope** | `viewModelScope` 随 ViewModel 一起被取消 → 「退出页面时才做的任务」（重排提醒、重算口径）必须用 `ScheduleApp.appScope` |
+| **异常不许静默吞** | `catch { }` 里至少 `AppLog.w/e` 留原因；「查询失败」与「没有数据」返回值相同时尤其必须记日志 |
+| **多步写要包事务** | 「读全表 → 收口旧档 → 建新档」这类接力逻辑必须 `db.withTransaction { }`，否则并发下会算出重叠区间 |
+| **同一口径的多条路径必须同序** | 「单日查询」与「按日分段」取多条档案时排序规则必须一致（`effectiveFrom ASC, createdAt DESC`），否则同一天两处算出的金额不同 |
+| **共享缓存要线程安全** | 进程级缓存用 `ConcurrentHashMap`；`accessOrder` 的 LRU 必须整段读写都在 `synchronized` 里 |
+| **隐私数据不进日志** | 备份内容、用户备注等可能含隐私的数据**不写进日志**（日志文件可被用户导出分享），只记长度/键名等元信息 |
+
 ## 项目结构
 
 ```
@@ -194,6 +304,8 @@ app/src/main/java/com/schedulecalendar/app/
 ├── domain/                  # 领域层（纯 Kotlin，无 Android 依赖）
 │   ├── model/               #   Models / CalcUtils / CalcInputs / CalcProfile
 │   │                        #   / HolidayData / LunarCalendar
+│   └── util/                #   AppLog（唯一日志出口）/ LogTags（TAG 唯一来源）
+│                            #   / FileLog（文件输出目标：滚动 + 导出）/ DateFormats
 ├── di/                      # Hilt Module（DatabaseModule / PreferencesModule）
 ├── reminder/                # 提醒：调度器 + 4 个 BroadcastReceiver
 ├── ui/                      # Compose 界面层（Screen + ViewModel + 导航 + 主题）
@@ -209,12 +321,13 @@ app/src/main/java/com/schedulecalendar/app/
 │   └── navigation/          #   AppNavHost + 类型安全路由（Route*）
 └── widget/                  # Glance 小组件 + 数据同步 + 周期刷新 Worker
 
-app/src/test/java/com/schedulecalendar/app/          # 单元测试（13 个测试类，共 117 例）
+app/src/test/java/com/schedulecalendar/app/          # 单元测试（15 个测试类，共 131 例）
 │   ├── data/compat/            #   BackupRestoreRoundTrip / DataFormatFence / ProguardBackupRules
 │   ├── data/repository/        #   ReferenceIdParser
 │   ├── domain/model/           #   CalcProfile / CalcUtilsAttendance / CalcUtilsOvertime
 │   │                           #   / CalcUtilsProfile / CalcUtilsSalaryTier
 │   │                           #   / HolidayData / HolidayDataInvariants / TymeAlmanac
+│   ├── domain/util/            #   LoggingConvention（日志规范守护）/ FileLog（滚动+导出）
 │   └── ui/settings/            #   BackupGson
 app/src/androidTest/java/com/schedulecalendar/app/  # 仪器测试（5 个测试类，需连真机）
 └── data/repository/            #   BreakProfileLifecycle / OrphanDataCleaner
@@ -311,7 +424,7 @@ app/src/androidTest/java/com/schedulecalendar/app/  # 仪器测试（5 个测试
 
 ### 单元测试守护
 
-`app/src/test/java/com/schedulecalendar/app/` 下有 **13 个测试类、共 117 个用例**：
+`app/src/test/java/com/schedulecalendar/app/` 下有 **15 个测试类、共 131 个用例**：
 
 **历法与节假日（`domain/model/`）**
 
@@ -368,8 +481,20 @@ app/src/androidTest/java/com/schedulecalendar/app/  # 仪器测试（5 个测试
 **`BackupGsonTest.kt`**（7 用例，守护备份反序列化的默认值与可空字段策略）
 **`ReferenceIdParserTest.kt`**（7 用例，守护归档记录引用的班次/状态 id 解析）
 
+**日志规范（`domain/util/`）**
+
+**`LoggingConventionTest.kt`**（10 用例，守护日志规范）：零裸用 `android.util.Log`、零 `printStackTrace`、
+零 `System.out`/`println`/Timber；所有 `AppLog` 的 TAG 必须来自 `LogTags` 常量
+（不许硬编码字符串，也不许参数化 TAG）；TAG 值 CamelCase 且**必须是真实存在的类/文件名**；
+`LogTags` 无废弃常量；两个构建开关（`DIAGNOSTIC_LOGS` / `LOG_TO_FILE`）都在位；
+proguard **不得**加 `-assumenosideeffects`（会剥掉诊断版 release 的日志）；
+release 的 `LOG_TO_FILE` **不得默认关闭**（否则「导出日志文件」入口形同虚设且不报错）。
+扫描范围含 **main + test + androidTest**，且按整段源码匹配（换行写法也拦得住）。
+**`FileLogTest.kt`**（3 用例，守护日志文件输出目标）：日志能写入并含级别与 TAG；超过 512KB 自动轮转出归档
+且当前文件不无限增长；导出会把归档与当前合并成一份可分享文件。
+
 ```bash
-# 单元测试（117 例）
+# 单元测试（131 例）
 ./gradlew testDebugUnitTest
 
 # 仪器测试（5 例，必须连真机）

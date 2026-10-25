@@ -91,15 +91,15 @@
                 android:resource="@xml/calendar_3x4_widget_info"/>
         </receiver>
 
-        <!-- 小组件配置 Activity（桌面长按 → 编辑） -->
+        <!-- 小组件配置 Activity（应用内启动：点小组件 / 「组件设置」页）
+             ⚠️ exported="false"：只由本应用内的**显式 Intent** 启动，不需要对外暴露。
+             旧配置里的 APPWIDGET_CONFIGURE intent-filter 已移除：三个 widget_info.xml
+             都没有声明 android:configure，桌面启动器根本不会走这个入口 ——
+             留着只是白白多一个「任何应用都能拉起」的入口。 -->
         <activity
             android:name=".widget.WidgetConfigActivity"
-            android:exported="true"
-            android:theme="@style/Theme.ScheduleCalendar">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
-            </intent-filter>
-        </activity>
+            android:exported="false"
+            android:theme="@style/Theme.ScheduleCalendar" />
 
         <!-- 一键添加小组件成功回调（仅由本应用 PendingIntent 显式触发，无需导出） -->
         <receiver
@@ -142,10 +142,16 @@
             </intent-filter>
         </receiver>
 
-        <!-- 日历账户认证器服务 -->
+        <!-- 日历账户认证器服务
+             ⚠️ 必须 exported="true"：系统 AccountManager 是通过**隐式 Intent** 来绑定
+                AccountAuthenticator 服务的；exported="false" 会让系统绑不上 →
+                应用日历账户无法出现在系统「账户」管理里，也无法被日历应用识别。
+             安全靠系统权限兜底：android.permission.ACCOUNT_MANAGER 是系统级权限，
+             第三方应用拿不到 → 只有系统能绑定。 -->
         <service
             android:name=".data.calendar.CalendarAuthenticatorService"
-            android:exported="false">
+            android:exported="true"
+            android:permission="android.permission.ACCOUNT_MANAGER">
             <intent-filter>
                 <action android:name="android.accounts.AccountAuthenticator" />
             </intent-filter>
