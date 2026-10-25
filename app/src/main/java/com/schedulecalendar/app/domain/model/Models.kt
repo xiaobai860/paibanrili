@@ -166,15 +166,15 @@ data class AttendConfig(
 )
 
 /** 日历每个格子可展示的数据项类型 */
-enum class DisplayItemType(val label: String, val desc: String, val defaultColor: String? = null) {
-    TOTAL_HOURS("当天总工作时长", "正常班+加班合计工时"),
-    WORK_HOURS("正班工时", "正常班工时（不含加班）"),
-    OVERTIME_HOURS("加班时长", "加班工时"),
-    DAILY_INCOME("当日总收入", "含补贴扣款"),
-    NORMAL_INCOME("正班收入", "正常工时薪资"),
-    OVERTIME_INCOME("加班收入", "加班工时薪资"),
-    SHIFT("班次", "当前日期的班次名称", "#3b82f6"),
-    STATUS("附加状态", "附加状态名称（如请假、调休、加班）", "#F97316")
+enum class DisplayItemType(val label: String, val defaultColor: String? = null) {
+    TOTAL_HOURS("当天总工作时长"),
+    WORK_HOURS("正班工时"),
+    OVERTIME_HOURS("加班时长"),
+    DAILY_INCOME("当日总收入"),
+    NORMAL_INCOME("正班收入"),
+    OVERTIME_INCOME("加班收入"),
+    SHIFT("班次", "#3b82f6"),
+    STATUS("附加状态", "#F97316")
 }
 
 /** 该类型是否具有预设标签颜色（选择后自动锁定颜色，禁用颜色选择器） */
@@ -216,19 +216,6 @@ data class ScheduleRule(
     val shiftIds: List<String>      = emptyList(),
     val startOffset: Int            = 0,
     val independentCycle: Boolean   = false
-)
-
-/** 内置显示方案 */
-val BUILTIN_DISPLAY_SCHEME = DisplayScheme(
-    id      = BUILTIN_SCHEME_ID,
-    name    = "预设",
-    dataRows = listOf(
-        DataRowConfig(items = listOf(DisplayItemType.WORK_HOURS, DisplayItemType.OVERTIME_HOURS)),
-        DataRowConfig(),
-        DataRowConfig(),
-        DataRowConfig()
-    ),
-    builtIn = true
 )
 
 /** 根据背景色明度计算文字颜色（白色或黑色） */
