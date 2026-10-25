@@ -1,9 +1,8 @@
 // app/src/main/java/com/schedulecalendar/app/ui/todo/TodoScreen.kt
 package com.schedulecalendar.app.ui.todo
+import com.schedulecalendar.app.domain.util.AppLog
 
 import android.Manifest
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -21,13 +20,11 @@ import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,15 +49,14 @@ import com.schedulecalendar.app.ui.theme.CategoryGreen
 import com.schedulecalendar.app.ui.theme.CategoryOrange
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import java.util.Date
+import kotlin.time.Duration.Companion.milliseconds
 import com.schedulecalendar.app.ui.util.currentLocale
 
 // ── 数据类 ────────────────────────────────────────────────────────────────
@@ -73,7 +69,6 @@ private data class OvertimeActionTarget(val date: String, val isEarly: Boolean)
 
 // ── 主屏幕 ────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TodoScreen(
     navController: NavController,
@@ -596,7 +591,7 @@ private fun TodoRowCard(content: @Composable () -> Unit) {
 // ── 待办排序工具：按日期降序，同日期上班在前 ────────────────────────
 
 private fun sortTodosByDateDesc(todos: List<TodoItem>): List<TodoItem> {
-    return todos.sortedWith(compareByDescending<TodoItem> { it.date })
+    return todos.sortedWith(compareByDescending { it.date })
 }
 
 // ── 日期显示格式化 ────────────────────────────────────────────────
@@ -955,7 +950,6 @@ private fun OvertimeActionDialog(
 @Composable
 private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavController) {
     val eventState by vm.state.collectAsStateWithLifecycle()
-    val context = androidx.compose.ui.platform.LocalContext.current
     val permLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -1171,12 +1165,12 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
             .collect { (editId, accSettings) ->
                 if (editId != null) {
                     pendingEditEventId = null
-                    kotlinx.coroutines.delay(200)
+                    delay(200.milliseconds)
                     navController.navigate(RouteEditCalendarEvent(editId))
                 }
                 if (accSettings) {
                     pendingAccountSettings = false
-                    kotlinx.coroutines.delay(200)
+                    delay(200.milliseconds)
                     navController.navigate(RouteCalendarAccountSettings)
                 }
             }
@@ -1187,7 +1181,6 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
         if (eventState.showEditDialog) {
             CalendarEventDetailDialog(
                 event = event,
-                navController = navController,
                 onDismiss = { vm.dismissDetailDialog() },
                 onNavigateToEdit = { pendingEditEventId = event.id },
                 onNavigateToAccountSettings = { pendingAccountSettings = true },
@@ -1212,7 +1205,6 @@ private fun CalendarEventTab(vm: CalendarEventViewModel, navController: NavContr
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CalendarEventRow(
     event: com.schedulecalendar.app.data.calendar.CalendarEventInfo,
@@ -1371,7 +1363,6 @@ private fun AnniversaryTab(vm: CalendarEventViewModel, navController: NavControl
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AnniversaryRow(
     event: com.schedulecalendar.app.data.calendar.CalendarEventInfo,
@@ -1438,23 +1429,22 @@ private fun AnniversaryRow(
 @Composable
 private fun CalendarEventDetailDialog(
     event: com.schedulecalendar.app.data.calendar.CalendarEventInfo,
-    navController: NavController,
     onDismiss: () -> Unit,
     onNavigateToEdit: () -> Unit,
     onNavigateToAccountSettings: () -> Unit,
     onDelete: () -> Unit
 ) {
     val locale = currentLocale()
-    val timeFormat = remember(locale) { java.text.SimpleDateFormat("HH:mm", locale) }
-    val startStr = remember(event.dtStart) { timeFormat.format(java.util.Date(event.dtStart)) }
-    val endStr = remember(event.dtEnd) { timeFormat.format(java.util.Date(event.dtEnd)) }
+    val timeFormat = remember(locale) { SimpleDateFormat("HH:mm", locale) }
+    val startStr = remember(event.dtStart) { timeFormat.format(Date(event.dtStart)) }
+    val endStr = remember(event.dtEnd) { timeFormat.format(Date(event.dtEnd)) }
     val dateStr = remember(event.dtStart) {
         val cal = java.util.Calendar.getInstance().apply { timeInMillis = event.dtStart }
         "${cal.get(java.util.Calendar.YEAR)}年${cal.get(java.util.Calendar.MONTH) + 1}月${cal.get(java.util.Calendar.DAY_OF_MONTH)}日"
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    androidx.compose.material3.ModalBottomSheet(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
@@ -1622,7 +1612,7 @@ private fun generateHolidaysForYear(year: Int): List<HolidayListItem> {
                 }
             } catch (e: Exception) {
                 // 静默吞掉会让「节假日名称缺失」无从排查，这里记日志后继续扫描下一天
-                android.util.Log.w("TodoScreen", "holiday name resolve failed: $year-$m-$d", e)
+                AppLog.w("TodoScreen", "holiday name resolve failed: $year-$m-$d", e)
             }
         }
     }
@@ -1665,7 +1655,6 @@ private fun generateHolidaysForYear(year: Int): List<HolidayListItem> {
     return results
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HolidayTab() {
     val today = rememberToday()
@@ -1736,7 +1725,6 @@ private fun computeNearestHolidayIndex(
     return index
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HolidayList(
     months: List<Pair<String, List<HolidayListItem>>>,
@@ -1836,7 +1824,7 @@ private fun HolidayRow(item: HolidayListItem, today: LocalDate) {
     val diff = ChronoUnit.DAYS.between(today, date).toInt()
     val diffText = when {
         diff == 0 -> "今天"
-        diff > 0 -> "${diff} 天后"
+        diff > 0 -> "$diff 天后"
         else -> "${-diff} 天前"
     }
     val isToday = diff == 0

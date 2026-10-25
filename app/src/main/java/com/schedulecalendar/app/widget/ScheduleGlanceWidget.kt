@@ -46,6 +46,7 @@ import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.reminder.ReminderScheduler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 // ── 打开小组件样式配置页 ──────────────────────────────────────────
 class OpenWidgetConfigAction : ActionCallback {
@@ -244,7 +245,7 @@ class WidgetClockInAction : ActionCallback {
         }, 500)
         // 兜底：信号同步可能落在桌面「交互窗口期」被丢弃，延迟补一次单路更新
         widgetFallbackScope.launch {
-            delay(WIDGET_FALLBACK_RESYNC_DELAY_MS)
+            delay(WIDGET_FALLBACK_RESYNC_DELAY_MS.milliseconds)
             // 去重：若刚才已有一次成功的全量同步（如 changeSignal 已刷新），跳过本次兜底，避免每次打卡都双跑
             if (recentWidgetSyncWithin(WIDGET_FALLBACK_RESYNC_DELAY_MS)) return@launch
             runCatching { syncAllWidgets(context.applicationContext) }
@@ -341,7 +342,7 @@ class WidgetClockOutAction : ActionCallback {
         }, 500)
         // 兜底：信号同步可能落在桌面「交互窗口期」被丢弃，延迟补一次单路更新
         widgetFallbackScope.launch {
-            delay(WIDGET_FALLBACK_RESYNC_DELAY_MS)
+            delay(WIDGET_FALLBACK_RESYNC_DELAY_MS.milliseconds)
             // 去重：若刚才已有一次成功的全量同步（如 changeSignal 已刷新），跳过本次兜底，避免每次打卡都双跑
             if (recentWidgetSyncWithin(WIDGET_FALLBACK_RESYNC_DELAY_MS)) return@launch
             runCatching { syncAllWidgets(context.applicationContext) }
@@ -524,7 +525,7 @@ private fun ClockInWidgetContent() {
                     Spacer(modifier = GlanceModifier.defaultWeight())
                 }
                 Spacer(modifier = GlanceModifier.width(4.dp))
-                widgetIcon(
+                WidgetIcon(
                     context = context,
                     resId = com.schedulecalendar.app.R.drawable.ic_widget_gear,
                     color = if (isDark) utcDark.copy(alpha = 0.4f) else utc.copy(alpha = 0.4f),
@@ -537,7 +538,7 @@ private fun ClockInWidgetContent() {
                         )
                 )
                 Spacer(modifier = GlanceModifier.width(2.dp))
-                widgetIcon(
+                WidgetIcon(
                     context = context,
                     resId = com.schedulecalendar.app.R.drawable.ic_widget_refresh,
                     color = if (isDark) utcDark.copy(alpha = 0.4f) else utc.copy(alpha = 0.4f),

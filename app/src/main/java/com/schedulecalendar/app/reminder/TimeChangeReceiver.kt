@@ -5,8 +5,8 @@ import android.content.Context
 import android.content.Intent
 import dagger.hilt.android.EntryPointAccessors
 import com.schedulecalendar.app.ScheduleApp
+import com.schedulecalendar.app.domain.util.AppLog
 import com.schedulecalendar.app.widget.WidgetClockEntryPoint
-import com.schedulecalendar.app.widget.WidgetRefreshScheduler
 import com.schedulecalendar.app.widget.syncAllWidgets
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -49,13 +49,13 @@ class TimeChangeReceiver : BroadcastReceiver() {
                         runCatching { syncAllWidgets(app) }
                         runCatching { widgetScheduler.scheduleWidgetRefreshes() }
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        AppLog.e("TimeChangeReceiver", "time change handling failed", e)
                     } finally {
                         pendingResult.finish()
                     }
                 }
             }
         }
-        if (result.isFailure) result.exceptionOrNull()?.printStackTrace()
+        result.exceptionOrNull()?.let { AppLog.e("TimeChangeReceiver", "time change handling failed", it) }
     }
 }

@@ -2,16 +2,16 @@
 package com.schedulecalendar.app.widget
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
-import android.util.Log
+import com.schedulecalendar.app.domain.util.AppLog
 import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
@@ -28,7 +28,7 @@ private const val MAX_ICON_BITMAP_SIZE = 128
  * 不让组合期异常影响整个小组件渲染。
  */
 @Composable
-fun widgetIcon(
+fun WidgetIcon(
     context: Context,
     @DrawableRes resId: Int,
     color: Color,
@@ -41,7 +41,7 @@ fun widgetIcon(
         val size = drawable.intrinsicWidth
             .coerceIn(1, MAX_ICON_BITMAP_SIZE)
             .coerceAtLeast(1)
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(size, size)
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, size, size)
         val argb = android.graphics.Color.argb(
@@ -53,7 +53,7 @@ fun widgetIcon(
         drawable.colorFilter = PorterDuffColorFilter(argb, PorterDuff.Mode.SRC_IN)
         drawable.draw(canvas)
         bitmap
-    }.onFailure { Log.w("widgetIcon", "render icon failed, fallback to resource", it) }.getOrNull() }
+    }.onFailure { AppLog.w("WidgetIcon", "render icon failed, fallback to resource", it) }.getOrNull() }
 
     Image(
         provider = bmp?.let { ImageProvider(it) } ?: ImageProvider(resId),

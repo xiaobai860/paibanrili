@@ -191,7 +191,7 @@ private fun CalendarWidgetContent(
                     ),
                     contentAlignment = Alignment.Center
                 ) {
-                    widgetIcon(
+                    WidgetIcon(
                         context = context,
                         resId = com.schedulecalendar.app.R.drawable.ic_widget_gear,
                         color = if (isDark) utcDark else utc,
@@ -202,7 +202,7 @@ private fun CalendarWidgetContent(
                     modifier = GlanceModifier.size(28.dp).clickable(actionRunCallback<RefreshWidgetAction>()),
                     contentAlignment = Alignment.Center
                 ) {
-                    widgetIcon(
+                    WidgetIcon(
                         context = context,
                         resId = com.schedulecalendar.app.R.drawable.ic_widget_refresh,
                         color = if (isDark) utcDark else utc,
