@@ -9,7 +9,7 @@ import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import androidx.room.withTransaction
 import com.schedulecalendar.app.data.compat.AppDataBackup
-import com.schedulecalendar.app.data.compat.BackupCompat
+import com.schedulecalendar.app.data.compat.BackupFormat
 import com.schedulecalendar.app.data.compat.BackupGson
 import com.schedulecalendar.app.data.compat.BackupKind
 import com.schedulecalendar.app.data.compat.DataFormat
@@ -543,11 +543,11 @@ class BackupManager @Inject constructor(
     /**
      * 从外部 JSON 内容恢复（由导入功能调用）。
      *
-     * 流程：**版本闸门 → 格式转换 → 恢复 → 校验 →（失败则回滚）**
+     * 流程：**版本闸门 → 恢复 → 校验 →（失败则回滚）**
      *
      * - 版本闸门：低于当前支持的最低格式版本 → **直接拒绝**（明确报错好过「恢复了但算错」）；
-     * - 格式转换：[BackupCompat] 把任意历史格式改写成当前格式后再落库；
-     * - 校验：恢复完检查行数/JSON/口径，失败则用恢复前的快照回滚。
+     * - 恢复：栅栏已抬起，只接受当前格式，因此**直接使用原文件内容**，不再做旧格式转换；
+     * - 校验：恢复完检查引用 JSON / 口径档案，失败则用恢复前的快照回滚。
      */
     suspend fun restoreFromJson(json: String): String {
         // 按顶层 key 集合判断备份类型，避免用子串猜测导致备注里带关键字就误判
@@ -558,7 +558,9 @@ class BackupManager @Inject constructor(
             AppLog.e("BackupManager", "restore: JSON 解析失败，前 200 字符：${json.take(200)}")
             throw IllegalArgumentException("JSON 解析失败（文件可能不是本应用导出的备份，或带有 BOM/UTF-16 编码）")
         }
-        val kind = BackupCompat.detectKind(BackupCompat.unwrapOnce(root) ?: root)
+        // 有些工具会把 JSON 再套一层（如 {"data":{...}}）→ 先解包再判定
+        val effectiveRoot = BackupFormat.unwrapOnce(root) ?: root
+        val kind = BackupFormat.detectKind(effectiveRoot)
         if (kind == null) {
             // 识别失败：**必须说清文件长什么样**，否则用户无从判断是不是选错了文件
             val keys = root.keySet().joinToString(", ").ifBlank { "（空）" }
@@ -571,21 +573,17 @@ class BackupManager @Inject constructor(
                     "请选择本应用「存储与备份」导出的 .json 文件。"
             )
         }
-        val srcVersion = BackupCompat.detectVersion(root)
-        val minVersion = DataFormat.minSupportedBackupVersion(kind)
-        if (srcVersion < minVersion) {
-            throw IllegalArgumentException(
-                "该备份为 v$srcVersion，已低于当前版本支持的最低格式（v$minVersion）。" +
-                    "请先在兼容版中导出备份，再升级到当前版本。"
-            )
+        // 版本闸门：太老或缺版本信息 → 明确拒绝
+        val rejected = BackupFormat.checkRestoreAllowed(kind, BackupFormat.detectVersion(effectiveRoot))
+        if (rejected != null) {
+            AppLog.e("BackupManager", "restore: 备份版本不被支持（kind=$kind）")
+            throw IllegalArgumentException(rejected)
         }
-        val upgraded = BackupCompat.upgrade(json)
         val result = when (kind) {
-            BackupKind.APP_DATA -> restoreAppData(upgraded.json)
-            BackupKind.SHIFT_CONFIG -> restoreShiftConfig(upgraded.json)
+            BackupKind.APP_DATA -> restoreAppData(effectiveRoot.toString())
+            BackupKind.SHIFT_CONFIG -> restoreShiftConfig(effectiveRoot.toString())
         }
-        // 转换说明要透出给用户（如「旧备份仅含最近 12 个月排班」「已生成初始计算口径」）
-        return if (upgraded.notes.isEmpty()) result else "$result（${upgraded.notes.joinToString("；")}）"
+        return result
     }
 
     /** 删除备份文件（兼容 SAF URI 和普通文件路径） */
@@ -664,7 +662,7 @@ class BackupManager @Inject constructor(
     }
 
     /**
-     * 恢复应用数据（入参必须是**当前格式**的 JSON —— 旧格式已由 [BackupCompat] 转换）。
+     * 恢复应用数据（入参必须是**当前格式**的 JSON —— 版本闸门已保证）。
      *
      * 恢复前自动生成一份快照 → 恢复后校验 → 校验不通过就用快照回滚。
      *
@@ -679,8 +677,8 @@ class BackupManager @Inject constructor(
         val snapshotJson = runCatching { buildAppDataJson() }.getOrNull()
         applyAppData(backup)
 
-        // 恢复后校验：数据是否还完整可用（行数、引用 JSON、口径档案）
-        val report = integrityChecker.check(null)
+        // 恢复后校验：数据是否还完整可用（引用 JSON、口径档案）
+        val report = integrityChecker.check()
         if (!report.ok) {
             snapshotJson?.let { snap ->
                 runCatching {
@@ -935,5 +933,5 @@ class BackupManager @Inject constructor(
 
 // 注：备份载荷（[AppDataBackup] / [ShiftConfigBackup]）与 [BackupGson] 已迁到
 // com.schedulecalendar.app.data.compat —— 它们是「数据格式」的一部分，
-// 与格式转换器 [BackupCompat] 放在同一个包里，避免「格式定义」与「格式转换」分家。
+// 与格式探测 [BackupFormat] 放在同一个包里，避免「格式定义」与「格式判定」分家。
 

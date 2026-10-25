@@ -4,7 +4,6 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.schedulecalendar.app.data.db.AppDatabase
-import com.schedulecalendar.app.data.db.Migrations
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.domain.model.AttendConfig
 import com.schedulecalendar.app.domain.model.SalaryConfig
@@ -36,13 +35,12 @@ import java.time.LocalDate
 class SalaryAttendConsistencyTest {
 
     @Test
-    fun 改薪资考勤后现值与口径档案始终一致() {
+    fun currentValueStaysConsistentWithProfileAfterSalaryOrAttendChange() {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dbName = "salary-attend-consistency"
         ctx.deleteDatabase(dbName)
 
         val db = Room.databaseBuilder(ctx, AppDatabase::class.java, dbName)
-            .addMigrations(*Migrations.ALL)
             .allowMainThreadQueries()
             .build()
         val prefs = AppPreferences(ctx)

@@ -70,7 +70,10 @@ class ScheduleApp : Application() {
         // 计算口径档案：首次启动（含 v5→v6 迁移后）幂等创建初始档案，
         // 内容取迁移时刻的现值（薪资/考勤/休息时段）→ 保证历史月份计算结果逐分不变
         appScope.launch {
-            runSafely("ensureInitialProfile") { compatGate.awaitReady(); calcProfileRepository.ensureInitialProfile() }
+            // 数据不可用（版本过老 / 校验未过）时**一律不碰数据库**：
+            // 库太老时 Room 会因「缺迁移」直接抛异常，此时排提醒/刷组件只会制造崩溃与噪音。
+            if (!compatGate.awaitReady()) return@launch
+            runSafely("ensureInitialProfile") { calcProfileRepository.ensureInitialProfile() }
             // 接力自愈：修复早期版本「重复复制导致多条同时生效中」的坏数据。
             // 只重设生效区间（+ 清理同日重复的残留），不改变任何档案内容。
             runSafely("repairRelay") { calcProfileRepository.repairRelay() }
@@ -177,8 +180,8 @@ class ScheduleApp : Application() {
         // 冷启动往往是被闹钟/组件在后台唤醒的，无可见 Activity，进程随时可能被系统回收；
         // 若延迟注册，进程在延迟窗口内被杀就会导致提醒闹钟一直缺失（表现为「不提醒」）。
         appScope.launch {
-            // 等兼容闸门放行：数据没升级完之前不排提醒，避免按旧数据算出错误的提醒时间
-            compatGate.awaitReady()
+            // 等闸门放行：数据不可用时（版本过老/校验失败）不排提醒——既读不到库，也不该按坏数据算时间
+            if (!compatGate.awaitReady()) return@launch
             // 两个调度并行执行：原先串行 await，冷启动要等两轮（含各自的 DB/DataStore 读取）
             val reminders = async { runSafely("scheduleActiveReminders(coldStart)") { reminderScheduler.scheduleActiveReminders() } }
             val widgets = async { runSafely("scheduleWidgetRefreshes(coldStart)") { widgetRefreshScheduler.scheduleWidgetRefreshes() } }
@@ -188,7 +191,7 @@ class ScheduleApp : Application() {
         // 组件数据回源同步可稍延迟（避免冷启动抢资源，留时间给进程稳定），保留 1s
         appScope.launch {
             delay(COLD_START_SYNC_DELAY_MS)
-            compatGate.awaitReady()
+            if (!compatGate.awaitReady()) return@launch
             runSafely("syncAllWidgets(coldStart)") { syncAllWidgets(this@ScheduleApp, allowSkipUnchanged = true) }
         }
     }

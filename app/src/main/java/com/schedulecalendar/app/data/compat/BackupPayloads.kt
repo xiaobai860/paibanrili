@@ -34,8 +34,8 @@ enum class BackupKind {
  * 「备份中确实没有该字段（旧版备份 / 手工编辑）」与「备份中该列表为空」。
  * 恢复时：字段缺失 → 保持现状不动；字段存在 → 全量替换。
  *
- * 本类是**当前格式**的定义；历史格式（v1~v4）的差异全部由 [BackupCompat] 在
- * 「读进来」时抹平，因此这里不需要（也不应该）再出现任何历史分支。
+ * 本类是**当前格式**的定义；栅栏抬起后只有一种格式，
+ * 这里不需要（也不应该）再出现任何历史分支。
  */
 internal data class AppDataBackup(
     @SerializedName("version") val version: Int = DataFormat.APP_DATA_BACKUP,
@@ -102,8 +102,8 @@ internal data class ShiftConfigBackup(
  * 注册后行为：JSON 中存在的字段照常反射赋值；缺失的字段保留此处给定的默认值
  * （与 Kotlin data class 的默认参数一致）。
  *
- * 注：兼容版把「旧格式 → 当前格式」的转换集中在 [BackupCompat]（JSON 层面），
- * 本 Gson 只是**最后一道兜底**，保证即使转换漏了字段也不会 NPE。
+ * 注：这是**健壮性兜底**，不是旧版本兼容 —— 手改过/传输被截断的备份文件
+ * 也会缺字段，此时落默认值远好过 NPE 或撞 Room 的 NOT NULL 约束。
  */
 internal object BackupGson {
     val instance: Gson = GsonBuilder()

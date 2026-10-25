@@ -25,8 +25,13 @@ class ReferenceIdParserTest {
         assertEquals(setOf("s_leave"), statusIds)
     }
 
-    @Test
-    fun `applied status - legacy array format`() {
+    /**
+     * 栅栏抬起后：旧数组形态**不再被解析**。
+     * 遇到它必须**明确报错**（绝不静默丢引用）——否则引用完整性会被悄悄破坏，
+     * 表现为「排班引用的状态凭空消失」。
+     */
+    @Test(expected = IllegalStateException::class)
+    fun `applied status - legacy array format is rejected instead of parsed`() {
         val statusIds = mutableSetOf<String>()
         parseReferencedIds(
             """[{"statusId":"s_old","startTime":null,"endTime":null}]""",
@@ -34,7 +39,6 @@ class ReferenceIdParserTest {
             statusIds,
             mutableSetOf()
         )
-        assertEquals(setOf("s_old"), statusIds)
     }
 
     @Test

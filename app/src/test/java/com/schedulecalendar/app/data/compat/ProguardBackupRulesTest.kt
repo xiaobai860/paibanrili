@@ -1,4 +1,4 @@
-﻿package com.schedulecalendar.app.data.compat
+package com.schedulecalendar.app.data.compat
 
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,7 +39,7 @@ class ProguardBackupRulesTest {
     }
 
     @Test
-    fun `备份载荷类必须在keep名单里`() {
+    fun backupPayloadClassesAreInKeepList() {
         val text = rules()
         // 自动发现载荷类：解析 BackupPayloads.kt 里的 data class 声明
         val payloadFile = locateFile(
@@ -62,7 +62,7 @@ class ProguardBackupRulesTest {
     }
 
     @Test
-    fun `备份里序列化的领域模型也必须在keep名单里`() {
+    fun serializedDomainModelsAreInKeepList() {
         val text = rules()
         // 嵌套在备份里的领域模型：字段名同样属于数据格式的一部分
         assertTrue(
@@ -85,7 +85,7 @@ class ProguardBackupRulesTest {
      * 这三个包现在都没有 Gson 载荷，若将来要加，必须改成精确 keep 并在测试里登记。
      */
     @Test
-    fun `不得用整包keep掩盖载荷位置`() {
+    fun noWholePackageKeepHidingPayloadLocation() {
         val text = rules()
         for (pkg in listOf(
             "com.schedulecalendar.app.ui.settings.**",
@@ -111,7 +111,7 @@ class ProguardBackupRulesTest {
      * 这类"藏在私有文件里的载荷"最容易漏 —— 所以这里**自动发现**它们并断言被 keep。
      */
     @Test
-    fun `数据库JSON列的载体类必须在keep名单里`() {
+    fun dbJsonColumnCarrierClassesAreInKeepList() {
         val text = rules()
         val mappers = locateFile(
             "app/src/main/java/com/schedulecalendar/app/data/repository/Mappers.kt",

@@ -54,7 +54,7 @@ class CalcUtilsProfileTest {
 
     /** 核心 ①：同一配置下两种入口结果必须完全一致 */
     @Test
-    fun `byDate 与固定配置结果完全一致`() {
+    fun byDateMatchesFixedConfigResult() {
         val fixed = CalcUtils.calcMonthHours(
             2026, 9, schedules, listOf(shift), breaks, emptyList(), cfg8
         )
@@ -67,7 +67,7 @@ class CalcUtilsProfileTest {
 
     /** 核心 ②：按日取确实生效（休息时段不同 → 每日工时不同） */
     @Test
-    fun `按日取配置与整月统一配置结果不同`() {
+    fun perDayConfigDiffersFromMonthlyFixedConfig() {
         val uniform = CalcUtils.calcMonthHoursByDate(
             2026, 9, schedules, listOf(shift), emptyList(), { inputs(cfg8) }
         )
@@ -83,7 +83,7 @@ class CalcUtilsProfileTest {
 
     /** 核心 ③：档案接力切段正确（区间左闭右闭、首尾相接、不重叠） */
     @Test
-    fun `档案接力切段边界正确`() {
+    fun profileRelaySplitsSegmentsCorrectly() {
         val p1 = CalcProfile(
             id = "p1", name = "旧口径",
             salary = SalaryConfig(), attend = cfg8, breaks = breaks,
@@ -108,7 +108,7 @@ class CalcUtilsProfileTest {
 
     /** 核心 ④：没有档案时返回整段（行为与改造前一致） */
     @Test
-    fun `无档案时整段使用兜底口径`() {
+    fun fallbackConfigUsedWhenNoProfileExists() {
         val segs = buildSegments("2026-09-01", "2026-09-30", emptyList(), inputs(cfg8))
         assertEquals(1, segs.size)
         assertEquals("2026-09-01", segs[0].from)
@@ -117,7 +117,7 @@ class CalcUtilsProfileTest {
 
     /** 核心 ⑤：档案未覆盖到的尾部日期用兜底口径补齐（不留空洞） */
     @Test
-    fun `档案未覆盖的尾部用兜底补齐`() {
+    fun uncoveredTailFilledByFallback() {
         val p1 = CalcProfile(
             id = "p1", name = "旧口径",
             salary = SalaryConfig(), attend = cfg8, breaks = breaks,
@@ -132,13 +132,13 @@ class CalcUtilsProfileTest {
 
     /** 核心 ⑥：区间非法时返回空 */
     @Test
-    fun `区间倒置返回空`() {
+    fun invertedRangeReturnsEmpty() {
         assertTrue(buildSegments("2026-09-30", "2026-09-01", emptyList(), inputs(cfg8)).isEmpty())
     }
 
     /** 核心 ⑦：薪资按日取与固定配置结果完全一致 */
     @Test
-    fun `薪资 byDate 与固定配置结果完全一致`() {
+    fun salaryByDateMatchesFixedConfigResult() {
         val fixed = CalcUtils.calcMonthSalary(
             2026, 9, schedules, listOf(shift), breaks, emptyList(), salaryConf, cfg8
         )
@@ -150,7 +150,7 @@ class CalcUtilsProfileTest {
 
     /** 核心 ⑧：迟到扣款按「第几次」分档 —— 序号全月连续，规则取当天配置 */
     @Test
-    fun `迟到扣款序号连续且规则按当天配置`() {
+    fun lateDeductionIndexIsContinuousAndUsesThatDayConfig() {
         // 每天迟到 30 分钟：容许 30 分钟（等于迟到时长 → 不扣）、允许 2 次免罚，之后全扣，每分钟 1 元
         val attend = AttendConfig(
             lateToleranceMin = 30, lateAlertCount = 2, lateDeductionPerMin = 1.0
@@ -168,6 +168,34 @@ class CalcUtilsProfileTest {
         )
         // 第 3 次迟到扣 30 分钟 × 1 元 = 30
         assertEquals(30.0, summary.totalDeduction, 0.001)
+    }
+
+    /**
+     * 核心 ⑨：加班粒度决定早到加班的取整结果（**向下取整到粒度倍数**）。
+     *
+     * 背景：早到 50 分钟时，30 分钟粒度 → 记 30 分钟早到加班（0.5 小时）；
+     * 60 分钟粒度 → 不足一个粒度 → 视为准点，早到加班为 0。
+     *
+     * ⚠️ 这条规则此前**没有任何测试覆盖**：既有加班测试都刻意用 `overtimeGranMin = 0`
+     * 绕开取整（好让断言直观），导致粒度逻辑一旦被改坏不会被发现。
+     */
+    @Test
+    fun overtimeGrainRoundsEarlyArrivalDownToGrainMultiple() {
+        // 班次 09:00 上班 → 08:10 打卡 = 早到 50 分钟；18:00 下班；午休 1 小时
+        val record = ScheduleRecord(
+            date = "2026-09-01", type = ScheduleType.SHIFT, shiftId = shift.id,
+            actualStartTime = "08:10", actualEndTime = "18:00",
+            salaryMode = SalaryMode.NORMAL
+        )
+        val gran30 = CalcUtils.calcDayHours(record, "2026-09-01", listOf(shift), breaks, cfgGran30)
+        val gran60 = CalcUtils.calcDayHours(record, "2026-09-01", listOf(shift), breaks, cfgGran60)
+
+        // 30 分钟粒度：50 → 30 分钟 → 正常 8.0 + 早到加班 0.5
+        assertEquals(8.0, gran30.normal, 0.001)
+        assertEquals(0.5, gran30.overtime, 0.001)
+        // 60 分钟粒度：50 < 60 → 视为准点 → 正常 8.0，无早到加班
+        assertEquals(8.0, gran60.normal, 0.001)
+        assertEquals(0.0, gran60.overtime, 0.001)
     }
 }
 

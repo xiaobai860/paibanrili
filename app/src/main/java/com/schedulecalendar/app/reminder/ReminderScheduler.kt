@@ -154,10 +154,6 @@ class ReminderScheduler @Inject constructor(
             // 整轮成功后才提交签名：原先在排班之前就写入 lastScheduledSignature，
             // 一旦中途抛异常，后续相同签名会被永久跳过 → 提醒再也不注册。
             try {
-                // 旧版「仅通知栏」方式已移除：一次性清理其遗留的独立精确闹钟（requestCode 基线 3/4），
-                // 否则这些残留闹钟会按旧的提前分钟数继续触发，造成时间不准的重复通知。
-                cleanupLegacyNotifyReminders()
-
                 val enabled = prefsSnapshot.enabled
                 if (!enabled) {
                     cancelAllRemindersLocked()
@@ -556,33 +552,6 @@ class ReminderScheduler @Inject constructor(
     /** 带锁的「取消所有提醒」入口，供外部（如 BootReceiver）安全调用 */
     suspend fun cancelAllRemindersSafely() {
         scheduleMutex.withLock { cancelAllRemindersLocked() }
-    }
-
-    /**
-     * 一次性清理旧版「仅通知栏」方式遗留的独立精确闹钟。
-     *
-     * 该方式已移除（与「精确闹钟」在呈现上重复：都是本应用弹通知）。旧版用
-     * `setExactAndAllowWhileIdle` + requestCode 基线 3/4 注册（区别于精确闹钟的 1/2），
-     * 若不清掉，这些残留闹钟会按**旧的提前分钟数**继续触发，导致时间不准的重复通知。
-     * 用 DataStore 标记保证只执行一次；与当前提醒方式/开关无关，禁用提醒时也应清理。
-     */
-    private suspend fun cleanupLegacyNotifyReminders() {
-        if (prefs.getNotifyMethodCleaned()) return
-        val today = LocalDate.now()
-        // 覆盖与注册窗口一致的区间（含跨午夜下班提醒 +1 天）
-        for (dayOffset in -REMINDER_PAST_DAYS..(REMINDER_FUTURE_DAYS + 1)) {
-            val date = today.plusDays(dayOffset.toLong())
-            for (isClockIn in listOf(true, false)) {
-                val requestCode = (date.toEpochDay().toInt() * 10) + (if (isClockIn) 3 else 4)
-                val intent = Intent(context, AlarmReceiver::class.java)
-                val pendingIntent = PendingIntent.getBroadcast(
-                    context, requestCode, intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                alarmManager.cancel(pendingIntent)
-            }
-        }
-        prefs.setNotifyMethodCleaned()
     }
 
     /**

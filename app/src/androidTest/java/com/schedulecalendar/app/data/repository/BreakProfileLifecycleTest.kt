@@ -4,7 +4,6 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.schedulecalendar.app.data.db.AppDatabase
-import com.schedulecalendar.app.data.db.Migrations
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.domain.model.ShiftBreak
 import com.schedulecalendar.app.domain.util.DateFormats
@@ -33,13 +32,12 @@ import java.time.LocalDate
 class BreakProfileLifecycleTest {
 
     @Test
-    fun 创建删除时段并删除档案后的残留行为() {
+    fun residueAfterDeletingBreakAndProfile() {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dbName = "break-profile-lifecycle"
         ctx.deleteDatabase(dbName)
 
         val db = Room.databaseBuilder(ctx, AppDatabase::class.java, dbName)
-            .addMigrations(*Migrations.ALL)
             .allowMainThreadQueries()
             .build()
 

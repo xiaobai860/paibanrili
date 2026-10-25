@@ -114,12 +114,15 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    AppNavHost()
-
-                    // 数据升级遮罩：升级中/失败时挡住界面，避免用户看到「半转换」的中间态
+                    // 数据闸门：未放行前**不组合业务界面**（此时只渲染遮罩）。
+                    // 原因：界面里的 ViewModel 一创建就会读库，而数据版本过老时
+                    // Room 会因「缺迁移」直接抛异常 → 必须在读库前就被拦住。
                     val compatState by compatGate.state.collectAsStateWithLifecycle()
                     var compatErrorDismissed by remember { mutableStateOf(false) }
                     LaunchedEffect(compatState) { compatErrorDismissed = false }
+                    if (compatState is CompatGate.State.Ready) {
+                        AppNavHost()
+                    }
                     val showCompatOverlay = when (compatState) {
                         is CompatGate.State.Idle, is CompatGate.State.Ready -> false
                         is CompatGate.State.Failed -> !compatErrorDismissed

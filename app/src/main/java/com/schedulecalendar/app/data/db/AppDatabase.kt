@@ -26,7 +26,7 @@ import com.schedulecalendar.app.data.db.entity.ShiftStatusEntity
         ShiftStatusEntity::class,
         CalcProfileEntity::class
     ],
-    // v7 = 中转兼容版：结构与 v6 相同，但 MIGRATION_6_7 会把旧格式数据归一化到当前格式。
+    // v7 = 最终兼容版的数据格式（栅栏版本）：结构与 v6 相同，v6 的旧格式数据已由兼容版归一化。
     // 版本号必须与 DataFormat.CURRENT 保持一致（见 data/compat/DataFormat.kt）。
     version = 7,
     exportSchema = true   // 导出 schema 至 app/schemas/，便于版本迁移追踪
@@ -40,6 +40,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun calcProfileDao(): CalcProfileDao
 
     companion object {
+        /** 数据库文件名（**唯一来源**：Room 构建、启动期版本探测都引用它，避免两处各写一份而错位）。 */
+        const val DB_NAME = "schedule_calendar.db"
+
         /**
          * 开启 WAL（write-ahead logging）日志模式：
          * - 读写并发能力提升（读不阻塞写、写不阻塞读），显著提升日历频繁读取时的响应。

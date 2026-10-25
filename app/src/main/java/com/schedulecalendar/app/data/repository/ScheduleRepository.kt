@@ -96,8 +96,8 @@ internal fun parseReferencedIds(
     statusIds: MutableSet<String>,
     extraIds: MutableSet<String>
 ) {
-    // 附加状态：DB 里存的是「单对象」格式（{"statusId":..}），旧数据是数组格式，
-    // 统一用 [parseAppliedStatus] 解析（两种格式都兼容）
+    // 附加状态：DB 里存的是「单对象」格式（{"statusId":..}）。
+    // 栅栏抬起后旧数组形态已从读路径移除：解析不出来就明确报错，绝不静默丢引用。
     val statusJson = appliedStatusesJson.trim()
     if (statusJson.isNotEmpty() && statusJson != "null" && statusJson != "[]") {
         val st = parseAppliedStatus(statusJson)

@@ -19,11 +19,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.schedulecalendar.app.data.compat.CompatGate
+import com.schedulecalendar.app.data.compat.DataFormat
 
 /**
  * 数据升级遮罩。
  *
- * - 检查中 / 迁移中：全屏遮罩 + 进度提示（数据正在转换，稍候）；
+ * - 检查中：全屏遮罩 + 进度提示（稍候）；
  * - 失败：显示失败原因（已回滚 / 需手动恢复），可关闭继续使用；
  * - 版本过旧：阻断式提示（必须先装回兼容版）。
  */
@@ -38,7 +39,7 @@ fun CompatOverlay(
 
         is CompatGate.State.Checking -> BlockingBox("正在检查数据版本…")
 
-        is CompatGate.State.Migrating -> BlockingBox("正在升级数据格式，请稍候…")
+
 
         is CompatGate.State.Failed -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Card(
@@ -51,7 +52,7 @@ fun CompatOverlay(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        "数据升级失败",
+                        "数据校验未通过",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -65,7 +66,7 @@ fun CompatOverlay(
 
         is CompatGate.State.Unsupported -> BlockingBox(
             "当前数据版本为 v${state.version}，本版本最低支持 v${state.required}。" +
-                "请先安装兼容版打开一次数据，再升级到当前版本。"
+                "请先安装兼容版（${DataFormat.COMPAT_VERSION_LABEL}）打开并导出数据，再升级到当前版本。"
         )
     }
 }

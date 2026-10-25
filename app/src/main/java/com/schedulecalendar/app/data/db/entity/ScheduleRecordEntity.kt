@@ -15,8 +15,8 @@ data class ScheduleRecordEntity(
     val remark: String? = null,
     /** JSON：List<String>（ExtraItem ID 列表） */
     val extraItemIdsJson: String = "[]",
-    /** JSON：List<AppliedStatusJson>（statusId + startTime? + endTime?） */
-    val appliedStatusesJson: String = "[]",
+    /** JSON：AppliedStatusJson 单对象（statusId + startTime? + endTime?）；无附加状态时为 "null" */
+    val appliedStatusesJson: String = "null",
     val salaryMode: String? = null,         // SalaryMode name 或 null
     val ignoreEarlyArrival: Boolean = false,
     val ignoreLateLeave: Boolean = false,

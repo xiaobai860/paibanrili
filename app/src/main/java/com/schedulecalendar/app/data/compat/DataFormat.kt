@@ -16,70 +16,72 @@ package com.schedulecalendar.app.data.compat
  * | 应用数据备份 | [APP_DATA_BACKUP] / [MIN_SUPPORTED_APP_DATA_BACKUP] | 「应用数据_*.json」的 `version` |
  * | 班次配置备份 | [SHIFT_CONFIG_BACKUP] / [MIN_SUPPORTED_SHIFT_CONFIG_BACKUP] | 「班次配置_*.json」的 `version` |
  *
- * ## 本版本（中转兼容版）的定位
- * 当前版本 = **兼容版**：它接受**任意历史版本**的数据（DB v1 起、两种备份格式 v1 起），
- * 并在升级过程中把旧数据**转换成当前数据格式**（不是「兼容读取」，而是「读进来就改写成新格式」）。
+ * ## 兼容栅栏（fence）已抬起：只维护最终兼容版及以后
  *
- * 转换完成后，下游代码只需处理一种格式 → 后续版本可以把历史包袱全部丢掉。
+ * [COMPAT_FENCE] = 7 = 最后一个「带历史兼容包袱」的版本（数据格式 v7）所产出的格式版本。
+ * 2026-10-25 起，本项目**只支持最终兼容版 224 / 2026102503 及以后版本的数据**：
  *
- * ## fence（兼容栅栏）——后续版本如何切掉历史兼容
- * [COMPAT_FENCE] = 兼容版自身的版本号 = **后续版本可接受的最低数据版本**。
- * 后续版本（> [COMPAT_FENCE]）发布时只需做三件事即可彻底移除历史兼容：
- * 1. 把 [MIN_SUPPORTED_DB_VERSION] / [MIN_SUPPORTED_APP_DATA_BACKUP] /
- *    [MIN_SUPPORTED_SHIFT_CONFIG_BACKUP] 抬到 [COMPAT_FENCE] 对应值；
- * 2. 把 [LEGACY_COMPAT_ENABLED] 置 false（R8 会剔除全部 legacy 分支）；
- * 3. 按 docs/数据兼容与迁移策略.md 的「清理清单」删除旧迁移与旧格式转换代码。
+ * | 轴 | 最低可接受版本 | 低于它的数据 |
+ * |---|---|---|
+ * | 数据库 schema | v7（= fence） | 启动即被 [CompatGate] 判为 [CompatGate.State.Unsupported] 并阻断界面 |
+ * | 应用数据备份 | v5（= 当前格式） | 恢复时**直接拒绝**并提示「请先在兼容版导出再升级」 |
+ * | 班次配置备份 | v7（= 当前格式） | 同上 |
  *
- * 抬到 fence 之后的行为：**老数据不再被接受**（数据库直接拒绝打开、备份直接拒绝恢复），
- * 而不是「打开了但算错」。这是刻意的：兼容旧格式的成本会随版本数线性增长，
- * 而正确性风险（历史口径/工时静默变化）远大于「让极少数老用户手动导出再升级」的成本。
+ * 由此带来的**已删除**内容（历史兼容层，随 fence 抬起一并移除）：
+ * - Room 迁移链 v1→v7（`Migrations`）——现在只有 v7 一种 schema，无需迁移；
+ * - `BackupCompat` 的「任意旧版本 → 当前格式」转换器；
+ * - 迁移前只读快照 `LegacyDbSnapshot` 与基于它的自动回滚；
+ * - 读路径上的旧格式分支（附加状态数组形态、枚举 `valueOf` 兜底等）。
+ *
+ * 之所以敢这样切：旧格式兼容的成本随版本数线性增长，而正确性风险
+ * （历史口径/工时被静默改写）远大于「让极少数老用户手动导出再升级」的成本。
+ * 刻意的行为是**明确拒绝**（而不是「打开了但算错」）。
+ *
+ * ## 今后如何再抬高栅栏
+ * 下一次需要支持比 v7 更老的数据时，才需要重新引入转换层；正常演进只需：
+ * 1. 提升 [CURRENT]（数据库 schema）与对应备份格式版本号；
+ * 2. 只写 **一条** 从上一版本到新版本的迁移，登记进 Room；
+ * 3. 保持 [MIN_SUPPORTED_*] 不变（继续以 fence 为底线）。
  */
 object DataFormat {
 
     /** 当前数据格式版本（必须与 [com.schedulecalendar.app.data.db.AppDatabase] 的 version 一致）。 */
     const val CURRENT = 7
 
-    // ── 「谁可以被读」的策略（兼容版 = 全开）────────────────────────────
-
-    /** 可被本版本直接升级的最低数据库版本。兼容版放开到 v1（v1 走动态兜底迁移）。 */
-    const val MIN_SUPPORTED_DB_VERSION = 1
-
-    /** 可被本版本恢复的最低「应用数据」备份格式版本。 */
-    const val MIN_SUPPORTED_APP_DATA_BACKUP = 1
-
-    /** 可被本版本恢复的最低「班次配置」备份格式版本。 */
-    const val MIN_SUPPORTED_SHIFT_CONFIG_BACKUP = 1
-
-    // ── fence：后续版本切掉历史兼容的边界 ──────────────────────────────
+    // ── 兼容栅栏：后续版本可接受的最低数据版本 ──────────────────────────
 
     /**
-     * 兼容栅栏 = **兼容版自身的版本号**。
+     * 兼容栅栏 = **最终兼容版所产出的数据格式版本**。
      *
-     * 含义：数据格式版本 ≥ [COMPAT_FENCE] 的数据（即「经过兼容版升级过的数据」）
-     * 是后续版本唯一需要支持的格式。后续版本把上面的 MIN_* 抬到本值，
-     * 即可拒绝一切更老的数据格式。
+     * 数据格式版本 ≥ [COMPAT_FENCE] 的数据（即「已经过最终兼容版升级过的数据」）
+     * 是本项目唯一需要支持的格式；低于它的数据一律明确拒绝。
      */
     const val COMPAT_FENCE = 7
 
-    /**
-     * 旧格式兼容总开关。
-     *
-     * - `true`（兼容版）：所有 legacy 分支（多格式解析、旧枚举兜底、旧备份转换）均生效；
-     * - `false`（后续版本）：代码里所有 `if (DataFormat.LEGACY_COMPAT_ENABLED)` 分支被 R8 剔除，
-     *   同时可按清理清单删掉 legacy 代码本体。
-     *
-     * 之所以做成编译期常量而不是运行时开关：运行时开关会让旧分支永远留在 APK 里
-     * （既不省体积也不省性能），而兼容能力的去留应该是**版本级决策**。
-     */
-    const val LEGACY_COMPAT_ENABLED = true
+    /** 可被本版本直接升级的最低数据库版本。 */
+    const val MIN_SUPPORTED_DB_VERSION = COMPAT_FENCE
 
     // ── 备份格式版本号 ────────────────────────────────────────────────
 
-    /** 「应用数据」备份格式版本。v5 = 兼容版新增（v4 及更早由 [BackupCompat] 转换过来）。 */
+    /** 「应用数据」备份格式版本。 */
     const val APP_DATA_BACKUP = 5
 
-    /** 「班次配置」备份格式版本。v7 = 兼容版新增（v6 及更早由 [BackupCompat] 转换过来）。 */
+    /** 「班次配置」备份格式版本。 */
     const val SHIFT_CONFIG_BACKUP = 7
+
+    /** 可被本版本恢复的最低「应用数据」备份格式版本。 */
+    const val MIN_SUPPORTED_APP_DATA_BACKUP = APP_DATA_BACKUP
+
+    /** 可被本版本恢复的最低「班次配置」备份格式版本。 */
+    const val MIN_SUPPORTED_SHIFT_CONFIG_BACKUP = SHIFT_CONFIG_BACKUP
+
+    /**
+     * 最终兼容版的版本标识。
+     *
+     * 栅栏抬起后，老数据的用户唯一出路是「装回这个兼容版 → 导出备份 → 升级到新版本」，
+     * 因此所有「数据太老」的提示都要指名道姓地告诉他装哪个版本。
+     */
+    const val COMPAT_VERSION_LABEL = "224 / 2026102503"
 
     /**
      * 取某类备份在当前版本下允许的最低格式版本（版本闸门）。
@@ -89,5 +91,28 @@ object DataFormat {
     fun minSupportedBackupVersion(kind: BackupKind): Int = when (kind) {
         BackupKind.APP_DATA -> MIN_SUPPORTED_APP_DATA_BACKUP
         BackupKind.SHIFT_CONFIG -> MIN_SUPPORTED_SHIFT_CONFIG_BACKUP
+    }
+
+    /** 闸门对数据库版本的决策结果 */
+    enum class DbVersionDecision {
+        /** 全新安装：没有旧数据要处理 */
+        FRESH_INSTALL,
+
+        /** 版本受支持：可以打开 */
+        OPEN,
+
+        /** 版本低于栅栏：必须拒绝打开（装回兼容版导出数据） */
+        UNSUPPORTED
+    }
+
+    /**
+     * 闸门决策（**纯函数**，可被单测直接锁定）。
+     *
+     * @param fileVersion 数据库文件的 `PRAGMA user_version`；null = 文件不存在（全新安装）
+     */
+    fun decideByDbVersion(fileVersion: Int?): DbVersionDecision = when {
+        fileVersion == null -> DbVersionDecision.FRESH_INSTALL
+        fileVersion < MIN_SUPPORTED_DB_VERSION -> DbVersionDecision.UNSUPPORTED
+        else -> DbVersionDecision.OPEN
     }
 }

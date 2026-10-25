@@ -8,7 +8,6 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.InstanceCreator
 import com.google.gson.reflect.TypeToken
@@ -39,7 +38,6 @@ class AppPreferences @Inject constructor(
         val KEY_ATTEND_CONFIG   = stringPreferencesKey("attend_config")
         val KEY_SCHEDULE_RULE   = stringPreferencesKey("schedule_rule")
         val KEY_DISPLAY_SCHEMES = stringPreferencesKey("display_schemes")
-        val KEY_WIDGET_DATA     = stringPreferencesKey("widget_data")
         val KEY_SHIFT_ORDER     = stringPreferencesKey("shift_order")
         val KEY_STATUS_ORDER    = stringPreferencesKey("status_order")
         val KEY_EXTRA_ORDER     = stringPreferencesKey("extra_order")
@@ -62,30 +60,11 @@ class AppPreferences @Inject constructor(
         val KEY_REMINDER_CLOCK_OUT_MINUTES = intPreferencesKey("reminder_clock_out_minutes")
         val KEY_REMINDER_NOTIFY_BAR        = stringPreferencesKey("reminder_notify_bar")
         val KEY_REMINDER_INITIALIZED      = stringPreferencesKey("reminder_initialized")
-        /** 旧版「仅通知栏」提醒方式遗留闹钟是否已一次性清理（该方式已移除） */
-        val KEY_NOTIFY_METHOD_CLEANED     = stringPreferencesKey("notify_method_cleaned")
         val KEY_DISABLED_ACCOUNT_IDS     = stringPreferencesKey("disabled_calendar_accounts")
         val KEY_ACCOUNT_CATEGORIES         = stringPreferencesKey("account_categories")
         val KEY_ACCOUNTS_INITIALIZED     = stringPreferencesKey("accounts_initialized")
         // ── 首次启动权限申请 ──
         val KEY_INITIAL_PERMISSIONS_DONE = stringPreferencesKey("initial_permissions_done")
-        /**
-         * 数据格式版本戳：记录当前数据已被转换到哪个格式版本。
-         *
-         * 兼容版升级成功后会写入 [com.schedulecalendar.app.data.compat.DataFormat.CURRENT]；
-         * 后续版本据此判断「这份数据是否已经转换过」，
-         * 低于 fence 的数据说明它还带着旧格式包袱（需要兼容版处理过）。
-         */
-        val KEY_DATA_FORMAT_VERSION = intPreferencesKey("data_format_version")
-    }
-
-    /** 读取数据格式版本（0 = 从未升级过，即仍是最初的格式） */
-    suspend fun getDataFormatVersion(): Int =
-        context.dataStore.data.first()[KEY_DATA_FORMAT_VERSION] ?: 0
-
-    /** 写入数据格式版本戳 */
-    suspend fun setDataFormatVersion(version: Int) = context.dataStore.edit {
-        it[KEY_DATA_FORMAT_VERSION] = version
     }
 
     // ── 薪资配置 ───────────────────────────────────
@@ -132,14 +111,6 @@ class AppPreferences @Inject constructor(
     suspend fun saveDisplaySchemes(schemes: List<DisplayScheme>) = context.dataStore.edit {
         it[KEY_DISPLAY_SCHEMES] = gson.toJson(schemes)
     }
-
-    // ── 小组件数据（供 Widget 读取）────────────────
-    suspend fun saveWidgetData(json: String) = context.dataStore.edit {
-        it[KEY_WIDGET_DATA] = json
-    }
-    /** 正确用法：用 .first() 读取当前快照，而非 edit{} */
-    suspend fun getWidgetData(): String? =
-        context.dataStore.data.first()[KEY_WIDGET_DATA]
 
     // ── 班次排序 ───────────────────────────────────
     /** 读取班次显示顺序（逗号分隔的 ID 列表） */
@@ -326,13 +297,6 @@ class AppPreferences @Inject constructor(
         it[KEY_REMINDER_METHOD] = normalizeReminderMethod(method)
     }
 
-    /** 旧版「仅通知栏」方式遗留闹钟是否已一次性清理 */
-    suspend fun getNotifyMethodCleaned(): Boolean =
-        context.dataStore.data.first()[KEY_NOTIFY_METHOD_CLEANED] == "true"
-    suspend fun setNotifyMethodCleaned() = context.dataStore.edit {
-        it[KEY_NOTIFY_METHOD_CLEANED] = "true"
-    }
-
     /** 提醒内容："both" / "clock_in" / "clock_out" */
     suspend fun getReminderClockIn(): Boolean =
         context.dataStore.data.first()[KEY_REMINDER_CLOCK_IN] != "false"
@@ -377,9 +341,9 @@ class AppPreferences @Inject constructor(
     suspend fun saveDisabledAccountIds(ids: Set<Long>) = context.dataStore.edit {
         it[KEY_DISABLED_ACCOUNT_IDS] = ids.joinToString(",")
     }
-    val disabledAccountIdsFlow: Flow<Set<Long>> = context.dataStore.data.map {
-        it[KEY_DISABLED_ACCOUNT_IDS]
-            ?.split(",")?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
+    val disabledAccountIdsFlow: Flow<Set<Long>> = context.dataStore.data.map { prefs ->
+        prefs[KEY_DISABLED_ACCOUNT_IDS]
+            ?.split(",")?.mapNotNull { s -> s.toLongOrNull() }?.toSet() ?: emptySet()
     }
 
     /** 账户是否已完成首次初始化 */
@@ -403,7 +367,7 @@ class AppPreferences @Inject constructor(
             ?.let { json ->
                 try {
                     val type = object : TypeToken<Map<String, String>>() {}.type
-                    gson.fromJson<Map<String, String>>(json, type)
+                    gson.fromJson(json, type)
                 } catch (_: Exception) { emptyMap() }
             } ?: emptyMap()
 
@@ -415,7 +379,7 @@ class AppPreferences @Inject constructor(
             ?.let { json ->
                 try {
                     val type = object : TypeToken<Map<String, String>>() {}.type
-                    gson.fromJson<Map<String, String>>(json, type)
+                    gson.fromJson(json, type)
                 } catch (_: Exception) { emptyMap() }
             } ?: emptyMap()
     }

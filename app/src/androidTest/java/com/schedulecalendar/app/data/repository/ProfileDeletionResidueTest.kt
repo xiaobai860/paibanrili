@@ -4,7 +4,6 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.schedulecalendar.app.data.db.AppDatabase
-import com.schedulecalendar.app.data.db.Migrations
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.domain.model.ShiftBreak
 import com.schedulecalendar.app.domain.util.DateFormats
@@ -36,13 +35,12 @@ import java.time.LocalDate
 class ProfileDeletionResidueTest {
 
     @Test
-    fun 删除档案时按集合关系决定是否产生残留() {
+    fun profileDeletionResidueDependsOnSetRelations() {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dbName = "profile-deletion-residue"
         ctx.deleteDatabase(dbName)
 
         val db = Room.databaseBuilder(ctx, AppDatabase::class.java, dbName)
-            .addMigrations(*Migrations.ALL)
             .allowMainThreadQueries()
             .build()
         val prefs = AppPreferences(ctx)

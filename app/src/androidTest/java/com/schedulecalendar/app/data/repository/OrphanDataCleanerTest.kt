@@ -4,7 +4,6 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.schedulecalendar.app.data.db.AppDatabase
-import com.schedulecalendar.app.data.db.Migrations
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -24,13 +23,12 @@ import org.junit.runner.RunWith
 class OrphanDataCleanerTest {
 
     @Test
-    fun 只清理已归档且无引用的数据() {
+    fun onlyCleansArchivedUnreferencedData() {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dbName = "orphan-cleaner-test"
         ctx.deleteDatabase(dbName)
 
         val db = Room.databaseBuilder(ctx, AppDatabase::class.java, dbName)
-            .addMigrations(*Migrations.ALL)
             .allowMainThreadQueries()
             .build()
         val sql = db.openHelper.writableDatabase

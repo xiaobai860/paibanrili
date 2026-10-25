@@ -37,7 +37,7 @@ class HolidayDataInvariantsTest {
 
     /** ① 历史锚点：元旦必须始终是法定节假日 */
     @Test
-    fun `元旦在已覆盖年份始终是法定节假日`() {
+    fun newYearIsAlwaysLegalHolidayInCoveredYears() {
         for (y in 2024..2026) {
             val date = "%04d-01-01".format(y)
             assertTrue("$date 应为法定节假日（历史数据不得改动）", HolidayData.isLegalHoliday(date))
@@ -46,7 +46,7 @@ class HolidayDataInvariantsTest {
 
     /** ② 每个已覆盖年份至少收录一天（防止新增年份时整年漏填） */
     @Test
-    fun `每个已覆盖年份至少有一天法定节假日`() {
+    fun everyCoveredYearHasAtLeastOneLegalHoliday() {
         for (y in firstYear..lastYear) {
             var hasAny = false
             var cur = LocalDate.of(y, 1, 1)
@@ -61,7 +61,7 @@ class HolidayDataInvariantsTest {
 
     /** ③ 同一天不可能既是法定节假日又是调休补班日 */
     @Test
-    fun `同一天不会既是节假日又是补班日`() {
+    fun noDayIsBothHolidayAndMakeupWorkday() {
         eachDate { date ->
             assertFalse(
                 "$date 同时是法定节假日与调休补班日",
@@ -72,7 +72,7 @@ class HolidayDataInvariantsTest {
 
     /** ④ 非法日期查询不抛异常（该函数在 Glance 组合内被调用） */
     @Test
-    fun `非法日期查询不抛异常`() {
+    fun invalidDateLookupDoesNotThrow() {
         listOf("", "2026-02-30", "abc", "2026-13-01", "2026-00-10").forEach {
             HolidayData.isLegalHoliday(it)
             HolidayData.isMakeupDay(it)
@@ -82,7 +82,7 @@ class HolidayDataInvariantsTest {
 
     /** ⑤ 超出覆盖范围安全退化（不误判为节假日/补班） */
     @Test
-    fun `超出覆盖范围的年份安全退化`() {
+    fun yearBeyondCoverageDegradesSafely() {
         val beyond = HolidayData.MAX_COVERED_YEAR + 1
         listOf("$beyond-01-01", "$beyond-05-01", "$beyond-10-01").forEach {
             assertFalse(HolidayData.isLegalHoliday(it))

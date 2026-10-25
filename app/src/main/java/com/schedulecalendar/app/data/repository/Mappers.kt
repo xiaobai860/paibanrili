@@ -80,24 +80,15 @@ internal data class AppliedStatusJson(
 )
 
 /**
- * 解析单个附加状态：兼容旧版数组格式（取第一个）和新版单对象格式
+ * 解析单个附加状态：当前格式为**单对象** `{...}`
  *
- * ⚠️ 数组分支是**兼容版专属的历史包袱**：
- * 兼容版的迁移（MIGRATION_6_7）已把库里的旧数组格式改写成单对象，
- * 备份侧也由 [com.schedulecalendar.app.data.compat.BackupCompat] 在读入时统一转换，
- * 因此新数据一律是单对象。后续版本（fence 之后）可删除数组分支。
+ * ⚠️ 栅栏已抬起：旧版数组形态（`[{...}]`）的兼容分支已删除。
+ * 历史数据在「最终兼容版」升级时已被归一化成单对象，此后写入的一律是单对象，
+ * 因此读路径只需处理一种形状。
  */
 fun parseAppliedStatus(json: String): AppliedStatus? {
     val trimmed = json.trim()
     if (trimmed.isEmpty() || trimmed == "null" || trimmed == "\"\"") return null
-    // 旧格式：数组 [{...}]
-    if (trimmed.startsWith("[")) {
-        val list: List<AppliedStatusJson> = gson.fromJson(
-            trimmed, object : TypeToken<List<AppliedStatusJson>>() {}.type
-        ) ?: emptyList()
-        return list.firstOrNull()?.let { AppliedStatus(it.statusId, it.startTime, it.endTime, it.isOvertime) }
-    }
-    // 新格式：单对象 {...}
     return try {
         val obj = gson.fromJson(trimmed, AppliedStatusJson::class.java)
         AppliedStatus(obj.statusId, obj.startTime, obj.endTime, obj.isOvertime)

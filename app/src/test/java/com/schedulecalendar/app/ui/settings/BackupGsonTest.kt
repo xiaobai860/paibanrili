@@ -33,7 +33,7 @@ class BackupGsonTest {
     private val gson = BackupGson.instance
 
     @Test
-    fun `v1时代班次状态缺时间段字段时落空串而非null`() {
+    fun v1ShiftStatusWithoutTimeRangeFallsBackToEmptyStrings() {
         // v1/v2 备份原文：{"id":"s1","name":"外出","color":"#F97316","builtIn":false}
         val json = """{"id":"s1","name":"外出","color":"#F97316","builtIn":false}"""
         val st = gson.fromJson(json, ShiftStatus::class.java)
@@ -44,7 +44,7 @@ class BackupGsonTest {
     }
 
     @Test
-    fun `v1时代班次缺关联项目字段时落空列表`() {
+    fun v1ShiftWithoutLinkedExtrasFallsBackToEmptyList() {
         val json =
             """{"id":"sh1","name":"早班","color":"#3b82f6","startTime":"08:00","endTime":"17:00","builtIn":false}"""
         val shift = gson.fromJson(json, Shift::class.java)
@@ -54,7 +54,7 @@ class BackupGsonTest {
     }
 
     @Test
-    fun `排班记录缺附加状态加班勾选时落false`() {
+    fun recordWithoutAppliedStatusOvertimeFallsBackToFalse() {
         // 2026-09 之前的备份 appliedStatus 无 isOvertime 字段
         val json =
             """{"date":"2026-01-05","shiftId":"sh1","appliedStatus":{"statusId":"s1","startTime":"09:00","endTime":"10:00"}}"""
@@ -66,7 +66,7 @@ class BackupGsonTest {
     }
 
     @Test
-    fun `排班记录缺全部可选字段时仍可构造`() {
+    fun recordWithoutAnyOptionalFieldStillConstructs() {
         val json = """{"date":"2026-01-05"}"""
         val record = gson.fromJson(json, ScheduleRecord::class.java)
         assertEquals("2026-01-05", record.date)
@@ -76,7 +76,7 @@ class BackupGsonTest {
     }
 
     @Test
-    fun `旧版口径档案缺嵌套配置时落默认值`() {
+    fun legacyProfileWithoutNestedConfigFallsBackToDefaults() {
         val json =
             """{"id":"p1","name":"初始口径","effectiveFrom":"2000-01-01","effectiveTo":null}"""
         val p = gson.fromJson(json, CalcProfile::class.java)
@@ -87,7 +87,7 @@ class BackupGsonTest {
     }
 
     @Test
-    fun `休息时段与补贴项缺归档字段时落null`() {
+    fun breakAndExtraWithoutArchivedAtFallBackToNull() {
         val breakJson = """{"id":"b1","label":"午休","startTime":"12:00","endTime":"13:00"}"""
         val br = gson.fromJson(breakJson, ShiftBreak::class.java)
         assertNull(br.archivedAt)
@@ -99,7 +99,7 @@ class BackupGsonTest {
     }
 
     @Test
-    fun `当前版本模型序列化后可原样反序列化`() {
+    fun currentModelRoundTripsUnchanged() {
         val shift = Shift(
             id = "sh1", name = "早班", color = "#3b82f6",
             startTime = "08:00", endTime = "17:00",
