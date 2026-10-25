@@ -9,7 +9,6 @@ import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.CalcInputResolver
 import com.schedulecalendar.app.data.repository.ExtraItemRepository
 import com.schedulecalendar.app.data.repository.ScheduleRepository
-import com.schedulecalendar.app.data.repository.ShiftBreakRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
@@ -22,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.FlowPreview
 import java.time.LocalDate
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
 
 sealed class SalaryUiEvent {
     data class ShowError(val message: String) : SalaryUiEvent()
@@ -58,7 +58,6 @@ data class SalaryUiState(
 class SalaryViewModel @Inject constructor(
     private val shiftRepo: ShiftRepository,
     private val scheduleRepo: ScheduleRepository,
-    private val breakRepo: ShiftBreakRepository,
     private val statusRepo: ShiftStatusRepository,
     private val extraItemRepo: ExtraItemRepository,
     private val prefs: AppPreferences,
@@ -76,7 +75,7 @@ class SalaryViewModel @Inject constructor(
     init {
         // 排班数据变更时自动刷新；debounce 合并短时间内的连续变更，避免每次数据库写都重算整月+趋势
         viewModelScope.launch {
-            scheduleRepo.refreshSignal.debounce(300).collect { reload() }
+            scheduleRepo.refreshSignal.debounce(300.milliseconds).collect { reload() }
         }
     }
 
@@ -93,11 +92,9 @@ class SalaryViewModel @Inject constructor(
             }
             runCatching {
                 val shifts       = shiftRepo.getAllIncludingArchivedWithBuiltin()
-                val breaks       = breakRepo.getAll()
                 val statuses     = statusRepo.getAllIncludingArchivedWithBuiltin()
                 val extraItems   = extraItemRepo.getAll()
                 val salaryConf   = prefs.salaryConfigFlow.first()
-                val attendConf   = prefs.attendConfigFlow.first()
                 val records      = scheduleRepo.getByMonth(DateFormats.yearMonth(year, month))
                 val schedules    = records.associateBy { it.date }
 
@@ -157,22 +154,20 @@ class SalaryViewModel @Inject constructor(
                         )
                     }
                 }
-                val fullEstimate = fullSummary
-
                 // 每日明细
                 val details = CalcUtils.getMonthScheduleDetailsByDate(
                     year, month, schedules, shifts, extraItems, inputsFor, inputsFp
                 )
 
                 // 趋势
-                val trend = buildTrend(year, month, shifts, breaks, extraItems, salaryConf, attendConf)
+                val trend = buildTrend(year, month, shifts, extraItems)
 
                 _state.update { it.copy(
                     year         = year,
                     month        = month,
                     actual       = actual,
                     future       = future,
-                    fullEstimate = fullEstimate,
+                    fullEstimate = fullSummary,
                     details      = details,
                     trend        = trend,
                     shiftStatuses = statuses,
@@ -190,8 +185,8 @@ class SalaryViewModel @Inject constructor(
 
     private suspend fun buildTrend(
         year: Int, month: Int,
-        shifts: List<Shift>, breaks: List<ShiftBreak>,
-        extraItems: List<ExtraItem>, salaryConf: SalaryConfig, attendConf: AttendConfig
+        shifts: List<Shift>,
+        extraItems: List<ExtraItem>
     ): List<MonthlySalaryTrend> {
         val months = (7 downTo 0).map { i -> var m = month - i; var y = year; if (m <= 0) { m += 12; y -= 1 }; y to m }
         val fromKey = DateFormats.date(months.first().first, months.first().second, 1)

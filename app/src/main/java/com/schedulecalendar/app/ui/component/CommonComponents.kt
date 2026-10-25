@@ -7,7 +7,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -20,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.core.graphics.toColorInt
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -33,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.schedulecalendar.app.domain.util.hexToColorSafe
 import com.schedulecalendar.app.ui.theme.ShiftPresetColors
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 /** 顶部 AppBar with back button */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,18 +62,6 @@ fun ScheduleTopBar(
     )
 }
 
-/** 班次颜色圆点 */
-@Composable
-fun ShiftColorDot(hexColor: String, size: Int = 10) {
-    val color = hexToColorSafe(hexColor, Color(0xFF059669))
-    Box(
-        Modifier
-            .size(size.dp)
-            .clip(CircleShape)
-            .background(color)
-    )
-}
-
 /** 班次颜色选择器（2行×6列，共12色；每行 6 个单元格均分水平空间，圆形自适应不挤压变形） */
 @Composable
 fun ColorPicker(selected: String, onSelect: (String) -> Unit) {
@@ -102,18 +89,6 @@ fun ColorPicker(selected: String, onSelect: (String) -> Unit) {
     }
 }
 
-/** 信息统计卡片 */
-@Composable
-fun StatCard(label: String, value: String, modifier: Modifier = Modifier, containerColor: Color = MaterialTheme.colorScheme.primaryContainer) {
-    Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = containerColor), shape = RoundedCornerShape(12.dp)) {
-        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(2.dp))
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
 /** 月份切换导航 */
 @Composable
 fun MonthNavigator(year: Int, month: Int, onPrev: () -> Unit, onNext: () -> Unit) {
@@ -124,21 +99,6 @@ fun MonthNavigator(year: Int, month: Int, onPrev: () -> Unit, onNext: () -> Unit
     }
 }
 
-/** 设置项 Row */
-@Composable
-fun SettingRow(label: String, content: @Composable () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        content()
-    }
-    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
-}
 
 /**
  * 禁用浮动标签动画的 OutlinedTextField 颜色配置。
@@ -150,20 +110,6 @@ fun stableLabelColors() = OutlinedTextFieldDefaults.colors(
     focusedLabelColor   = MaterialTheme.colorScheme.onSurfaceVariant,
     unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
 )
-
-/** 可编辑数字设置行 */
-@Composable
-fun NumericSettingRow(label: String, value: String, onValueChange: (String) -> Unit) {
-    SettingRow(label) {
-        OutlinedTextField(
-            value         = value,
-            onValueChange = onValueChange,
-            modifier      = Modifier.width(120.dp),
-            singleLine    = true,
-            textStyle     = MaterialTheme.typography.bodyMedium
-        )
-    }
-}
 
 /**
  * 时间选择器输入框 —— 点击后弹出 Material3 TimePicker 对话框。
@@ -191,7 +137,7 @@ fun TimePickerField(
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
-    val effectiveTime = if (time.isNotEmpty()) time else defaultTime
+    val effectiveTime = time.ifEmpty { defaultTime }
     val parts   = effectiveTime.split(":")
     val initH   = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 8
     val initM   = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
@@ -247,89 +193,6 @@ fun TimePickerField(
                     val hh = state.hour.toString().padStart(2, '0')
                     val mm = state.minute.toString().padStart(2, '0')
                     onTimeChange("$hh:$mm")
-                    showDialog = false
-                }) { Text("确定") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("取消") }
-            }
-        )
-    }
-}
-
-/**
- * 可展开时间选择器 —— 点击后弹出 Material3 TimePicker 对话框。
- * 收起状态下展示为 Trailing Icon 样式的按钮，样式遵循 CalendarScreen 中的设计范式。
- *
- * @param label          标签文本
- * @param time           当前时间字符串，格式 "HH:mm"
- * @param onTimeSelected 时间选定后的回调
- * @param modifier       外部修饰符
- * @param enabled        是否可交互
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ExpandableTimePicker(
-    label: String,
-    time: String,
-    onTimeSelected: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true
-) {
-    var showDialog by remember { mutableStateOf(false) }
-
-    val parts = time.split(":")
-    val initH = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 8
-    val initM = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
-
-    Box(modifier = modifier.clickable(enabled = enabled) { showDialog = true }) {
-        OutlinedTextField(
-            value         = time,
-            onValueChange = {},
-            label         = { Text(label) },
-            placeholder   = { Text("HH:mm") },
-            readOnly      = true,
-            enabled       = false,
-            trailingIcon  = {
-                Icon(Icons.Default.AccessTime, contentDescription = "选择时间",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            },
-            modifier      = Modifier.fillMaxWidth(),
-            singleLine    = true,
-            colors        = OutlinedTextFieldDefaults.colors(
-                disabledTextColor         = MaterialTheme.colorScheme.onSurface,
-                disabledBorderColor       = MaterialTheme.colorScheme.outline,
-                disabledLabelColor        = MaterialTheme.colorScheme.onSurfaceVariant,
-                disabledPlaceholderColor  = MaterialTheme.colorScheme.onSurfaceVariant,
-                disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                focusedLabelColor         = MaterialTheme.colorScheme.onSurfaceVariant,
-                unfocusedLabelColor       = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        )
-    }
-
-    if (showDialog) {
-        val state = rememberTimePickerState(
-            initialHour   = initH,
-            initialMinute = initM,
-            is24Hour      = true
-        )
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text(label, style = MaterialTheme.typography.titleMedium) },
-            text  = {
-                Column(
-                    modifier            = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    TimePicker(state = state)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val hh = state.hour.toString().padStart(2, '0')
-                    val mm = state.minute.toString().padStart(2, '0')
-                    onTimeSelected("$hh:$mm")
                     showDialog = false
                 }) { Text("确定") }
             },
@@ -423,7 +286,7 @@ fun ImeAdaptiveOutlinedTextField(
     // 触发器 1：获得焦点时 → 等待 IME 完全弹出后滚动
     LaunchedEffect(isFocused) {
         if (isFocused) {
-            delay(400)
+            delay(400.milliseconds)
             scrollAboveIme()
         }
     }
@@ -431,7 +294,7 @@ fun ImeAdaptiveOutlinedTextField(
     // 触发器 2：内容增长导致高度变化时 → 快速重新滚动保持可见
     LaunchedEffect(fieldHeight.intValue) {
         if (isFocused && fieldHeight.intValue > 0) {
-            delay(100)
+            delay(100.milliseconds)
             scrollAboveIme()
         }
     }

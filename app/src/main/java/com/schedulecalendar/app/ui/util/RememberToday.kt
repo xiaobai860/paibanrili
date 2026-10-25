@@ -12,6 +12,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import java.time.LocalDate
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 记忆化的「今天」，并且能跨天自动更新。
@@ -30,7 +31,7 @@ fun rememberToday(): LocalDate {
 
     LaunchedEffect(Unit) {
         while (true) {
-            delay(TODAY_REFRESH_INTERVAL_MS)
+            delay(TODAY_REFRESH_INTERVAL)
             val now = LocalDate.now()
             if (now != today) today = now
         }
@@ -52,4 +53,4 @@ fun rememberToday(): LocalDate {
 }
 
 /** 「今天」比对的间隔：1 分钟足够覆盖跨零点，又不会有明显开销 */
-private const val TODAY_REFRESH_INTERVAL_MS = 60_000L
+private val TODAY_REFRESH_INTERVAL = 60_000.milliseconds

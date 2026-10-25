@@ -27,6 +27,7 @@ import com.schedulecalendar.app.ui.component.stableLabelColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun ExtraItemsScreen(navController: NavController, vm: ExtraItemsViewModel = hiltViewModel()) {
@@ -135,7 +136,6 @@ private fun ExtraItemCard(item: ExtraItem, onEdit: () -> Unit, onDelete: () -> U
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ExtraItemEditorDialog(item: ExtraItem?, existingNames: List<String>, onSave: (ExtraItem) -> Unit, onDismiss: () -> Unit) {
     var name      by remember { mutableStateOf(item?.name    ?: "") }
@@ -183,7 +183,7 @@ private fun ExtraItemEditorDialog(item: ExtraItem?, existingNames: List<String>,
                         if (fs.isFocused && amount.isEmpty()) {
                             suppressImeAutoFill = true
                             scope.launch {
-                                delay(150) // 覆盖 IME 自动填入的时间窗口
+                                delay(150.milliseconds) // 覆盖 IME 自动填入的时间窗口
                                 suppressImeAutoFill = false
                             }
                         }

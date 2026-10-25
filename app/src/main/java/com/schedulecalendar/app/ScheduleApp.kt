@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 
 @HiltAndroidApp
 @OptIn(FlowPreview::class)
@@ -105,10 +106,10 @@ class ScheduleApp : Application() {
                 foregroundCount--
                 if (foregroundCount <= 0) {
                     // 两段式补发：1.5s 与 4s 各同步一次，覆盖不同桌面切换/稳定时间（OEM 桌面会丢弃切换窗口期内的更新）
-                    for (delayMs in BACKGROUND_SYNC_DELAYS_MS) {
+                    for (delayAfter in BACKGROUND_SYNC_DELAYS) {
                         appScope.launch {
-                            delay(delayMs)
-                            runSafely("syncAllWidgets(background:$delayMs)") { syncAllWidgets(this@ScheduleApp) }
+                            delay(delayAfter)
+                            runSafely("syncAllWidgets(background:${delayAfter.inWholeMilliseconds})") { syncAllWidgets(this@ScheduleApp) }
                         }
                     }
                 }
@@ -149,7 +150,7 @@ class ScheduleApp : Application() {
                 ep.shiftRepository().changeSignal,
                 ep.shiftStatusRepository().changeSignal
             )
-                .debounce(WIDGET_SYNC_DEBOUNCE_MS)
+                .debounce(WIDGET_SYNC_DEBOUNCE)
                 .collect {
                     runSafely("syncAllWidgets(changeSignal)") { syncAllWidgets(this@ScheduleApp) }
                     runSafely("scheduleActiveReminders(changeSignal)") { reminderScheduler.scheduleActiveReminders() }
@@ -190,7 +191,7 @@ class ScheduleApp : Application() {
         }
         // 组件数据回源同步可稍延迟（避免冷启动抢资源，留时间给进程稳定），保留 1s
         appScope.launch {
-            delay(COLD_START_SYNC_DELAY_MS)
+            delay(COLD_START_SYNC_DELAY)
             if (!compatGate.awaitReady()) return@launch
             runSafely("syncAllWidgets(coldStart)") { syncAllWidgets(this@ScheduleApp, allowSkipUnchanged = true) }
         }
@@ -208,12 +209,12 @@ class ScheduleApp : Application() {
 
     companion object {
         const val WIDGET_REFRESH_WORK_NAME = "widget_periodic_refresh"
-        /** 数据变更去抖窗口（毫秒）：合并连续写入，避免刷新风暴 */
-        private const val WIDGET_SYNC_DEBOUNCE_MS = 400L
-        /** 退到后台后的补发延迟（毫秒）：覆盖不同 OEM 桌面的切换/稳定时间 */
-        private val BACKGROUND_SYNC_DELAYS_MS = longArrayOf(1500L, 4000L)
-        /** 冷启动后组件回源同步延迟（毫秒） */
-        private const val COLD_START_SYNC_DELAY_MS = 1000L
+        /** 数据变更去抖窗口：合并连续写入，避免刷新风暴 */
+        private val WIDGET_SYNC_DEBOUNCE = 400.milliseconds
+        /** 退到后台后的补发延迟：覆盖不同 OEM 桌面的切换/稳定时间 */
+        private val BACKGROUND_SYNC_DELAYS = arrayOf(1500.milliseconds, 4000.milliseconds)
+        /** 冷启动后组件回源同步延迟 */
+        private val COLD_START_SYNC_DELAY = 1000.milliseconds
         /** WorkManager 兜底刷新周期（分钟） */
         private const val WIDGET_REFRESH_PERIOD_MIN = 15L
     }

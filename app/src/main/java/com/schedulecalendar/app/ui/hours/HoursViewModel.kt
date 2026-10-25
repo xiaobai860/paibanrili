@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.FlowPreview
 import java.time.LocalDate
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
 
 /** 工时页一次性 UI 事件 */
 sealed class HoursUiEvent {
@@ -79,7 +80,7 @@ class HoursViewModel @Inject constructor(
     init {
         // 排班数据变更时自动刷新；debounce 合并短时间内的连续变更，避免每次数据库写都重算整月+趋势
         viewModelScope.launch {
-            scheduleRepo.refreshSignal.debounce(300).collect { reload() }
+            scheduleRepo.refreshSignal.debounce(300.milliseconds).collect { reload() }
         }
     }
 
@@ -156,7 +157,7 @@ class HoursViewModel @Inject constructor(
                 )
 
                 // 近7个月趋势（不含未来月）
-                val trend = buildTrend(year, month, shifts, breaks, statuses, attendConf)
+                val trend = buildTrend(year, month, shifts, statuses)
 
                 _state.update { it.copy(
                     year        = year,
@@ -219,8 +220,8 @@ class HoursViewModel @Inject constructor(
 
     private suspend fun buildTrend(
         year: Int, month: Int,
-        shifts: List<Shift>, breaks: List<ShiftBreak>,
-        statuses: List<ShiftStatus>, attendConf: AttendConfig
+        shifts: List<Shift>,
+        statuses: List<ShiftStatus>
     ): List<MonthlyHoursTrend> {
         // 一次取 7 个月区间排班：原先 7 次 getByMonth（SQLite 单连接串行，耗时叠加）
         val monthKeys = (6 downTo 0).map { i ->

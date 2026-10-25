@@ -13,6 +13,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.schedulecalendar.app.ui.component.stableLabelColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 /** 过滤金额/数字输入：只保留数字和小数点，多小数点只保留第一个 */
 internal fun filterAmount(raw: String): String {
@@ -56,7 +57,7 @@ internal fun ProtectedNumField(
             if (fs.isFocused && value.isEmpty()) {
                 suppressImeAutoFill = true
                 scope.launch {
-                    delay(150)
+                    delay(150.milliseconds)
                     suppressImeAutoFill = false
                 }
             }
