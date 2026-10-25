@@ -33,8 +33,9 @@ class WidgetRefreshWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            // 1) 回源重算并刷新全部小组件
-            syncAllWidgets(appContext)
+            // 1) 回源重算并刷新全部小组件（周期性后台同步：内容未变则跳过组件推送，省组合/IPC/耗电；
+            //    下方 2) 的提醒/闹钟自愈重排仍每次无条件执行，不受影响）
+            syncAllWidgets(appContext, allowSkipUnchanged = true)
 
             // 2) 自愈：force 重排上下班提醒闹钟 + 小组件刷新闹钟
             //    （force=true 绕过「签名未变则跳过」，确保被 ROM 取消的闹钟一定被重新注册）

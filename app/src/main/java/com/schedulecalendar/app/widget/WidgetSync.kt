@@ -86,6 +86,40 @@ internal fun recentWidgetSyncWithin(windowMs: Long): Boolean {
     return last > 0 && System.currentTimeMillis() - last in 0 until windowMs
 }
 
+// ── P1：周期性后台同步「内容未变则跳过组件推送」——记住上次成功推送的 payload ─────────────────
+@Volatile internal var lastPushedClockInJson: String? = null
+@Volatile internal var lastPushedClockInDay: String? = null
+@Volatile internal var lastPushedCalendarJson: String? = null
+
+// ── P2：班次/状态全表缓存（含归档+builtin），仅班次/状态 changeSignal 失效，避免每次同步全表 DB 读 ──
+private object ShiftStatusCache {
+    @Volatile var shifts: List<Shift>? = null
+    @Volatile var statuses: List<ShiftStatus>? = null
+}
+
+/** 失效班次/状态缓存（班次/附加状态变更时调用，下次同步重载）。同步经 syncMutex 串行，无并发加载竞争。 */
+internal fun invalidateShiftStatusCache() {
+    ShiftStatusCache.shifts = null
+    ShiftStatusCache.statuses = null
+}
+
+internal suspend fun cachedShifts(repo: ShiftRepository): List<Shift> =
+    ShiftStatusCache.shifts ?: repo.getAllIncludingArchivedWithBuiltin().also { ShiftStatusCache.shifts = it }
+
+internal suspend fun cachedStatuses(repo: ShiftStatusRepository): List<ShiftStatus> =
+    ShiftStatusCache.statuses ?: repo.getAllIncludingArchivedWithBuiltin().also { ShiftStatusCache.statuses = it }
+
+// ── P3：日历整月缓存（key=年月+今天+数据版本），跳过冗余同步的整月查询+逐日农历 ──────────────────
+@Volatile private var widgetDataVersion = 0
+@Volatile private var cachedCalendarKey: String? = null
+@Volatile private var cachedCalendarInfo: CalendarWidgetInfo? = null
+
+/** bump 数据版本：排班/班次/状态变更时调用，使日历整月缓存 key 失效 */
+internal fun bumpWidgetDataVersion() { widgetDataVersion++ }
+
+/** 当前数据版本（供日历缓存 key 使用） */
+internal fun currentWidgetDataVersion(): Int = widgetDataVersion
+
 /**
  * 小组件「手动刷新」动作的统一实现：回源同步 + 结果提示。
  *
@@ -114,14 +148,14 @@ internal suspend fun performManualRefresh(context: Context) {
 internal val widgetFallbackScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
 /** 重新计算并写入所有小组件（2x1 打卡 + 3x3 / 3x4 日历）。成功返回 true，供刷新按钮提示。 */
-suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
+suspend fun syncAllWidgets(context: Context, allowSkipUnchanged: Boolean = false): Boolean = syncMutex.withLock {
     Log.d("WIDGET_SYNC", "syncAllWidgets start")
     return@withLock try {
         val (scheduleRepo, shiftRepo, statusRepo) = getRepos(context)
-        // 组件要展示昨天/前天的历史排班，班次/状态可能已归档 → 必须用含归档集合，
-        // 否则历史排班解析不到班次，组件显示「无班次」
-        val shifts = shiftRepo.getAllIncludingArchivedWithBuiltin()
-        val statuses = statusRepo.getAllIncludingArchivedWithBuiltin()
+        // P2：班次/状态用缓存（含归档+builtin），仅班次/状态 changeSignal 到达才重载；
+        // 组件要展示昨天/前天的历史排班，班次/状态可能已归档 → 必须含归档，否则解析不到班次显示「无班次」
+        val shifts = cachedShifts(shiftRepo)
+        val statuses = cachedStatuses(statusRepo)
         val statusMap = statuses.associateBy { it.id }
 
         // 2x1 打卡组件：需要今天 / 昨天（跨午夜夜班）/ 明天 的排班记录
@@ -150,11 +184,11 @@ suspend fun syncAllWidgets(context: Context): Boolean = syncMutex.withLock {
 
         // 2x1 与日历各自独立：一类失败不影响另一类，并分别记录便于定位是哪类出问题
         var ok = true
-        runCatching { ScheduleGlanceWidget.updateWidgetData(context, widgetData) }
+        runCatching { ScheduleGlanceWidget.updateWidgetData(context, widgetData, allowSkipUnchanged) }
             .onFailure { ok = false; Log.e("WIDGET_SYNC", "sync 2x1 widget failed", it) }
         // 日历组件：仅当存在日历组件实例时才回源重算整月（无实例则跳过，省一次整月查询+逐日计算）
         if (hasCalendarWidgetInstance(context)) {
-            runCatching { refreshCalendarWidgets(context, scheduleRepo, shifts, statusMap) }
+            runCatching { refreshCalendarWidgets(context, scheduleRepo, shifts, statusMap, allowSkipUnchanged) }
                 .onFailure { ok = false; Log.e("WIDGET_SYNC", "sync calendar widgets failed", it) }
         }
         if (ok) lastWidgetSyncSuccessAt = System.currentTimeMillis()
@@ -289,7 +323,7 @@ private fun isNightCrossShift(shift: Shift?): Boolean {
  *
  * @param crossesMidnight 目标日 D 的班次是否跨午夜（normE > 1440）
  */
-private fun computeOutCutoff(
+internal fun computeOutCutoff(
     nextDayRecord: ScheduleRecord?,
     nextShift: Shift?,
     crossesMidnight: Boolean
@@ -570,47 +604,60 @@ private suspend fun refreshCalendarWidgets(
     context: Context,
     scheduleRepo: ScheduleRepository,
     shifts: List<Shift>,
-    statusMap: Map<String, ShiftStatus>
+    statusMap: Map<String, ShiftStatus>,
+    allowSkipUnchanged: Boolean
 ) {
     // 组件**恒显示当前月**：日历组件没有翻月交互，
     // 若沿用上次存储的月份，跨月后会自锁在旧月份（曾出现「10 月仍显示 9 月」）。
     val today = LocalDate.now()
     val year = today.year
     val month = today.monthValue
-
-    val ym = YearMonth.of(year, month)
-    val daysInMonth = ym.lengthOfMonth()
-    val firstDow = (LocalDate.of(year, month, 1).dayOfWeek.value + 6) % 7
     val yearMonth = DateFormats.yearMonth(year, month)
-    val schedules = scheduleRepo.getByMonth(yearMonth).associateBy { it.date }
 
-    val days = (1..daysInMonth).map { d ->
-        val dateStr = DateFormats.date(year, month, d)
-        val record = schedules[dateStr]
-        val shift = record?.shiftId?.let { id -> shifts.find { it.id == id } }
-        val appliedSt = record?.appliedStatus?.let { statusMap[it.statusId] }
-        // 节假日/农历文本在此单一同步路径预计算，组合期只读（见 computeCalendarDayExtras）
-        val extras = computeCalendarDayExtras(dateStr, year, month, d)
-        CalendarWidgetDay(
-            day = d,
-            dateStr = dateStr,
-            shiftName = shift?.name ?: "",
-            shiftColor = shift?.color ?: "",
-            statusName = appliedSt?.name ?: "",
-            isLegalHoliday = extras.isLegalHoliday,
-            isMakeupWorkday = extras.isMakeupWorkday,
-            isHolidayFirstDay = extras.isHolidayFirstDay,
-            subText = extras.subText
-        )
+    // P3：整月数据缓存。key 含「年月 + 今天 + 数据版本」——跨天/跨月/数据变更都 miss 重算，
+    // 保证「今日高亮」零点正确更新；同一天内重复同步命中缓存，跳过整月查询 + 逐日农历。
+    val cacheKey = "$yearMonth:${DateFormats.date(today)}:v${currentWidgetDataVersion()}"
+    val cached = cachedCalendarInfo
+    val data = if (cached != null && cachedCalendarKey == cacheKey) {
+        Log.d("WIDGET_SYNC", "calendar cache hit ($cacheKey)")
+        cached
+    } else run {
+        val ym = YearMonth.of(year, month)
+        val daysInMonth = ym.lengthOfMonth()
+        val firstDow = (LocalDate.of(year, month, 1).dayOfWeek.value + 6) % 7
+        val schedules = scheduleRepo.getByMonth(yearMonth).associateBy { it.date }
+        val days = (1..daysInMonth).map { d ->
+            val dateStr = DateFormats.date(year, month, d)
+            val record = schedules[dateStr]
+            val shift = record?.shiftId?.let { id -> shifts.find { it.id == id } }
+            val appliedSt = record?.appliedStatus?.let { statusMap[it.statusId] }
+            // 节假日/农历文本在此单一同步路径预计算，组合期只读（见 computeCalendarDayExtras）
+            val extras = computeCalendarDayExtras(dateStr, year, month, d)
+            CalendarWidgetDay(
+                day = d,
+                dateStr = dateStr,
+                shiftName = shift?.name ?: "",
+                shiftColor = shift?.color ?: "",
+                statusName = appliedSt?.name ?: "",
+                isLegalHoliday = extras.isLegalHoliday,
+                isMakeupWorkday = extras.isMakeupWorkday,
+                isHolidayFirstDay = extras.isHolidayFirstDay,
+                subText = extras.subText
+            )
+        }
+        val totalRows = (firstDow + daysInMonth + 6) / 7
+        CalendarWidgetInfo(
+            year = year,
+            month = month,
+            days = days,
+            weekStartOffset = firstDow,
+            totalRows = totalRows,
+            todayDay = today.dayOfMonth // 今日高亮改由 payload 决定，零点随缓存失效重算而更新
+        ).also {
+            cachedCalendarKey = cacheKey
+            cachedCalendarInfo = it
+            Log.d("WIDGET_SYNC", "calendar recomputed ($cacheKey)")
+        }
     }
-
-    val totalRows = (firstDow + daysInMonth + 6) / 7
-    val data = CalendarWidgetInfo(
-        year = year,
-        month = month,
-        days = days,
-        weekStartOffset = firstDow,
-        totalRows = totalRows
-    )
-    Calendar3x4GlanceWidget.updateAllCalendarWidgets(context, data)
+    Calendar3x4GlanceWidget.updateAllCalendarWidgets(context, data, allowSkipUnchanged)
 }

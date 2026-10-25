@@ -25,8 +25,9 @@ class WidgetRefreshReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         app.appScope.launch(Dispatchers.IO) {
             try {
-                // 刷新全部小组件（回源重算 → 写入数据 → Glance update）
-                syncAllWidgets(app)
+                // 刷新全部小组件（闹钟到点属时间敏感同步：允许内容未变则跳过组件推送，省组合/IPC；
+                // 下方重排下一批闹钟 + 提醒自愈仍每次执行，保证自维持链与提醒可靠）
+                syncAllWidgets(app, allowSkipUnchanged = true)
                 // 重新调度下一批关键时间点，保证链条自维持
                 val ep = EntryPointAccessors.fromApplication(app, WidgetClockEntryPoint::class.java)
                 ep.widgetRefreshScheduler().scheduleWidgetRefreshes()

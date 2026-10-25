@@ -56,7 +56,10 @@ data class CalendarWidgetInfo(
     @SerializedName("month") val month: Int = 0,
     @SerializedName("days") val days: List<CalendarWidgetDay> = emptyList(),
     @SerializedName("weekStartOffset") val weekStartOffset: Int = 0,
-    @SerializedName("totalRows") val totalRows: Int = 5
+    @SerializedName("totalRows") val totalRows: Int = 5,
+    // 今日高亮日（0=不高亮）。由 payload 决定，组合期不再用 LocalDate.now() 判高亮；
+    // 零点随 refreshCalendarWidgets 重算（其缓存 key 含今天）而更新，保证跨天 Highlight 准时。
+    @SerializedName("todayDay") val todayDay: Int = 0
 )
 
 class CalendarGlanceWidget : GlanceAppWidget() {
@@ -139,7 +142,6 @@ private fun CalendarWidgetContent(
     // 检测深色模式
     val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     val today = LocalDate.now()
-    val isCurMon = data.year == today.year && data.month == today.monthValue
     // 窄尺寸（3x3）只显示「10月」：给右侧两个按钮让出宽度，否则刷新图标会被挤出边界点不到
     val headerText = if (data.month > 0) {
         if (compact) "${data.month}月" else "${data.year}年${data.month}月"
@@ -228,7 +230,7 @@ private fun CalendarWidgetContent(
                         val ie = ibm || iam
                         if (ie) { Box(modifier = GlanceModifier.defaultWeight()) {} } else {
                             val day = data.days.getOrNull(mdi)
-                            val isToday = day != null && isCurMon && day.day == today.dayOfMonth
+                            val isToday = day != null && data.todayDay > 0 && day.day == data.todayDay
                             val cellCorner = if (isLarge) 4.dp else 4.dp
                             Box(modifier = GlanceModifier.defaultWeight().padding(if (isLarge) 0.5.dp else 0.5.dp)
                                 .background(ColorProvider(if (isToday) Color(0xFF2E7D32).copy(alpha = 0.35f * bgAlpha) else Color.Transparent))
@@ -335,10 +337,16 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
     }
 
     companion object {
-        suspend fun updateAllCalendarWidgets(context: Context, data: CalendarWidgetInfo) {
-            val gson = Gson()
+        suspend fun updateAllCalendarWidgets(context: Context, data: CalendarWidgetInfo, allowSkipUnchanged: Boolean = false) {
+            val json = Gson().toJson(data)
+            // P1：周期性后台同步内容未变则跳过（无谓 prefs 写 + Glance 组合 + IPC）；
+            // payload 已含 todayDay，跨天会变 → 仍能准时刷新高亮。交互路径传 false 强制推。
+            if (allowSkipUnchanged && json == lastPushedCalendarJson) {
+                android.util.Log.d("WIDGET_SYNC", "calendar update skipped (unchanged)")
+                return
+            }
             context.getSharedPreferences(CALENDAR_WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
-                .edit { putString(KEY_CALENDAR_WIDGET_JSON, gson.toJson(data)) }
+                .edit { putString(KEY_CALENDAR_WIDGET_JSON, json) }
             val manager = GlanceAppWidgetManager(context)
             // 3x3 widget
             val ids3x3 = manager.getGlanceIds(CalendarGlanceWidget::class.java)
@@ -356,6 +364,7 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
                 "calendar widgets updated: 3x3=${ids3x3.size}, 3x4=${ids3x4.size}, " +
                     "month=${data.year}-${data.month}"
             )
+            lastPushedCalendarJson = json
         }
     }
 }

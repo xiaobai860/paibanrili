@@ -3,13 +3,12 @@ package com.schedulecalendar.app.widget
 
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import com.schedulecalendar.app.data.repository.ScheduleRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -71,10 +70,9 @@ class WidgetRefreshScheduler @Inject constructor(
      */
     suspend fun scheduleWidgetRefreshes() = mutex.withLock {
         cancelAllInternal()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !alarmManager.canScheduleExactAlarms()
-        ) {
-            // 无精确闹钟权限时退回 15min WorkManager 兜底（不注册，避免抛异常）
+        // minSdk=34 ≥ API 31，canScheduleExactAlarms() 恒可用；app 声明 USE_EXACT_ALARM（安装期授予），通常恒真。
+        // 保留该运行时检查作为无精确闹钟权限时的兜底：不注册，退回 15min WorkManager。
+        if (!alarmManager.canScheduleExactAlarms()) {
             return@withLock
         }
         val now = System.currentTimeMillis()
@@ -96,6 +94,10 @@ class WidgetRefreshScheduler @Inject constructor(
         }
     }
 
+    // 精确闹钟按关键时间点唤醒组件刷新。app 已声明 USE_EXACT_ALARM（日历/排班类应用的安装期授予权限），
+    // 用例合法；且调用前已 canScheduleExactAlarms() 运行时校验，不可用则不进入本方法。
+    // 此处抑制 MissingPermission：USE_EXACT_ALARM 已满足 setExact* 的精确闹钟要求（无需用户授予的 SCHEDULE_EXACT_ALARM）。
+    @SuppressLint("MissingPermission")
     private fun scheduleAt(triggerAt: Long, index: Int) {
         val intent = Intent(context, WidgetRefreshReceiver::class.java).apply {
             action = ACTION_WIDGET_REFRESH
@@ -140,6 +142,14 @@ class WidgetRefreshScheduler @Inject constructor(
                     add(date.atTime(s).minusMinutes(300)) // 上班卡出现（提前 5h）
                     add(date.atTime(s))                   // 上班时刻
                     add(endDate.atTime(e))                // 下班卡出现（下班时刻）
+                    // TL-1：下班卡截止时刻（到点消失）。按 computeOutCutoff 同规则、依赖次日 D+1 的排班/班次；
+                    // 补此闹钟，避免下班卡过了截止仍错误显示到下次排程点（可能数小时甚至到次日零点）。
+                    val nextDate = date.plusDays(1)
+                    val nextRec = runCatching { scheduleRepo.getByDate(nextDate.toString()) }.getOrNull()
+                    val nextShift = nextRec?.shiftId?.takeIf { it.isNotBlank() }
+                        ?.let { runCatching { shiftRepo.getById(it) }.getOrNull() }
+                    val cutoffMin = computeOutCutoff(nextRec, nextShift, crossMidnight)
+                    add(date.atStartOfDay().plusMinutes(cutoffMin.toLong()))
                 }
             }
 

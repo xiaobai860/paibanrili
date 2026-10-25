@@ -11,6 +11,8 @@ import com.schedulecalendar.app.widget.WidgetClockEntryPoint
 import com.schedulecalendar.app.widget.WidgetRefreshScheduler
 import com.schedulecalendar.app.widget.WidgetRefreshWorker
 import com.schedulecalendar.app.widget.syncAllWidgets
+import com.schedulecalendar.app.widget.invalidateShiftStatusCache
+import com.schedulecalendar.app.widget.bumpWidgetDataVersion
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
@@ -80,7 +82,7 @@ class ScheduleApp : Application() {
 
     /** App 完全退到后台时，延迟到桌面切换完成后再同步一次组件（此时组件可见，更新才会被桌面应用） */
     private fun registerBackgroundWidgetSync() {
-        registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: android.os.Bundle?) {}
             override fun onActivityStarted(activity: Activity) {
                 foregroundCount++
@@ -88,6 +90,8 @@ class ScheduleApp : Application() {
                 // 这样「打开应用」即可刷新提醒，无需依赖设置页或排班变更（设置配好后人很少再进）。
                 if (foregroundCount == 1) {
                     appScope.launch { runSafely("scheduleActiveReminders(foreground)") { reminderScheduler.scheduleActiveReminders() } }
+                    // SH-1/TL-2：前台恢复也重排小组件刷新闹钟——打开 App 即补齐被 MIUI 杀掉的组件闹钟，缩短刷新滞后
+                    appScope.launch { runSafely("scheduleWidgetRefreshes(foreground)") { widgetRefreshScheduler.scheduleWidgetRefreshes() } }
                 }
             }
             override fun onActivityResumed(activity: Activity) {}
@@ -133,12 +137,12 @@ class ScheduleApp : Application() {
             val ep = EntryPointAccessors.fromApplication(
                 this@ScheduleApp, WidgetClockEntryPoint::class.java
             )
+            // P4：仅合并「影响组件/提醒内容」的信号（排班/班次/状态）。
+            // extraItem（补贴扣款）、shiftBreak（休息时段）不参与 2x1/日历/提醒计算，移除以减少无效全量同步。
             merge(
                 ep.scheduleRepository().refreshSignal,
                 ep.shiftRepository().changeSignal,
-                ep.shiftStatusRepository().changeSignal,
-                ep.shiftBreakRepository().changeSignal,
-                ep.extraItemRepository().changeSignal
+                ep.shiftStatusRepository().changeSignal
             )
                 .debounce(WIDGET_SYNC_DEBOUNCE_MS)
                 .collect {
@@ -147,6 +151,20 @@ class ScheduleApp : Application() {
                     // 排班/班次/状态变更可能改动班次时刻 → 重排小组件刷新闹钟，保持关键时间点准确
                     runSafely("scheduleWidgetRefreshes(changeSignal)") { widgetRefreshScheduler.scheduleWidgetRefreshes() }
                 }
+        }
+        // P2：班次/附加状态表变更 → 失效其全表缓存并 bump 版本（下次同步重载/重算）；
+        // 排班变更不影响班次/状态表，无需失效缓存
+        appScope.launch {
+            val ep = EntryPointAccessors.fromApplication(this@ScheduleApp, WidgetClockEntryPoint::class.java)
+            merge(ep.shiftRepository().changeSignal, ep.shiftStatusRepository().changeSignal).collect {
+                invalidateShiftStatusCache()
+                bumpWidgetDataVersion()
+            }
+        }
+        // P3：排班变更 → bump 数据版本，使日历整月缓存失效（下次同步重算当月）
+        appScope.launch {
+            val ep = EntryPointAccessors.fromApplication(this@ScheduleApp, WidgetClockEntryPoint::class.java)
+            ep.scheduleRepository().refreshSignal.collect { bumpWidgetDataVersion() }
         }
         // 进程一起来【立即】注册上下班提醒闹钟 + 小组件刷新闹钟（不做任何延迟）：
         // 冷启动往往是被闹钟/组件在后台唤醒的，无可见 Activity，进程随时可能被系统回收；
@@ -164,7 +182,7 @@ class ScheduleApp : Application() {
         appScope.launch {
             delay(COLD_START_SYNC_DELAY_MS)
             compatGate.awaitReady()
-            runSafely("syncAllWidgets(coldStart)") { syncAllWidgets(this@ScheduleApp) }
+            runSafely("syncAllWidgets(coldStart)") { syncAllWidgets(this@ScheduleApp, allowSkipUnchanged = true) }
         }
     }
 

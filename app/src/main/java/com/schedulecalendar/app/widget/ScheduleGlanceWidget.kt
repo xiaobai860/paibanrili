@@ -39,9 +39,7 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import com.schedulecalendar.app.data.repository.ExtraItemRepository
 import com.schedulecalendar.app.data.repository.ScheduleRepository
-import com.schedulecalendar.app.data.repository.ShiftBreakRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.reminder.ReminderScheduler
@@ -125,18 +123,28 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
     }
 
     companion object {
-        suspend fun updateWidgetData(context: Context, data: ClockInWidgetData) {
-            val gson = Gson()
+        suspend fun updateWidgetData(context: Context, data: ClockInWidgetData, allowSkipUnchanged: Boolean = false) {
+            val json = Gson().toJson(data)
+            val todayStr = DateFormats.date(LocalDate.now())
+            // P1：周期性后台同步「内容未变且今天已推送过」才跳过；跨天强制推一次，
+            // 保证 HOLIDAY 模式的节假日倒计时（组合期按今天现算）等按天内容准时更新。
+            // 交互路径（编辑/打卡/后台兜底/手动刷新）传 allowSkipUnchanged=false 强制推送。
+            if (allowSkipUnchanged && json == lastPushedClockInJson && lastPushedClockInDay == todayStr) {
+                android.util.Log.d("WIDGET_SYNC", "2x1 update skipped (unchanged)")
+                return
+            }
             // 打卡时间真值统一来自数据库（由 CalendarViewModel.syncWidget 计算并写入 data），
             // 不再使用独立的 clock_in_widget_prefs 存储，避免两套机制数据不一致。
             // 保存到 SharedPreferences，供 content 与 ActionCallback 读取
             context.getSharedPreferences(WIDGET_DATA_PREFS, Context.MODE_PRIVATE)
-                .edit { putString(KEY_WIDGET_JSON, gson.toJson(data)) }
+                .edit { putString(KEY_WIDGET_JSON, json) }
             val widget = ScheduleGlanceWidget()
             val manager = GlanceAppWidgetManager(context)
             manager.getGlanceIds(ScheduleGlanceWidget::class.java).forEach { glanceId ->
                 widget.updateSerialized(context, glanceId)
             }
+            lastPushedClockInJson = json
+            lastPushedClockInDay = todayStr
         }
     }
 }
@@ -689,8 +697,6 @@ interface WidgetClockEntryPoint {
     fun scheduleRepository(): ScheduleRepository
     fun shiftRepository(): ShiftRepository
     fun shiftStatusRepository(): ShiftStatusRepository
-    fun shiftBreakRepository(): ShiftBreakRepository
-    fun extraItemRepository(): ExtraItemRepository
     fun calcInputResolver(): com.schedulecalendar.app.data.repository.CalcInputResolver
     fun reminderScheduler(): ReminderScheduler
     fun widgetRefreshScheduler(): WidgetRefreshScheduler
