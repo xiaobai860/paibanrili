@@ -44,7 +44,11 @@ fun buildSegments(
 
     val segs = mutableListOf<CalcSegment>()
     var cursor = from
-    for (p in profiles.sortedBy { it.effectiveFrom }) {
+    // 排序规则必须与 CalcProfileDao.getEffectiveOn / getInRange 一致：
+    // effectiveFrom 升序；**同一天生效的多条档案按 createdAt 降序（最新创建的在前）**。
+    // 同日多条是合法状态（用户规则：数据不一样就生成一条），若顺序反了，
+    // 「按日分段」会把当天判给旧口径，而「单日查询」拿到的是新口径 → 同一天金额两处不同。
+    for (p in profiles.sortedWith(compareBy<CalcProfile> { it.effectiveFrom }.thenByDescending { it.createdAt })) {
         if (cursor > to) break
         val segFrom = maxOf(cursor, p.effectiveFrom)
         val segTo = minOf(to, p.effectiveTo ?: to)

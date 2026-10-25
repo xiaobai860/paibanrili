@@ -388,10 +388,11 @@ class TymeAlmanacTest {
         }
 
         assertEquals("三伏与数九必须严格互斥（否则共用一个格子会丢信息）", 0, overlapWithNine)
-        assertTrue("应扫到足够多的三伏天，实际 $dogDays", dogDays > 500)
-        println(
-            "[三伏 vs 数九/梅雨] 三伏共 $dogDays 天；与数九重叠 $overlapWithNine 天；" +
-                "与梅雨重叠 $overlapWithPlum 天；出现三伏-梅雨重叠的年份：$yearsWithPlumOverlap"
+        assertTrue(
+            "应扫到足够多的三伏天，实际 $dogDays；[三伏 vs 数九/梅雨] 三伏共 $dogDays 天；" +
+                "与数九重叠 $overlapWithNine 天；与梅雨重叠 $overlapWithPlum 天；" +
+                "出现三伏-梅雨重叠的年份：$yearsWithPlumOverlap",
+            dogDays > 500
         )
     }
 

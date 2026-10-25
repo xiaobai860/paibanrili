@@ -18,6 +18,39 @@ import org.junit.Test
  */
 class CalcUtilsProfileTest {
 
+    /**
+     * 守护：**同一天生效的多条档案**，「按日分段」与「单日取值」必须取同一条（最新创建的那条）。
+     *
+     * 背景：用户规则是「数据不一样就生成一条」→ 同日多条档案属于**合法状态**。
+     * 单日查询走 `CalcProfileDao.getEffectiveOn`（ORDER BY createdAt DESC LIMIT 1 → 最新那条），
+     * 按日分段走 `buildSegments`（原先只按 effectiveFrom 升序，同日并列顺序不确定）
+     * → 顺序一反，当天就会被判给旧档案，而单日查询拿的是新档案
+     * → **同一天的工时/薪资两处不同**（本项目历史上踩过两次同类坑）。
+     */
+    @Test
+    fun sameDayProfilesUseLatestCreatedInBothPaths() {
+        val day = "2026-09-15"
+        val old = CalcProfile(
+            id = "p_old", name = "旧口径", salary = salaryConf, attend = cfg8, breaks = breaks,
+            effectiveFrom = day, effectiveTo = day, createdAt = 1_000L
+        )
+        val newer = CalcProfile(
+            id = "p_new", name = "新口径", salary = salaryConf, attend = cfg6, breaks = breaks,
+            effectiveFrom = day, effectiveTo = null, createdAt = 2_000L
+        )
+        val fallback = inputs(cfg8)
+        // 两种入参顺序都测：结果不得依赖 SQL 返回顺序
+        listOf(listOf(old, newer), listOf(newer, old)).forEach { profiles ->
+            val segs = buildSegments(day, "2026-09-30", profiles, fallback)
+            assertTrue("应至少切出一段", segs.isNotEmpty())
+            assertEquals("当天必须落在第一段", day, segs.first().from)
+            assertEquals(
+                "当天必须用最新创建（createdAt 更大）的那条档案",
+                "p_new", segs.first().inputs.profileId
+            )
+        }
+    }
+
     private val shift = Shift(
         id = "s1", name = "白班",
         startTime = "09:00", endTime = "18:00",

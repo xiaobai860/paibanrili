@@ -1,8 +1,10 @@
 // app/src/main/java/com/schedulecalendar/app/data/repository/CalcProfileRepository.kt
 package com.schedulecalendar.app.data.repository
 
+import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.schedulecalendar.app.data.db.AppDatabase
 import com.schedulecalendar.app.data.db.dao.CalcProfileDao
 import com.schedulecalendar.app.data.db.entity.CalcProfileEntity
 import com.schedulecalendar.app.data.prefs.AppPreferences
@@ -28,6 +30,11 @@ import javax.inject.Singleton
 @Singleton
 class CalcProfileRepository @Inject constructor(
     private val dao: CalcProfileDao,
+    /**
+     * 仅用于**事务边界**：区间接力是「读全表 → 收口旧档 → 建新档」的多步写，
+     * 不在同一事务里并发执行会算出重叠区间（DataIntegrityChecker 会判为坏数据并阻断启动）。
+     */
+    private val db: AppDatabase,
     private val prefs: AppPreferences,
     private val breakRepo: ShiftBreakRepository,
     private val scheduleRepo: ScheduleRepository
@@ -123,7 +130,10 @@ class CalcProfileRepository @Inject constructor(
         breaks: List<ShiftBreak>,
         effectiveFrom: String,
         note: String? = null
-    ): CalcProfile {
+    ): CalcProfile = db.withTransaction {
+        // ⚠️ 整段区间接力必须在**一个事务**内：并发新建档案时，
+        // 「收口旧档」与「建新档」交错会算出多条 effectiveTo == null 或区间重叠
+        // → DataIntegrityChecker 会判定坏数据并直接阻断启动。
         val all = dao.getAll().map { it.toDomain() }
         // 0) **相邻去重**：新档案内容与「紧邻的上一条」完全一致 → 不新建（只跟相邻的那条比，不跨条数）。
         //    上一条按（生效日, 创建时间）取最大 —— 新生效日是"今天"时它就是当前生效档案
@@ -136,7 +146,7 @@ class CalcProfileRepository @Inject constructor(
                 CalcProfile(id = "", name = name, salary = salary, attend = attend, breaks = breaks, effectiveFrom = effectiveFrom)
             )
         ) {
-            return prev
+            return@withTransaction prev
         }
         // 1) 收口原本延伸到「至今」的档案（生效日 <= 新档案生效日的那些）
         //    - 生效日 **早于** 新档案 → to = 新档案生效日 − 1（正常接力）
@@ -164,7 +174,7 @@ class CalcProfileRepository @Inject constructor(
             createdAt   = System.currentTimeMillis()
         )
         dao.upsert(profile.toEntity())
-        return profile
+        profile
     }
 
     /**
@@ -239,20 +249,23 @@ class CalcProfileRepository @Inject constructor(
      */
     suspend fun deleteIfUnused(profile: CalcProfile): Boolean {
         if (deletability(profile) !is ProfileDeletability.Deletable) return false
-        // 前一条 = 生效日不晚于它的档案里，按（生效日, 创建时间）取最大的一条。
-        // 用 <= 是为了**同日场景**：删掉当前生效的那条后，同一天早些时候创建的那条接管。
-        val prev = dao.getAll()
-            .filter { it.effectiveFrom <= profile.effectiveFrom && it.id != profile.id }
-            .maxWithOrNull(compareBy({ it.effectiveFrom }, { it.createdAt }))
-        if (prev != null && prev.effectiveTo != null) {
-            val next = dao.getAll()
-                .filter { it.effectiveFrom > profile.effectiveFrom }
-                .minByOrNull { it.effectiveFrom }
-            // 接管区间：有下一条则到它前一天，否则延伸到「至今」
-            dao.update(prev.copy(effectiveTo = next?.let { dayBefore(it.effectiveFrom) }))
+        // 同 createProfile：恢复接力 + 删除目标必须原子完成，否则中途失败会留下"今天起无档案可用"的空档
+        return db.withTransaction {
+            // 前一条 = 生效日不晚于它的档案里，按（生效日, 创建时间）取最大的一条。
+            // 用 <= 是为了**同日场景**：删掉当前生效的那条后，同一天早些时候创建的那条接管。
+            val prev = dao.getAll()
+                .filter { it.effectiveFrom <= profile.effectiveFrom && it.id != profile.id }
+                .maxWithOrNull(compareBy({ it.effectiveFrom }, { it.createdAt }))
+            if (prev != null && prev.effectiveTo != null) {
+                val next = dao.getAll()
+                    .filter { it.effectiveFrom > profile.effectiveFrom }
+                    .minByOrNull { it.effectiveFrom }
+                // 接管区间：有下一条则到它前一天，否则延伸到「至今」
+                dao.update(prev.copy(effectiveTo = next?.let { dayBefore(it.effectiveFrom) }))
+            }
+            dao.deleteById(profile.id)
+            true
         }
-        dao.deleteById(profile.id)
-        return true
     }
 
     /**
@@ -265,9 +278,9 @@ class CalcProfileRepository @Inject constructor(
      * 同日多条属于合法的历史记录（当天改过几次就留几条），计算侧靠 createdAt 取最新。
      * 因此自愈只修「谁该是当前生效」这个唯一的事实，不做任何数据取舍。
      */
-    suspend fun repairRelay(): Int {
+    suspend fun repairRelay(): Int = db.withTransaction {
         val all = dao.getAll().sortedWith(compareBy({ it.effectiveFrom }, { it.createdAt }))
-        if (all.size < 2) return 0
+        if (all.size < 2) return@withTransaction 0
         var fixed = 0
         for (i in all.indices) {
             // 末条 → 至今；其余 → 下一条生效日 − 1，但**不早于自身生效日**
@@ -279,7 +292,7 @@ class CalcProfileRepository @Inject constructor(
                 fixed++
             }
         }
-        return fixed
+        fixed
     }
 
     suspend fun deleteAll() { dao.deleteAll() }

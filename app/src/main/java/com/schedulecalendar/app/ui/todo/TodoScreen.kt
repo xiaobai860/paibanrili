@@ -1,6 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/ui/todo/TodoScreen.kt
 package com.schedulecalendar.app.ui.todo
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import android.Manifest
 import androidx.compose.foundation.background
@@ -56,6 +57,7 @@ import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import java.util.Date
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
 import com.schedulecalendar.app.ui.util.currentLocale
 
@@ -1585,7 +1587,11 @@ private data class HolidayListItem(
  * 生成含农历转换开销较大，缓存后切 Tab/重新进入页面秒开，不再重复计算。
  */
 private object HolidayYearCache {
-    val yearData = mutableMapOf<Int, List<HolidayListItem>>()
+    /**
+     * 用 ConcurrentHashMap 而非普通 HashMap：本缓存会被后台线程写入（生成农历转换很重，
+     * 刻意不在主线程算），而主线程同时在读 → 普通 HashMap 并发读写可能死循环/读到脏值。
+     */
+    val yearData: ConcurrentHashMap<Int, List<HolidayListItem>> = ConcurrentHashMap()
 }
 
 /** 按年生成节假日列表（法定 + 节气 + 传统 + 国际；农历转换较重，需在后台线程调用） */
@@ -1612,7 +1618,7 @@ private fun generateHolidaysForYear(year: Int): List<HolidayListItem> {
                 }
             } catch (e: Exception) {
                 // 静默吞掉会让「节假日名称缺失」无从排查，这里记日志后继续扫描下一天
-                AppLog.w("TodoScreen", "holiday name resolve failed: $year-$m-$d", e)
+                AppLog.w(LogTags.TODO_SCREEN, "holiday name resolve failed: $year-$m-$d", e)
             }
         }
     }

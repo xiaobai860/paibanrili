@@ -23,7 +23,16 @@ interface CalcProfileDao {
     @Query("SELECT * FROM calc_profiles WHERE effectiveFrom <= :date AND (effectiveTo IS NULL OR effectiveTo >= :date) ORDER BY effectiveFrom ASC, createdAt DESC LIMIT 1")
     suspend fun getEffectiveOn(date: String): CalcProfileEntity?
 
-    @Query("SELECT * FROM calc_profiles WHERE effectiveFrom <= :to AND (effectiveTo IS NULL OR effectiveTo >= :from) ORDER BY effectiveFrom ASC")
+    /**
+     * 取落在区间内的档案。
+     *
+     * ⚠️ 排序必须与 [getEffectiveOn] 保持一致：`effectiveFrom ASC, createdAt DESC`。
+     * 同一天生效的多条档案是**合法状态**（用户规则：数据不一样就生成一条），
+     * 此时必须让**最新创建**的那条排在前面 —— 否则「按日分段」会先吃下旧档案、
+     * 把当天判给旧口径，而「单日查询」走 [getEffectiveOn] 拿的是新口径
+     * → 同一天工时/薪资两处不一致（历史上踩过同类坑）。
+     */
+    @Query("SELECT * FROM calc_profiles WHERE effectiveFrom <= :to AND (effectiveTo IS NULL OR effectiveTo >= :from) ORDER BY effectiveFrom ASC, createdAt DESC")
     suspend fun getInRange(from: String, to: String): List<CalcProfileEntity>
 
     @Query("SELECT COUNT(*) FROM calc_profiles")

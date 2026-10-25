@@ -89,11 +89,16 @@ object LunarCalendar {
 
     fun getLunarDayText(year: Int, month: Int, day: Int): String {
         val key = Triple(year, month, day)
-        return lunarDayTextCache[key] ?: run {
-            val l = solarToLunar(year, month, day)
-            val text = if (l.lunarDay == 1) l.monthText else l.dayText
-            lunarDayTextCache[key] = text
-            text
+        // ⚠️ 读改写必须在同一把锁里：accessOrder=true 的 LinkedHashMap，get() 会把命中节点
+        // 移到链表尾（结构性修改）→ 并发 get 可能破坏链表结构。
+        // 农历转换偏重，放在锁内算还能避免多线程同时 miss 时重复计算。
+        return synchronized(lunarDayTextCache) {
+            lunarDayTextCache[key] ?: run {
+                val l = solarToLunar(year, month, day)
+                val text = if (l.lunarDay == 1) l.monthText else l.dayText
+                lunarDayTextCache[key] = text
+                text
+            }
         }
     }
 
@@ -210,7 +215,10 @@ object LunarCalendar {
     /** 获取完整黄历信息（全部字段由 tyme4j 计算，结果缓存） */
     fun getFullHuangLi(year: Int, month: Int, day: Int): FullHuangLi {
         val key = Triple(year, month, day)
-        fullHuangLiCache[key]?.let { return it }
+        // ⚠️ 读也要加锁：accessOrder 的 get() 是结构性修改（见 getLunarDayText 的说明）
+        synchronized(fullHuangLiCache) {
+            fullHuangLiCache[key]?.let { return it }
+        }
 
         val dateStr = DateFormats.date(year, month, day)
         val solarDay = SolarDay.fromYmd(year, month, day)
@@ -279,7 +287,9 @@ object LunarCalendar {
             dogDay = dogDayText,
             plumRain = plumRainText
         )
-        fullHuangLiCache[key] = result
+        synchronized(fullHuangLiCache) {
+            fullHuangLiCache[key] = result
+        }
         return result
     }
 
