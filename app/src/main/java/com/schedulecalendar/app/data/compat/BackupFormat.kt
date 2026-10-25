@@ -65,12 +65,6 @@ object BackupFormat {
         return runCatching { el.asJsonPrimitive.asInt }.getOrNull()
     }
 
-    /** 当前版本下该种类备份的格式版本号 */
-    fun currentVersion(kind: BackupKind): Int = when (kind) {
-        BackupKind.APP_DATA -> DataFormat.APP_DATA_BACKUP
-        BackupKind.SHIFT_CONFIG -> DataFormat.SHIFT_CONFIG_BACKUP
-    }
-
     /**
      * **版本闸门**：判断某个备份文件能否被当前版本恢复。
      *

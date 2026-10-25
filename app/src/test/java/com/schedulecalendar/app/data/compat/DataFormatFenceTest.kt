@@ -35,25 +35,32 @@ class DataFormatFenceTest {
         assertEquals(7, DataFormat.MIN_SUPPORTED_SHIFT_CONFIG_BACKUP)
     }
 
+    /**
+     * 栅栏**只升不降**：下限被钉死在最终兼容版的格式版本上。
+     *
+     * ⚠️ 这里用**值锁定**（`assertEquals`）而不是 `a >= b` 的比较断言：
+     * 两边都是编译期常量时，`>=` 会被折叠成恒真 → 断言形同虚设（IDE 也会报「条件始终为 true」）。
+     * 改用字面量比较后，一旦有人把下限调低（重新兼容 v1~v6），这里就会立刻红。
+     */
     @Test
     fun fenceMayOnlyRiseNeverFall() {
-        assertTrue(
-            "数据库最低支持版本不得低于栅栏 ${DataFormat.COMPAT_FENCE}",
-            DataFormat.MIN_SUPPORTED_DB_VERSION >= DataFormat.COMPAT_FENCE
-        )
-        assertTrue(
-            "应用数据备份最低版本不得低于 ${DataFormat.APP_DATA_BACKUP}",
-            DataFormat.MIN_SUPPORTED_APP_DATA_BACKUP >= DataFormat.APP_DATA_BACKUP
-        )
-        assertTrue(
-            "班次配置备份最低版本不得低于 ${DataFormat.SHIFT_CONFIG_BACKUP}",
-            DataFormat.MIN_SUPPORTED_SHIFT_CONFIG_BACKUP >= DataFormat.SHIFT_CONFIG_BACKUP
-        )
+        assertEquals(7, DataFormat.COMPAT_FENCE)
+        assertEquals(7, DataFormat.MIN_SUPPORTED_DB_VERSION)
+        assertEquals(5, DataFormat.MIN_SUPPORTED_APP_DATA_BACKUP)
+        assertEquals(7, DataFormat.MIN_SUPPORTED_SHIFT_CONFIG_BACKUP)
     }
 
+    /**
+     * 当前格式版本必须被自己的闸门放行（等价于「当前版本 ≥ 最低支持版本」，但走真实代码路径）。
+     *
+     * 用**运行时函数** `decideByDbVersion` 表达 → 不会被编译期折叠，断言是有效的。
+     */
     @Test
-    fun currentVersionIsNotBelowMinSupported() {
-        assertTrue(DataFormat.CURRENT >= DataFormat.MIN_SUPPORTED_DB_VERSION)
+    fun currentVersionIsAcceptedByTheGate() {
+        assertEquals(
+            DataFormat.DbVersionDecision.OPEN,
+            DataFormat.decideByDbVersion(DataFormat.CURRENT)
+        )
     }
 
     // ── 2. 闸门决策 ────────────────────────────────────────────────────

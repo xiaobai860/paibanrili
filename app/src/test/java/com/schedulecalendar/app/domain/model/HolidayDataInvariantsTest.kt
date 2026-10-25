@@ -1,6 +1,7 @@
 package com.schedulecalendar.app.domain.model
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
@@ -73,10 +74,15 @@ class HolidayDataInvariantsTest {
     /** ④ 非法日期查询不抛异常（该函数在 Glance 组合内被调用） */
     @Test
     fun invalidDateLookupDoesNotThrow() {
-        listOf("", "2026-02-30", "abc", "2026-13-01", "2026-00-10").forEach {
-            HolidayData.isLegalHoliday(it)
-            HolidayData.isMakeupDay(it)
-            HolidayData.isTransferWorkday(it)
+        // 显式断言"不抛异常"：否则将来若有人给这些函数加了 try-catch 吞异常，
+        // 本测试会退化成"什么都没验"的空壳（且测试框架不报错）。
+        for (bad in listOf("", "2026-02-30", "abc", "2026-13-01", "2026-00-10")) {
+            val error = runCatching {
+                HolidayData.isLegalHoliday(bad)
+                HolidayData.isMakeupDay(bad)
+                HolidayData.isTransferWorkday(bad)
+            }.exceptionOrNull()
+            assertNull("非法日期 '$bad' 不应抛异常，实际抛出：$error", error)
         }
     }
 

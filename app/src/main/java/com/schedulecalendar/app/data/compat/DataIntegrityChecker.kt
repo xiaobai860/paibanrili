@@ -5,7 +5,6 @@ import com.google.gson.JsonParser
 import com.schedulecalendar.app.data.db.dao.CalcProfileDao
 import com.schedulecalendar.app.data.db.dao.ExtraItemDao
 import com.schedulecalendar.app.data.db.dao.ScheduleRecordDao
-import com.schedulecalendar.app.data.db.dao.ShiftBreakDao
 import com.schedulecalendar.app.data.db.dao.ShiftDao
 import com.schedulecalendar.app.data.db.dao.ShiftStatusDao
 import com.schedulecalendar.app.domain.model.BUILTIN_SHIFTS
@@ -33,7 +32,6 @@ class DataIntegrityChecker @Inject constructor(
     private val scheduleRecordDao: ScheduleRecordDao,
     private val shiftDao: ShiftDao,
     private val shiftStatusDao: ShiftStatusDao,
-    private val shiftBreakDao: ShiftBreakDao,
     private val extraItemDao: ExtraItemDao,
     private val calcProfileDao: CalcProfileDao
 ) {
