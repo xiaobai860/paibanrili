@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      ObsoleteSdkInt（mipmap-anydpi-v26）：
+      Lint 认为 minSdk=34 时目录名上的 "-v26" 限定符多余，建议合并为 "mipmap-anydpi"。
+
+      实测：照此建议改目录会导致 **AAPT2 资源链接失败**：
+          AAPT: error: resource mipmap/ic_launcher (aka com.schedulecalendar.app:mipmap/ic_launcher) not found
+          AAPT: error: resource mipmap/ic_launcher_round not found
+      （不带版本限定符的 anydpi 目录不会被 AAPT2 识别为有效资源目录，manifest 的 icon 引用直接解析不到。）
+
+      因此：保留 "-v26" 目录，并对本路径定向豁免，避免后续有人再按 Lint 建议改目录导致打包失败。
+      与之相对，同名检查在**代码**里的 3 处（MainActivity / ReminderSettingsScreen / Theme）
+      已按 minSdk=34 实际清理为无版本判断，故仅豁免资源目录这一路径。
+    -->
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+</lint>

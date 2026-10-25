@@ -3,7 +3,6 @@ package com.schedulecalendar.app
 
 import android.Manifest
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -100,9 +99,8 @@ class MainActivity : ComponentActivity() {
                                 val permissions = buildList {
                                     add(Manifest.permission.READ_CALENDAR)
                                     add(Manifest.permission.WRITE_CALENDAR)
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        add(Manifest.permission.POST_NOTIFICATIONS)
-                                    }
+                                    // minSdk=34 > 33(TIRAMISU)：通知权限恒需申请，无需版本判断
+                                    add(Manifest.permission.POST_NOTIFICATIONS)
                                 }.toTypedArray()
                                 permissionLauncher.launch(permissions)
                             },

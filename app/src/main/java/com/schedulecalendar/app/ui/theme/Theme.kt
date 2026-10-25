@@ -1,7 +1,6 @@
 // app/src/main/java/com/schedulecalendar/app/ui/theme/Theme.kt
 package com.schedulecalendar.app.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -24,7 +23,7 @@ fun ScheduleCalendarTheme(
 
     val colors = when {
         // 本项目 minSdk = 34（Android 14），动态取色在运行时始终可用
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        dynamicColor -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context)
             else dynamicLightColorScheme(context)

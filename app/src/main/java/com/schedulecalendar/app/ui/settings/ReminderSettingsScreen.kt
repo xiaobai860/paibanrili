@@ -1,7 +1,6 @@
 package com.schedulecalendar.app.ui.settings
 
 import android.Manifest
-import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,17 +54,11 @@ fun ReminderSettingsScreen(
     // 监听是否需要请求日历权限
     LaunchedEffect(state.pendingCalendarPermission) {
         if (state.pendingCalendarPermission) {
-            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                arrayOf(
-                    Manifest.permission.READ_CALENDAR,
-                    Manifest.permission.WRITE_CALENDAR
-                )
-            } else {
-                arrayOf(
-                    Manifest.permission.READ_CALENDAR,
-                    Manifest.permission.WRITE_CALENDAR
-                )
-            }
+            // minSdk=34：日历权限恒为同一组，无需版本分支
+            val permissions = arrayOf(
+                Manifest.permission.READ_CALENDAR,
+                Manifest.permission.WRITE_CALENDAR
+            )
             calendarPermissionLauncher.launch(permissions)
         }
     }
