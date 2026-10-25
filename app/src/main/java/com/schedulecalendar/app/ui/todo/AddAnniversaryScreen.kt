@@ -1,7 +1,7 @@
 package com.schedulecalendar.app.ui.todo
+import com.schedulecalendar.app.domain.util.AppLog
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -45,7 +45,6 @@ private enum class CalendarReminderTime(val label: String, val minutes: Int) {
  * 包含：名称、日期（公历/农历）、每年重复、日历提醒、闹钟提醒、描述/备注
  * @param eventId 非null时为编辑模式，加载已有纪念日数据
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddAnniversaryScreen(
     navController: NavController,
@@ -249,7 +248,7 @@ fun AddAnniversaryScreen(
                                 } catch (e: Exception) {
                                     // 转换失败若继续切换模式，农历三项会停留在旧值而公历已变，
                                     // 用户会存下错误的纪念日；这里提示并保持原模式
-                                    android.util.Log.w("AddAnniversary", "solarToLunar failed", e)
+                                    AppLog.w("AddAnniversary", "solarToLunar failed", e)
                                     android.widget.Toast.makeText(
                                         context, "该日期不支持农历转换", android.widget.Toast.LENGTH_SHORT
                                     ).show()
@@ -263,7 +262,7 @@ fun AddAnniversaryScreen(
                                     selectedMonth = s.month
                                     selectedDay = s.day
                                 } catch (e: Exception) {
-                                    android.util.Log.w("AddAnniversary", "lunarToSolar failed", e)
+                                    AppLog.w("AddAnniversary", "lunarToSolar failed", e)
                                     android.widget.Toast.makeText(
                                         context, "该农历日期不支持转换", android.widget.Toast.LENGTH_SHORT
                                     ).show()
@@ -337,9 +336,8 @@ fun AddAnniversaryScreen(
                             )
                             // 显示对应农历
                             if (currentLunar != null) {
-                                val l = currentLunar
                                 Text(
-                                    "农历${l.yearGanZhi}年 ${l.monthText}${l.dayText}",
+                                    "农历${currentLunar.yearGanZhi}年 ${currentLunar.monthText}${currentLunar.dayText}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -479,15 +477,15 @@ fun AddAnniversaryScreen(
 
                         // 全天事件必须使用 UTC 时区，dtEnd 为次日 00:00 UTC
                         val utc = java.util.TimeZone.getTimeZone("UTC")
-                        val startCal = java.util.Calendar.getInstance(utc).apply {
+                        val startCal = Calendar.getInstance(utc).apply {
                             set(solarY, solarM - 1, solarD, 0, 0, 0)
-                            set(java.util.Calendar.MILLISECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
                         }
                         val startTime = startCal.timeInMillis
-                        val endCal = java.util.Calendar.getInstance(utc).apply {
+                        val endCal = Calendar.getInstance(utc).apply {
                             set(solarY, solarM - 1, solarD, 0, 0, 0)
-                            set(java.util.Calendar.MILLISECOND, 0)
-                            add(java.util.Calendar.DAY_OF_MONTH, 1)
+                            set(Calendar.MILLISECOND, 0)
+                            add(Calendar.DAY_OF_MONTH, 1)
                         }
                         val endTime = endCal.timeInMillis
 

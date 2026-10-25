@@ -1,7 +1,6 @@
 // app/src/main/java/com/schedulecalendar/app/ui/navigation/AppNavHost.kt
 package com.schedulecalendar.app.ui.navigation
-import android.util.Log
-import com.schedulecalendar.app.BuildConfig
+import com.schedulecalendar.app.domain.util.AppLog
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
@@ -142,7 +141,7 @@ fun AppNavHost() {
     val currentDest = navBackStackEntry?.destination
     // 调试日志放在副作用里，避免每次重组都打印
     LaunchedEffect(currentDest?.route) {
-        if (BuildConfig.DEBUG) Log.e("WBD", "navhost: dest=" + (currentDest?.route ?: "null"))
+        AppLog.d("WBD","navhost: dest=" + (currentDest?.route ?: "null"))
     }
     // ⚠️ 类型安全路由（kotlinx.serialization）的 destination.route 是**路由模板**，
     // 带参数的路由形如 "…RouteTodo?focusMonth={focusMonth}" 或 "…RouteTodo/{focusMonth}?"，
@@ -282,7 +281,7 @@ fun AppNavHost() {
         // BackHandler 放在 NavHost 之后组合（后注册 → 优先级高于 NavHost 的返回处理），
         // 确保在任意 Tab 页按返回一次直接退出，而不会被 NavHost 先 popBackStack 回退到上一级。
         BackHandler(enabled = showBottomBar && !calendarSubModeActive) {
-            if (BuildConfig.DEBUG) Log.e("WBD", "navhost: BACK pressed (finish) dest=" + (currentDest?.route ?: "null"))
+            AppLog.d("WBD","navhost: BACK pressed (finish) dest=" + (currentDest?.route ?: "null"))
             val act = context as? Activity
             if (act != null && !act.isFinishing) {
                 act.finishAndRemoveTask()

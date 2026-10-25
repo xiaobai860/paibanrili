@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
+import com.schedulecalendar.app.domain.util.AppLog
 
 /**
  * 纪念日提醒接收器
@@ -37,7 +38,7 @@ class AnniversaryReminderReceiver : BroadcastReceiver() {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             // Android 13+ 未授予通知权限时 notify 会被静默丢弃，仅记录日志便于排查
             if (!nm.areNotificationsEnabled()) {
-                android.util.Log.w("AnniversaryReminder", "notifications disabled, skip remind")
+                AppLog.w("AnniversaryReminder", "notifications disabled, skip remind")
                 return
             }
 
@@ -57,7 +58,7 @@ class AnniversaryReminderReceiver : BroadcastReceiver() {
                 BASE_NOTIFICATION_ID + (title.hashCode() and Int.MAX_VALUE) % NOTIFICATION_ID_RANGE
             }
             nm.notify(notificationId, notification)
-        }.onFailure { it.printStackTrace() }
+        }.onFailure { AppLog.e("AnniversaryReminderReceiver", "show anniversary reminder failed", it) }
     }
 
     private fun createNotificationChannelIfNeeded(context: Context) {
