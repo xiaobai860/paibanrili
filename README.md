@@ -51,7 +51,7 @@
 - 事件驱动刷新 + 15 分钟周期兜底刷新
 
 ### 提醒
-- 上下班打卡提醒（精确闹钟，预调度「过去 3 天 ~ 未来 5 天」共 9 天窗口）
+- 上下班打卡提醒（精确闹钟，预调度「过去 3 天 ~ 未来 7 天」共 11 天窗口）
 - 纪念日提醒
 
 ### 其他
@@ -75,14 +75,15 @@
 | 语言 | Kotlin |
 | UI | Jetpack Compose + Material3 |
 | 架构 | MVVM + Hilt 依赖注入 |
-| 数据库 | Room（当前版本 6，导出 schema） |
+| 数据库 | Room（当前版本 7，导出 schema） |
 | 偏好存储 | DataStore（`app_config`）+ SharedPreferences（仅组件数据缓存） |
 | 导航 | Navigation Compose（类型安全路由） |
 | 异步 | Kotlin Coroutines + Flow |
 | 桌面组件 | Glance 1.2.0 + WorkManager 2.12.0 |
 | 序列化 | Gson（配置/组件数据 JSON）+ kotlinx-serialization（Navigation 路由） |
 | 农历/节气/黄历 | tyme4j 1.5.1（`cn.6tail:tyme4j`，依据紫金山天文台《农历的编算和颁行》） |
-| 单元测试 | JUnit 4（守护法定节假日表 + 历法数据对账 + 加班判定与三档计薪金额映射 + 计算口径档案区间选择 + 备份反序列化默认值） |
+| 单元测试 | JUnit 4（13 个测试类 / 116 例：法定节假日表 + 历法数据对账 + 加班判定与三档计薪金额映射 + 计算口径档案区间选择 + 备份反序列化默认值 + 备份往返 + 数据格式栅栏 + ProGuard 规则） |
+| 仪器测试 | AndroidX Test Runner（5 个测试类，需连真机：档案删除残留 / 孤儿数据清理 / 薪资考勤一致性） |
 
 ## 构建环境与版本信息
 
@@ -109,7 +110,7 @@
     ```
 - 发版前核对设备真值：`adb shell dumpsys package com.schedulecalendar.app | findstr /C:versionCode`
   （**不要只比对自家历史记录** —— 曾因此误判成"不会回退"）
-- lint 已屏蔽：`HighAppVersionCode`、`IconLauncherShape`、`IconDuplicates`、`UnusedAttribute`、`NewerVersionAvailable`、`ReportShortcutUsage`
+- lint 已屏蔽：`HighAppVersionCode`、`IconLauncherShape`、`IconDuplicates`、`UnusedAttribute`、`NewerVersionAvailable`、`ReportShortcutUsage`；`app/lint.xml` 只对 `mipmap-anydpi-v26/ic_launcher*.xml` 的 `ObsoleteSdkInt` 做了**定向豁免**（不要整目录屏蔽）
 
 ### 构建命令
 ```bash
@@ -119,8 +120,14 @@
 # 发布版（改过资源/混淆敏感代码后务必加参数关闭缓存）
 ./gradlew assembleRelease --rerun-tasks --no-build-cache
 
-# 单元测试（节假日/历法守护 + 计薪与加班判定；改过 HolidayData / LunarCalendar / CalcUtils 后必跑）
+# 单元测试（116 例：节假日/历法/计薪/档案/备份格式守护；改过 HolidayData / LunarCalendar / CalcUtils / 备份载荷后必跑）
 ./gradlew testDebugUnitTest
+
+# 仪器测试（5 例，必须连真机；改过档案删除、孤儿数据清理、薪资考勤一致性后必跑）
+./gradlew connectedDebugAndroidTest
+
+# Lint
+./gradlew lintDebug
 ```
 
 > **Windows / PowerShell 下**：必须先给 Gradle 指定 JDK17（否则可能用错 JDK），且要用**单条 `cmd /c "…"`** 串联，
@@ -142,12 +149,26 @@ RELEASE_KEY_PASSWORD=your_password
 ```
 
 ### ⚠️ R8/ProGuard 关键注意事项
-`app/proguard-rules.pro` 中以下 keep 规则**必须永久保留**，删除会导致小组件"载入出错"（真机已复现）：
-- `androidx.glance.**` / `androidx.glance.appwidget.**` 全保留
-- `androidx.work.**` 全保留 + `InputMerger`/`Worker`/`ListenableWorker` 子类保留
-- 原因：R8 裁剪掉 `OverwritingInputMerger` 无参构造 → Glance 后台 worker 实例化失败
+`app/proguard-rules.pro` **只保留必要规则**：Hilt / Room / Gson / coroutines / WorkManager 的规则**已由各库自带的
+consumer 规则覆盖**（AGP 自动合并 AAR/JAR 内的 proguard 文件），不再重复声明。
 
-其他 keep：Gson 反序列化数据类（`domain.model.**` 等）、Navigation 路由 `-keepnames Route*`、MainActivity 状态字段防内联。
+**必须永久保留**（删掉会出事）：
+- `-keep class androidx.glance.** { *; }` —— Glance **运行时本体**（Composition / Provider / Action 内部类）
+  **不在**其 consumer 规则内，删了 release 包小组件会「载入出错」（真机已复现）
+- `-keep class com.schedulecalendar.app.domain.model.**` 与 `...app.widget.**` —— 领域模型与小组件数据的
+  **字段名会被写进用户数据**（备份 JSON / SharedPreferences），混淆即数据损坏
+- `-keep class ...data.compat.AppDataBackup` / `ShiftConfigBackup` —— 备份载荷类字段名就是数据格式
+  （曾出事故：release 包导出的备份全部不可恢复）
+- `-keep class ...data.repository.AppliedStatusJson` —— 其字段名被直接写进 Room 的 `appliedStatusesJson` 列
+- `-keepnames class ...ui.navigation.Route*` —— 类型安全路由的 serialName 取自类全名，改名会导致 route 串不匹配
+- `-keepnames class ...widget.WidgetRefreshWorker` —— WorkManager 按类名反射实例化
+- `-keepattributes Signature / *Annotation* / RuntimeVisibleAnnotations,AnnotationDefault` —— Gson 泛型签名与序列化注解
+
+**改动这些规则后必须真机验证**（Hilt 注入 / Room 打开 / 小组件加载 / WorkManager 运行），
+并看 R8 映射表 `app/build/outputs/mapping/release/mapping.txt`：
+- 保留类应写作 `com.x.Y -> com.x.Y:`（**原名 + 尾冒号**）
+- **该类块内不应出现任何成员行** —— 成员没被改名就不会被写进映射表；
+  一旦出现 `getShifts() -> b` 这类行，就说明字段名被混淆了（备份 JSON 会失效）
 
 ## 项目结构
 
@@ -157,19 +178,40 @@ app/src/main/java/com/schedulecalendar/app/
 ├── ScheduleApp.kt           # @HiltAndroidApp：数据变更→刷新组件；WorkManager 兜底
 ├── data/                    # 数据层
 │   ├── db/                  #   AppDatabase(v7) + 6 Entity + 6 DAO
+│   ├── compat/              #   兼容治理层：DataFormat(版本真相源) / BackupFormat(格式探测+闸门)
+│   │                        #   / BackupPayloads(当前格式载荷) / CompatGate(启动闸门) / DataIntegrityChecker(校验)
 │   ├── calendar/            #   系统日历集成（认证器 + CalendarProvider 仓库）
 │   ├── repository/          #   仓库层（Entity↔Domain 映射 + 变更信号 Flow）
 │   └── prefs/               #   AppPreferences（DataStore 封装）
 ├── domain/                  # 领域层（纯 Kotlin，无 Android 依赖）
-│   ├── model/               #   Models / CalcUtils / HolidayData / LunarCalendar
+│   ├── model/               #   Models / CalcUtils / CalcInputs / CalcProfile
+│   │                        #   / HolidayData / LunarCalendar
 ├── di/                      # Hilt Module（DatabaseModule / PreferencesModule）
 ├── reminder/                # 提醒：调度器 + 4 个 BroadcastReceiver
 ├── ui/                      # Compose 界面层（Screen + ViewModel + 导航 + 主题）
-│   └── calendar/            #   已按职责拆分：CalendarScreen / CalendarDialogs / CalendarCells
+│   ├── calendar/            #   已按职责拆分：CalendarScreen / CalendarDialogs / CalendarCells
+│   ├── compat/              #   CompatOverlay（数据格式闸门不通过时的阻断遮罩）
+│   ├── detail/              #   排班详情页（ScheduleDetailScreen）
+│   ├── hours/               #   工时明细页（HoursDetailScreen）
+│   ├── salary/              #   薪资相关页
+│   ├── statistics/          #   统计页（工时/薪资图表）
+│   ├── shifts/              #   班次管理 + 编辑器 + 显示方案
+│   ├── settings/            #   设置及子页（薪资/考勤/日历账户/提醒/组件/存储/数据管理）
+│   ├── todo/                #   事项页（日程/纪念日）
+│   └── navigation/          #   AppNavHost + 类型安全路由（Route*）
 └── widget/                  # Glance 小组件 + 数据同步 + 周期刷新 Worker
 
-app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest + TymeAlmanacTest
-                                              #   + CalcUtilsOvertimeTest + CalcUtilsSalaryTierTest）
+app/src/test/java/com/schedulecalendar/app/          # 单元测试（13 个测试类，共 116 例）
+│   ├── data/compat/            #   BackupRestoreRoundTrip / DataFormatFence / ProguardBackupRules
+│   ├── data/repository/        #   ReferenceIdParser
+│   ├── domain/model/           #   CalcProfile / CalcUtilsAttendance / CalcUtilsOvertime
+│   │                           #   / CalcUtilsProfile / CalcUtilsSalaryTier
+│   │                           #   / HolidayData / HolidayDataInvariants / TymeAlmanac
+│   └── ui/settings/            #   BackupGson
+app/src/androidTest/java/com/schedulecalendar/app/  # 仪器测试（5 个测试类，需连真机）
+└── data/repository/            #   BreakProfileLifecycle / OrphanDataCleaner
+                                 #   / ProfileDeleteAndCopy / ProfileDeletionResidue
+                                 #   / SalaryAttendConsistency
 ```
 
 ### 数据层（`data/`）
@@ -192,8 +234,8 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 
 - **自动备份**：应用数据每次启动做一次（轻量指纹：表计数 + 档案计数 + 全部备份覆盖的偏好哈希，未变则跳过写盘）；班次配置在每次增删改后立即生成
 - **不在备份范围**（均为设备相关或可重建数据）：组件数据缓存与外观配置、备份设置自身（保留份数/自定义路径/指纹）、一次性初始化标记、**系统日历中的纪念日/日程**（存 CalendarProvider，随系统日历账户存续）
-- **还原语义**：字段存在即**整表替换**（与弹窗「当前数据会被覆盖」一致）；旧版备份缺字段时该项**保持现状**，绝不清空用户数据；恢复前自动生成一份 `_manual` 快照可回退；DB 事务成功后才写偏好
-- **旧版备份兼容**：可空字段策略区分「缺字段」与「真空列表」；`BackupGson` 注册 InstanceCreator，旧备份缺非空字段时落 Kotlin 默认值（否则撞 NOT NULL 约束）；`version <= 2` 的备份只含最近 12 个月排班（2026-08-22 前实现的限制），恢复时会明确提示
+- **还原语义**：字段存在即**整表替换**（与弹窗「当前数据会被覆盖」一致）；备份里缺该字段时该项**保持现状**，绝不清空用户数据；恢复前自动生成一份 `_manual` 快照可回退；DB 事务成功后才写偏好
+- **版本闸门（不再兼容旧格式）**：只接受**当前格式**（应用数据 v5 / 班次配置 v7）；更低版本的备份**直接拒绝**，并提示装兼容版（224 / 2026102503）导出后再升级 —— 不做「尽力解析」（那会让历史工时/薪资静默算错）。可空字段策略仍区分「缺字段」与「真空列表」；`BackupGson` 注册 InstanceCreator，缺非空字段时落 Kotlin 默认值（否则撞 NOT NULL 约束）。详见 `docs/数据兼容与迁移策略.md`
 - **存储位置**：默认应用私有目录；可设 SAF 自定义目录，**写入失败（介质摘除/权限失效）自动回退私有目录**，保证任何情况下当天都有可恢复的备份
 
 ### UI 层（`ui/`）
@@ -222,13 +264,13 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 - 数据一致性：打卡记录与组件数据分离存储，`updateWidgetData` 负责清理失效关联
 
 ### 提醒（`reminder/`）
-- `ReminderScheduler`：`AlarmManager.setAlarmClock` 预调度未来 7 天上下班提醒
+- `ReminderScheduler`：`AlarmManager.setAlarmClock` 预调度「过去 3 天 ~ 未来 7 天」窗口内的上下班提醒
 - `AlarmReceiver` / `AnniversaryReminderReceiver`：发通知（`goAsync` 防超时）
 - `BootReceiver`：开机后重新调度
 - `TimeChangeReceiver`：时间/时区变更后全量重调度
 
 ### 依赖注入（`di/`）
-- `DatabaseModule`：`AppDatabase` + 5 个 DAO 单例
+- `DatabaseModule`：`AppDatabase` + 6 个 DAO 单例
 - `PreferencesModule`：`AppPreferences` 单例
 - BroadcastReceiver / GlanceWidget 无法构造注入，统一通过 **Hilt EntryPoint**（`EntryPointAccessors.fromApplication`）获取依赖
 
@@ -261,7 +303,9 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 
 ### 单元测试守护
 
-`app/src/test/java/com/schedulecalendar/app/domain/model/` 下有四个测试类（共 44 用例）：
+`app/src/test/java/com/schedulecalendar/app/` 下有 **13 个测试类、共 116 个用例**：
+
+**历法与节假日（`domain/model/`）**
 
 **`HolidayDataTest.kt`**（8 用例，守护自研节假日表）：
 
@@ -269,6 +313,8 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 - 各覆盖年份假期数下限、放假与补班不重叠、补班日必落在周末（已核验年份）
 - 超出覆盖范围时退化为「仅按周末」，绝不误判为节假日
 - 2024 / 2025 / 2026 与国务院公告逐条回归
+
+**`HolidayDataInvariantsTest.kt`**（5 用例，守护节假日表的跨年不变式：放假日与补班日不得重叠、补班日必在周末、节假日名唯一等）
 
 **`TymeAlmanacTest.kt`**（17 用例，守护历法数据 & 「确实用上了库」）：
 
@@ -278,6 +324,8 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 - 黄历字段取值合法性；12 时辰顺序与时间；冲煞逐日反推校验
 - 七十二候 / 数九 / 三伏 / 梅雨取值范围；**三伏与数九严格互斥**（跨 21 年扫描）
 - 星期与 JDK 公历逐日交叉验证
+
+**计薪与考勤（`domain/model/`）**
 
 **`CalcUtilsOvertimeTest.kt`**（7 用例，守护「计为加班」判定）：
 
@@ -294,11 +342,33 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 - **同源回归**：日历格子「加班收入」与「每日总收入」之和必须等于月汇总对应项
   （历史 bug 曾导致同一天金额在日历页与薪资页对不上，这条专门锁死它）
 
+**`CalcUtilsAttendanceTest.kt`**（7 用例，守护迟到/早退次数与容忍时长口径）
+
+**计算口径档案（`domain/model/`）**
+
+**`CalcProfileTest.kt`**（11 用例）与 **`CalcUtilsProfileTest.kt`**（9 用例，守护「档案 + 生效日接力」）：
+
+- 区间左闭右闭、相邻档案不重叠、按日期取当天生效档案
+- 改档案不改历史工时/薪资（历史排班仍按当时生效的档案计算）
+- 无档案时回退 DataStore 现值；跨月边界取档案正确
+
+**数据兼容与备份（`data/compat/`、`data/repository/`、`ui/settings/`）**
+
+**`DataFormatFenceTest.kt`**（11 用例，锁定数据格式栅栏**只升不降**：DB 版本 / 应用数据备份版本 / 班次配置备份版本）
+**`BackupRestoreRoundTripTest.kt`**（11 用例，备份→还原→再备份的往返一致性）
+**`ProguardBackupRulesTest.kt`**（4 用例，守护备份载荷字段名的 keep 规则不被误删）
+**`BackupGsonTest.kt`**（7 用例，守护备份反序列化的默认值与可空字段策略）
+**`ReferenceIdParserTest.kt`**（7 用例，守护归档记录引用的班次/状态 id 解析）
+
 ```bash
+# 单元测试（116 例）
 ./gradlew testDebugUnitTest
+
+# 仪器测试（5 例，必须连真机）
+./gradlew connectedDebugAndroidTest
 ```
 
-> `assembleRelease` **不会**执行单元测试；改完节假日数据、历法、计薪/加班逻辑后请手动跑一次。
+> `assembleRelease` **不会**执行单元测试；改完节假日数据、历法、计薪/加班逻辑、备份格式或数据格式栅栏后请手动跑一次。
 
 ### tyme4j 使用清单（2026-09-13 已完成历法迁移）
 
@@ -381,6 +451,64 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 > （`yyyyMMdd` + 是否上班位 + 节日索引 + 正负偏移 + 天数）。理论上可**追加**自备的未来年份数据，
 > 但修改库的静态字段属于非常规用法，采用前需评估。
 
+## 计算口径档案（改配置不影响历史计算）
+
+### 为什么需要
+
+项目里有两类会影响统计计算的数据，机制完全不同：
+
+| 类别 | 实体 | 改动的历史影响 | 处理方式 |
+|---|---|---|---|
+| **有引用锚点** | 班次 / 附加状态 / 补贴扣款 | 排班记录里存了 id（`record.shiftId` / `appliedStatus.statusId` / `extraItemIds`），改实体 = 新版本 | **归档旧记录 + 生成新 UUID 的新记录**；历史排班仍引用旧 id → 历史工时/薪资天然不变 |
+| **无引用锚点** | 薪资配置 / 考勤配置 / 休息时段 | 不挂在任何排班上，改一次就追溯影响**所有**历史 | **配置档案 + 生效日接力**（见下） |
+
+> 2026-10-23 全量审查发现：计算侧曾误用「仅有效班次集合」，导致历史排班解析不到班次 → 工时/薪资变 0，已修复。
+
+### 档案模型（`domain/model/CalcProfile.kt`）
+
+```kotlin
+data class CalcProfile(
+    val id: String,
+    val name: String,                       // 展示名，如「2026-10 调薪」
+    val salary: SalaryConfig,               // 薪资配置快照
+    val attend: AttendConfig,               // 考勤配置快照
+    val breaks: List<ShiftBreak>,           // 全局休息时段集合快照
+    val effectiveFrom: String,              // 生效日 yyyy-MM-dd（含）
+    val effectiveTo: String? = null,        // 失效日 yyyy-MM-dd（含），null = 至今
+    val note: String? = null,
+    val createdAt: Long = 0L
+)
+```
+
+- 存储在 `calc_profiles` 表（`CalcProfileEntity`），三块配置以 JSON 快照形式存一份
+- 区间语义 **左闭右闭** `[effectiveFrom, effectiveTo]`；接力时旧档案的 `to` = 新档案生效日**前一天**，
+  相邻档案首尾相接、**既不重叠也不留空洞**
+- 档案**不可物理删除**（历史可能仍指向它），只能归档（= 把 `effectiveTo` 设为归档日 −1）
+- 排班记录保持**唯一时间轴**，不按档案分区（否则切档案后历史排班会「消失」）
+- **班次 / 附加状态 / 补贴扣款不档案化**：它们有引用锚点，「引用即版本」更精确
+
+### 计算链路
+
+按日取当天生效的档案，再逐日计算：
+
+| API | 用途 |
+|---|---|
+| `CalcUtils.calcMonthHoursByDate` | 按日分段统计月工时 |
+| `CalcUtils.calcMonthSalaryByDate` | 按日分段统计月薪资 |
+| `CalcUtils.getMonthScheduleDetailsByDate` | 日历格子 / 月明细（同一套口径） |
+
+- 没有档案时**回退 DataStore 现值**（保证任何时候都能算出来）
+- 详情页与月汇总必须用**同一套**口径，否则会出现「同一天金额两处不同」
+
+### 改动流程（不可跳过）
+
+1. **复制当前档案** → 替换改动项 → 选生效日（今天 / 下月 1 日）→ 保存（生成新档案并接力旧档案）
+2. **绝不原地覆盖** 已有档案
+3. **休息时段编辑必须先建档案再落库**（建档失败则撤销），避免「表改了但计算没生效」
+4. **清空数据要同时清档案**；**备份必须带上 `calcProfiles`**
+
+> 曾经的坑：直接改表里的薪资/考勤配置 → 历史月份工时薪资一起变，用户完全无法察觉。
+
 ## 计薪规则与加班判定（2026-09-14 定稿）
 
 ### 三档计薪 + 正班（金额映射）
@@ -396,11 +524,18 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 
 ⚠️ **唯一实现是 `CalcUtils.calcDaySalaryParts(hours, cfg): DaySalaryParts`**
 （`bonusTotal` = 三档合计、`total` = 当日工时薪资）。**所有**金额计算都必须经它：
-`calcMonthSalary`、`getMonthScheduleDetails`（日历格子「加班收入」/ 每日总收入）、
-`DetailViewModels`（详情页薪资行）。
+`calcMonthSalary` / `calcMonthSalaryByDate`、`getMonthScheduleDetails` / `getMonthScheduleDetailsByDate`
+（日历格子「加班收入」/ 每日总收入）、`DetailViewModels`（详情页薪资行）。
 
 > 历史 bug：后三处曾各自实现，把周末/节假日工时**一律按加班时薪**计价，与月汇总不一致 →
 > 同一天的金额在日历页和薪资页显示不同。新增同源回归测试锁死。
+
+> ⚠️ **计算侧必须用「含归档」的集合**：`getAllIncludingArchivedWithBuiltin()`。
+> 历史排班引用的是**已归档**的班次/状态，若用「仅有效集合」解析，历史记录会解析不到班次 → 工时/薪资变 0。
+> **UI 选择侧**（下拉、排序、重名校验）才用仅有效集合 `observeAllWithBuiltin()` / `getAllWithBuiltin()`。
+> 日历页 `CalendarViewModel` 区分 `rawShifts`（含归档，算明细）与 `activeShifts`（仅有效，展示）是正确范式 ——
+> 2026-10-25 审计发现该页的**状态**侧曾误用仅有效集合（班次侧正确），导致历史自定义状态名解析不出、
+> 已修复。
 
 **「正常班小时」的口径**：`min(实际工时, 正常班时长阈值)`，阈值优先取班次自带的 `Shift.normalWorkHours`，
 未配置则用 `AttendConfig.normalWorkHoursPerDay`。**只有工作日档才产出正班小时** ——
@@ -468,6 +603,20 @@ Manifest 中 `<application android:enableOnBackInvokedCallback="false">`。
   （根 Tab 返回退出、日历子模式拦截、二级页 popBackStack 等行为都不变），
   转场则完全由上面那套 `AppNavHost` 转场决定
 
+## 项目文档索引（`docs/`）
+
+> ⚠️ `docs/` 目录按项目约定**不进版本库**（`.gitignore` 第 43 行），仅本地留存。
+
+| 文档 | 性质 | 内容 |
+|---|---|---|
+| `docs/数据兼容与迁移策略.md` | **现行策略**（权威） | 数据格式栅栏（DB v7 / 应用数据备份 v5 / 班次配置备份 v7）、版本闸门、备份还原语义 |
+| `docs/calc-profile-plan.md` | **设计与实施存档**（已落地） | 计算口径档案（配置档案 + 生效日接力）的设计决策、区间接力不变式、实施进度 |
+| `docs/打卡按钮与附加状态显示规则需求.md` | **需求定稿**（仍是实现依据） | 2x1 小组件打卡按钮窗口、附加状态时间段计算（S1~S5 场景矩阵） |
+| `docs/代码审查报告-20260822.md` | **历史存档** | 2026-08-22 一次性审查报告；行号与结论均已过时，仅作留档 |
+
+> 文档与代码冲突时：**以代码为准**，并回头修正文档；
+> 涉及数据格式 / 计算口径的文档改动，必须同步跑 `testDebugUnitTest`（含 `DataFormatFenceTest`）。
+
 ## 维护须知（踩坑记录）
 
 1. **改 res 资源后必须 `--rerun-tasks --no-build-cache`**，否则构建缓存复用旧产物，改动不进 APK
@@ -485,6 +634,11 @@ Manifest 中 `<application android:enableOnBackInvokedCallback="false">`。
     应用 FileProvider 也是 `exported=false` → 需要卸载前先**让用户在 App 内「设置 → 数据管理」导出备份**
 11. **不为旧数据做兼容/迁移**（已确认）：内置「加班」附加状态下线后**未保留**历史 ID 兜底 ——
     极少量引用它的旧记录会显示不出状态名、也不再按加班计（用户确认基本没用过该功能，可接受）
+12. **计算侧用「含归档」集合，UI 选择侧用「仅有效」集合**（详见「计薪规则与加班判定」末尾的警示）：
+    历史排班引用的是**已归档**的班次/状态，用仅有效集合会让历史工时/薪资算成 0 或状态名解析不出
+13. **改薪资/考勤/休息时段 = 派生新档案**，绝不原地改表（详见「计算口径档案」）：
+    这三类参数**没有引用锚点**，直接改一次就追溯影响所有历史月份
+14. **文档与代码冲突以代码为准**：改完代码顺手修正 README / `docs/`，别让文档越拖越旧
 
 ## 许可证
 

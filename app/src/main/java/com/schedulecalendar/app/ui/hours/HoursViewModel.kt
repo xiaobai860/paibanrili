@@ -9,7 +9,6 @@ import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.CalcInputResolver
 import com.schedulecalendar.app.data.repository.ExtraItemRepository
 import com.schedulecalendar.app.data.repository.ScheduleRepository
-import com.schedulecalendar.app.data.repository.ShiftBreakRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
@@ -62,7 +61,6 @@ data class HoursUiState(
 class HoursViewModel @Inject constructor(
     private val shiftRepo: ShiftRepository,
     private val scheduleRepo: ScheduleRepository,
-    private val breakRepo: ShiftBreakRepository,
     private val statusRepo: ShiftStatusRepository,
     private val extraRepo: ExtraItemRepository,
     private val prefs: AppPreferences,
@@ -104,10 +102,8 @@ class HoursViewModel @Inject constructor(
                 // 含归档班次/状态：班次编辑采用「归档旧记录 + 新 ID」，
                 // 历史排班仍引用旧 ID，用仅有效集合会导致历史工时算不出来
                 val shifts       = shiftRepo.getAllIncludingArchivedWithBuiltin()
-                val breaks       = breakRepo.getAll()
                 val statuses     = statusRepo.getAllIncludingArchivedWithBuiltin()
                 val extraItems   = extraRepo.getAll()
-                val salaryConf   = prefs.salaryConfigFlow.first()
                 val attendConf   = prefs.attendConfigFlow.first()
                 val records      = scheduleRepo.getByMonth(DateFormats.yearMonth(year, month))
                 val schedules    = records.associateBy { it.date }
@@ -151,10 +147,8 @@ class HoursViewModel @Inject constructor(
                     year, month, schedules, shifts, extraItems, inputsFor, inputsFp
                 )
 
-                // 最近14天每日明细（供图表使用，跨月）
-                val recentDetails = buildRecentDetails(
-                    shifts, breaks, extraItems, salaryConf, attendConf
-                )
+                // 最近7天每日明细（供图表使用，跨月）
+                val recentDetails = buildRecentDetails(shifts, extraItems)
 
                 // 近7个月趋势（不含未来月）
                 val trend = buildTrend(year, month, shifts, statuses)
@@ -183,8 +177,8 @@ class HoursViewModel @Inject constructor(
 
     /** 构建最近7天的每日明细（跨月，供图表使用） */
     private suspend fun buildRecentDetails(
-        shifts: List<Shift>, breaks: List<ShiftBreak>,
-        extraItems: List<ExtraItem>, salaryConf: SalaryConfig, attendConf: AttendConfig
+        shifts: List<Shift>,
+        extraItems: List<ExtraItem>
     ): List<DayScheduleDetail> {
         val today = LocalDate.now()
         val startDate = today.minusDays(6) // 最近7天
@@ -203,13 +197,30 @@ class HoursViewModel @Inject constructor(
         }
         val mergedSchedules = allRecords.associateBy { it.date }
 
+        // 计算口径按**生效日**取：跨月的最近 7 天可能横跨两套口径（如新档案今天生效），
+        // 固定用当前现值会让同一张图里前后几天口径不一致。
+        // 区间取「涉及月份的完整范围」，确保整月明细每一天都命中正确的段。
+        val monthList = months.sorted()
+        val firstYM = monthList.first()
+        val lastYM  = monthList.last()
+        val firstY = firstYM.substring(0, 4).toInt()
+        val firstM = firstYM.substring(5, 7).toInt()
+        val lastY  = lastYM.substring(0, 4).toInt()
+        val lastM  = lastYM.substring(5, 7).toInt()
+        val segFrom = DateFormats.date(firstY, firstM, 1)
+        val segTo   = DateFormats.date(lastY, lastM, java.time.YearMonth.of(lastY, lastM).lengthOfMonth())
+        val segments  = calcInputs.segmentsInRange(segFrom, segTo)
+        val inputsFor = segments.inputsLookup(calcInputs.fallbackInputs())
+        val inputsFp  = segments.inputsFingerprint()
+
         // 为涉及的每个月分别计算明细，然后合并
         val allDetails = mutableListOf<DayScheduleDetail>()
-        for (m in months) {
-            val parts = m.split("-")
-            val y = parts[0].toInt()
-            val mo = parts[1].toInt()
-            allDetails.addAll(CalcUtils.getMonthScheduleDetails(y, mo, mergedSchedules, shifts, breaks, extraItems, salaryConf, attendConf))
+        for (m in monthList) {
+            val y = m.substring(0, 4).toInt()
+            val mo = m.substring(5, 7).toInt()
+            allDetails.addAll(CalcUtils.getMonthScheduleDetailsByDate(
+                y, mo, mergedSchedules, shifts, extraItems, inputsFor, inputsFp
+            ))
         }
 
         // 筛选最近7天

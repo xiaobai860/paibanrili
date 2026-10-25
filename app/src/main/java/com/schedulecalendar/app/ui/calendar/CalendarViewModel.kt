@@ -177,7 +177,10 @@ class CalendarViewModel @Inject constructor(
                         id = NO_SCHEME_ID, name = "预设方案", isNoScheme = true, builtIn = true, isActive = true
                     )
                     val extraItems = extraRepo.getAll()
-                    val rawStatuses = statusRepo.getAllWithBuiltin()
+                    // ⚠️ 必须取「含归档」的状态：历史排班引用的自定义状态可能已归档，
+                    // 若用仅有效集合，buildTodos 解析不出状态名（待办标签为空）、
+                    // DayCell 也渲染不出历史格子上的状态标签。activeStatuses 会再过滤归档项。
+                    val rawStatuses = statusRepo.getAllIncludingArchivedWithBuiltin()
                     // 配置与排序一次读盘（原先 4 次 first() = 4 次文件读 + 4 次整份反序列化）
                     val calcCtx    = prefs.loadCalcContext()
                     val segments  = calcInputs.segmentsInRange(rangeFrom, rangeTo)
@@ -272,7 +275,7 @@ class CalendarViewModel @Inject constructor(
             val sn = shift.name
             val applied = record.appliedStatus
             val isBuiltIn = applied != null && (applied.statusId == BUILTIN_STATUS_LEAVE || applied.statusId == BUILTIN_STATUS_SWAP)
-            // 解析附加状态名称（内置请假/调休/加班 + 自定义状态），供待办项显示
+            // 解析附加状态名称（内置请假/调休 + 自定义状态），供待办项显示
             val stLabel = when {
                 applied == null -> ""
                 applied.statusId == BUILTIN_STATUS_LEAVE -> "请假"
