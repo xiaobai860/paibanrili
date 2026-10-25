@@ -31,6 +31,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
+import com.schedulecalendar.app.domain.util.AppLog
 import com.google.gson.annotations.SerializedName
 import com.schedulecalendar.app.domain.model.*
 import java.time.LocalDate
@@ -119,7 +120,7 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
         // 组合期异常会被 Glance 框架捕获并保留上一次快照（不会崩进程），
         // 但仍记录日志便于排查渲染失败原因。
         runCatching { provideContent { ClockInWidgetContent() } }
-            .onFailure { android.util.Log.e("ScheduleGlanceWidget", "provideGlance failed", it) }
+            .onFailure { AppLog.e("ScheduleGlanceWidget", "provideGlance failed", it) }
     }
 
     companion object {
@@ -130,7 +131,7 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
             // 保证 HOLIDAY 模式的节假日倒计时（组合期按今天现算）等按天内容准时更新。
             // 交互路径（编辑/打卡/后台兜底/手动刷新）传 allowSkipUnchanged=false 强制推送。
             if (allowSkipUnchanged && json == lastPushedClockInJson && lastPushedClockInDay == todayStr) {
-                android.util.Log.d("WIDGET_SYNC", "2x1 update skipped (unchanged)")
+                AppLog.d("WIDGET_SYNC", "2x1 update skipped (unchanged)")
                 return
             }
             // 打卡时间真值统一来自数据库（由 CalendarViewModel.syncWidget 计算并写入 data），
@@ -232,7 +233,7 @@ class WidgetClockInAction : ActionCallback {
 
             scheduleRepo.save(record)
         } catch (e: Exception) {
-            android.util.Log.e("WIDGET", "clockIn save failed", e)
+            AppLog.e("WIDGET", "clockIn save failed", e)
         }
 
         // 打卡反馈：Toast 即时提示（组件自身重渲染为主要反馈，Toast 作补充；
@@ -329,7 +330,7 @@ class WidgetClockOutAction : ActionCallback {
 
             scheduleRepo.save(record)
         } catch (e: Exception) {
-            android.util.Log.e("WIDGET", "clockOut save failed", e)
+            AppLog.e("WIDGET", "clockOut save failed", e)
         }
 
         // 打卡反馈：Toast 即时提示（组件自身重渲染为主要反馈，Toast 作补充；
@@ -700,4 +701,5 @@ interface WidgetClockEntryPoint {
     fun calcInputResolver(): com.schedulecalendar.app.data.repository.CalcInputResolver
     fun reminderScheduler(): ReminderScheduler
     fun widgetRefreshScheduler(): WidgetRefreshScheduler
+    fun backupManager(): com.schedulecalendar.app.ui.settings.BackupManager
 }

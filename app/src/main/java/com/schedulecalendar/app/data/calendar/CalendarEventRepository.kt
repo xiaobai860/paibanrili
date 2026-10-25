@@ -59,7 +59,7 @@ class CalendarEventRepository @Inject constructor(
      * 提醒专用日历 ID 缓存。
      *
      * `getOrCreateReminderCalendarId()` 内部有 1 次 Provider query，账户不存在时还会触发
-     * `addAccountExplicitly` + insert。而 `findEventsByTitlePrefix` / `findEventByDateAndTitle`
+     * `addAccountExplicitly` + insert。而 `findEventsByTitlePrefix`
      * 每次调用都会走一遍，ReminderScheduler 逐条创建提醒时会反复执行。
      * 这里按进程缓存，写入/删除事件后由调用方按需调用 [invalidateReminderCalendarCache]。
      */
@@ -867,27 +867,6 @@ class CalendarEventRepository @Inject constructor(
                 if (deleteEvent(id)) deleted++
             }
             deleted
-        }
-    }
-
-    /**
-     * 查找指定日期和标题的提醒事件是否已存在
-     * 用于避免重复创建上下班提醒日历事件
-     */
-    fun findEventByDateAndTitle(date: String, title: String): Long? {
-        val calId = getOrCreateReminderCalendarId() ?: return null
-        return try {
-            context.contentResolver.query(
-                CalendarContract.Events.CONTENT_URI,
-                arrayOf(CalendarContract.Events._ID),
-                "${CalendarContract.Events.CALENDAR_ID} = ? AND ${CalendarContract.Events.TITLE} = ? AND ${CalendarContract.Events.DESCRIPTION} LIKE ?",
-                arrayOf(calId.toString(), title, "%$date%"),
-                null
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getLong(0) else null
-            }
-        } catch (_: Exception) {
-            null
         }
     }
 

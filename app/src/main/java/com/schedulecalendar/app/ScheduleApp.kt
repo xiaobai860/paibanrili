@@ -1,5 +1,6 @@
 // app/src/main/java/com/schedulecalendar/app/ScheduleApp.kt
 package com.schedulecalendar.app
+import com.schedulecalendar.app.domain.util.AppLog
 
 import android.app.Activity
 import android.app.Application
@@ -26,6 +27,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @HiltAndroidApp
 @OptIn(FlowPreview::class)
@@ -150,6 +152,11 @@ class ScheduleApp : Application() {
                     runSafely("scheduleActiveReminders(changeSignal)") { reminderScheduler.scheduleActiveReminders() }
                     // 排班/班次/状态变更可能改动班次时刻 → 重排小组件刷新闹钟，保持关键时间点准确
                     runSafely("scheduleWidgetRefreshes(changeSignal)") { widgetRefreshScheduler.scheduleWidgetRefreshes() }
+                    // 数据变更（含小组件上下班打卡、排班/班次/状态编辑）立即自动备份，不必等下次冷启动；
+                    // force=true：打卡只改记录内容、指纹不变，必须强制备份
+                    runSafely("autoBackupAppData(changeSignal)") {
+                        withContext(Dispatchers.IO) { ep.backupManager().autoBackupAppData(force = true) }
+                    }
                 }
         }
         // P2：班次/附加状态表变更 → 失效其全表缓存并 bump 版本（下次同步重载/重算）；
@@ -192,7 +199,7 @@ class ScheduleApp : Application() {
      */
     private suspend fun runSafely(tag: String, block: suspend () -> Unit) {
         runCatching { block() }.onFailure {
-            android.util.Log.w("ScheduleApp", "$tag failed", it)
+            AppLog.w("ScheduleApp", "$tag failed", it)
         }
     }
 

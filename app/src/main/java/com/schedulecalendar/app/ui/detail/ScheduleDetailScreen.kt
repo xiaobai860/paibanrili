@@ -1,17 +1,14 @@
 // app/src/main/java/com/schedulecalendar/app/ui/detail/ScheduleDetailScreen.kt
 package com.schedulecalendar.app.ui.detail
-import android.util.Log
 import androidx.compose.ui.res.stringResource
-import com.schedulecalendar.app.BuildConfig
 import com.schedulecalendar.app.R
+import com.schedulecalendar.app.domain.util.AppLog
 import com.schedulecalendar.app.ui.util.currentLocale
 
 import androidx.core.graphics.toColorInt
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -39,10 +36,9 @@ import com.schedulecalendar.app.ui.theme.DeductionRed
 import com.schedulecalendar.app.ui.theme.HolidayRed
 import com.schedulecalendar.app.domain.model.LunarCalendar
 import com.schedulecalendar.app.domain.model.HolidayData
-import java.time.DayOfWeek
 import java.time.LocalDate
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleDetailScreen(
     navController: NavController,
@@ -50,7 +46,7 @@ fun ScheduleDetailScreen(
 ) {
     val state       by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.date) {
-        if (BuildConfig.DEBUG) Log.e("WBD", "detail: composed date=" + state.date)
+        AppLog.d("WBD","detail: composed date=" + state.date)
     }
     val snackbar     = remember { SnackbarHostState() }
     val scrollState  = rememberScrollState()
@@ -65,7 +61,6 @@ fun ScheduleDetailScreen(
     }
 
     var showShiftPicker  by remember { mutableStateOf(false) }
-    var showSalaryPicker by remember { mutableStateOf(false) }
     var showStatusEditor by remember { mutableStateOf<String?>(null) } // statusId being edited
     var showStatusPicker by remember { mutableStateOf(false) }
 
@@ -83,7 +78,7 @@ fun ScheduleDetailScreen(
     BackHandler(
         enabled = showShiftPicker || showStatusPicker || showStatusEditor != null || timeDialogConfig != null
     ) {
-        if (BuildConfig.DEBUG) Log.e("WBD", "detail: back -> close overlays")
+        AppLog.d("WBD","detail: back -> close overlays")
         showShiftPicker  = false
         showStatusPicker = false
         showStatusEditor = null
@@ -124,7 +119,7 @@ fun ScheduleDetailScreen(
         topBar = {
             ScheduleTopBar(
                 title   = stringResource(R.string.detail_title),
-                onBack  = { if (BuildConfig.DEBUG) Log.e("WBD", "detail: topbar back"); navController.popBackStack() },
+                onBack  = { AppLog.d("WBD","detail: topbar back"); navController.popBackStack() },
                 actions = {
                     // 清除按钮（左侧）
                     if (record?.shiftId != null) {
@@ -199,7 +194,7 @@ fun ScheduleDetailScreen(
             Row(
                 Modifier.fillMaxWidth()
                     .clip(MaterialTheme.shapes.medium)
-                    .clickable { if (BuildConfig.DEBUG) Log.e("WBD", "detail: click shift row"); showShiftPicker = true }
+                    .clickable { AppLog.d("WBD","detail: click shift row"); showShiftPicker = true }
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     // 与附加状态行高一致（min 52dp）
                     .heightIn(min = 52.dp)
@@ -308,8 +303,8 @@ fun ScheduleDetailScreen(
                 // 3. 班次是「**无时段**班次」（内置休息/调休/请假）—— 这类班次不排具体上下班时间，
                 //    工时完全由附加状态的时间段决定，加班只能靠这个开关体现，所以**只在这种情况下显示**；
                 //    有时段的普通班次有自己的上下班时间与正常班阈值，不需要它。
-                val shiftHasNoTime = selectedShift.startTime.isNullOrEmpty() ||
-                        selectedShift.endTime.isNullOrEmpty()
+                val shiftHasNoTime = selectedShift.startTime.isEmpty() ||
+                        selectedShift.endTime.isEmpty()
                 val st = appliedSt?.takeIf {
                     shiftHasNoTime &&
                     it.statusId != BUILTIN_STATUS_LEAVE && it.statusId != BUILTIN_STATUS_SWAP
@@ -329,7 +324,7 @@ fun ScheduleDetailScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
                         // 点击行主体 / > 图标 → 弹出附加状态选择页（与选择班次一致）
-                        .clickable { if (BuildConfig.DEBUG) Log.e("WBD", "detail: click status row"); showStatusPicker = true }
+                        .clickable { AppLog.d("WBD","detail: click status row"); showStatusPicker = true }
                 ) {
                     Row(
                         // heightIn 保证「无附加状态」与已选状态行高一致
@@ -501,7 +496,7 @@ fun ScheduleDetailScreen(
         ShiftPickerSheet(
             shifts   = state.shifts,
             onSelect = { id -> vm.setShift(id); showShiftPicker = false },
-            onDismiss = { if (BuildConfig.DEBUG) Log.e("WBD", "detail: shift sheet dismiss"); showShiftPicker = false }
+            onDismiss = { AppLog.d("WBD","detail: shift sheet dismiss"); showShiftPicker = false }
         )
     }
 
@@ -515,7 +510,7 @@ fun ScheduleDetailScreen(
                 if (id == null) vm.clearStatus() else vm.toggleStatus(id, null, null)
                 showStatusPicker = false
             },
-            onDismiss = { if (BuildConfig.DEBUG) Log.e("WBD", "detail: status sheet dismiss"); showStatusPicker = false }
+            onDismiss = { AppLog.d("WBD","detail: status sheet dismiss"); showStatusPicker = false }
         )
     }
 
@@ -534,7 +529,7 @@ fun ScheduleDetailScreen(
 
     // ── 时间选择器对话框（在滚动容器外部渲染，避免被裁剪） ──
     timeDialogConfig?.let { config ->
-        val effectiveTime = if (config.currentTime.isNotEmpty()) config.currentTime else config.defaultTime
+        val effectiveTime = config.currentTime.ifEmpty { config.defaultTime }
         val parts = effectiveTime.split(":")
         val initH = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 8
         val initM = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
@@ -700,18 +695,16 @@ private fun StatusTimeDialog(
         val sel = CalcUtils.timeToMin(t)
         val ss = CalcUtils.timeToMin(defaultStartTime)
         val se = CalcUtils.timeToMin(defaultEndTime)
-        if (sel <= se && sel >= ss) return null // 正常：在范围内
+        if (sel in ss..se) return null // 正常：在范围内
         if (se < ss) {
             // 跨天班次（如 20:30-8:30）：gap = (se, ss)
-            if (sel > se && sel < ss) return if (isStart) defaultStartTime else defaultEndTime
+            // gap = (se, ss) 为严格开区间：正好等于班次起止的边界值保持原样，故用 se+1..<ss 表达
+            if (sel in se + 1..<ss) return if (isStart) defaultStartTime else defaultEndTime
             return null // 剩余情况均在有效范围内
         }
         // 普通班次
-        return when {
-            sel < ss -> defaultStartTime
-            sel > se -> defaultEndTime
-            else -> null
-        }
+        // 走到这里说明 sel 已不在 [ss, se] 内（上方已返回），且 sel >= ss → 必然 sel > se
+        return if (sel < ss) defaultStartTime else defaultEndTime
     }
 
     fun clampAndSet(t: String, isStart: Boolean): String {
@@ -780,7 +773,7 @@ private fun StatusTimeDialog(
         val isStart = editingField == "start"
         val currentTime = if (isStart) s else e
         val defaultTime = if (isStart) defaultStartTime else defaultEndTime
-        val effectiveTime = if (currentTime.isNotEmpty()) currentTime else defaultTime
+        val effectiveTime = currentTime.ifEmpty { defaultTime }
         val parts = effectiveTime.split(":")
         val initH = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 8
         val initM = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0

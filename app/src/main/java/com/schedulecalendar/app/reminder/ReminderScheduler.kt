@@ -1,12 +1,13 @@
 package com.schedulecalendar.app.reminder
+import com.schedulecalendar.app.domain.util.AppLog
 
+import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import androidx.core.app.NotificationCompat
 import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.data.prefs.AppPreferences
@@ -18,7 +19,6 @@ import com.schedulecalendar.app.domain.model.BUILTIN_STATUS_SWAP
 import com.schedulecalendar.app.domain.model.CalcUtils
 import com.schedulecalendar.app.domain.util.DateFormats
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
@@ -176,7 +176,7 @@ class ReminderScheduler @Inject constructor(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.util.Log.w("ReminderScheduler", "schedule failed, signature not committed", e)
+                AppLog.w("ReminderScheduler", "schedule failed, signature not committed", e)
             }
         }
     }
@@ -255,13 +255,10 @@ class ReminderScheduler @Inject constructor(
 
     /** 班次 id → (开始时间, 结束时间, 名称)，一次查询建表；含归档班次（历史排班可能仍引用） */
     private suspend fun loadShiftTimesMap(): Map<String, Triple<String, String, String>> {
-        val map = HashMap<String, Triple<String, String, String>>()
-        for (s in shiftRepo.getAllIncludingArchivedWithBuiltin()) {
-            if (s.builtIn && s.builtInType != null) continue      // 内置休息/调休不设提醒
-            if (s.startTime.isBlank() || s.endTime.isBlank()) continue
-            map[s.id] = Triple(s.startTime, s.endTime, s.name)
-        }
-        return map
+        return shiftRepo.getAllIncludingArchivedWithBuiltin()
+            .filter { !(it.builtIn && it.builtInType != null) }      // 内置休息/调休不设提醒
+            .filter { it.startTime.isNotBlank() && it.endTime.isNotBlank() }
+            .associate { it.id to Triple(it.startTime, it.endTime, it.name) }
     }
 
     /**
@@ -316,8 +313,7 @@ class ReminderScheduler @Inject constructor(
                         timeStr = clockInTime,
                         advanceMinutes = clockInMinutes,
                         isClockIn = true,
-                        shiftName = shiftTimes.third,
-                        skipExistenceCheck = true
+                        shiftName = shiftTimes.third
                     )
                 }
                 if (clockOutEnabled && clockOutTime.isNotBlank()) {
@@ -326,8 +322,7 @@ class ReminderScheduler @Inject constructor(
                         timeStr = clockOutTime,
                         advanceMinutes = clockOutMinutes,
                         isClockIn = false,
-                        shiftName = shiftTimes.third,
-                        skipExistenceCheck = true
+                        shiftName = shiftTimes.third
                     )
                 }
             }
@@ -468,10 +463,12 @@ class ReminderScheduler @Inject constructor(
      * 即使在 Doze 模式、电池优化、省电模式下也能准时触发，且**无需应用常驻后台**。
      *
      * 权限说明：
-     * - setAlarmClock 是 API 21+ 的用户闹钟语义，由系统保证触发，
-     *   不受 SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM 精确闹钟权限约束（该权限仅约束 setExact*），
-     *   因此在国产 ROM 下也能稳定触发，无需在此做 canScheduleExactAlarms() 校验。
+     * - 本 app minSdk 34（Android 14+），manifest 已声明 USE_EXACT_ALARM
+     *   （日历/排班类应用属其合法用例，安装期即授予），足以满足 setAlarmClock 的精确闹钟要求；
+     * - lint 的 MissingPermission 只识别 SCHEDULE_EXACT_ALARM（该权限在 API 31-32 生效，
+     *   本 app minSdk 34 不涉及），故此处按「已具备精确闹钟资格」抑制。
      */
+    @SuppressLint("MissingPermission")
     private fun scheduleReminder(
         date: LocalDate,
         timeStr: String,
@@ -484,13 +481,13 @@ class ReminderScheduler @Inject constructor(
             // 脏数据（如 "8"、"08:"）会数组越界，必须先校验长度并记日志：
             // 否则异常被外层空 catch 吞掉，表现为「该日提醒静默不注册」
             if (timeParts.size < 2) {
-                android.util.Log.w("ReminderScheduler", "bad time format: $timeStr")
+                AppLog.w("ReminderScheduler", "bad time format: $timeStr")
                 return
             }
             val hour = timeParts[0].toIntOrNull()
             val minute = timeParts[1].toIntOrNull()
             if (hour == null || minute == null || hour !in 0..23 || minute !in 0..59) {
-                android.util.Log.w("ReminderScheduler", "bad time value: $timeStr")
+                AppLog.w("ReminderScheduler", "bad time value: $timeStr")
                 return
             }
 
@@ -525,7 +522,10 @@ class ReminderScheduler @Inject constructor(
             )
             val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerTime, showPendingIntent)
             alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // 精确闹钟不可用时（如用户关闭「闹钟和提醒」权限）必须留痕：
+            // 否则该日提醒静默不注册，用户只看到「提醒没响」，无任何线索
+            AppLog.w("ReminderScheduler", "setAlarmClock failed: $date $timeStr", e)
         }
     }
 
@@ -601,22 +601,20 @@ class ReminderScheduler @Inject constructor(
         timeStr: String,
         advanceMinutes: Int,
         isClockIn: Boolean,
-        shiftName: String,
-        /** 调用方已先 force-clean 全部旧事件时置 true，跳过「查重」省去一次 ContentProvider 查询 */
-        skipExistenceCheck: Boolean = false
+        shiftName: String
     ) {
         try {
             val timeParts = timeStr.split(":")
             // 脏数据（如 "8"、"08:"）会数组越界，必须先校验长度并记日志：
             // 否则异常被外层空 catch 吞掉，表现为「该日提醒静默不注册」
             if (timeParts.size < 2) {
-                android.util.Log.w("ReminderScheduler", "bad time format: $timeStr")
+                AppLog.w("ReminderScheduler", "bad time format: $timeStr")
                 return
             }
             val hour = timeParts[0].toIntOrNull()
             val minute = timeParts[1].toIntOrNull()
             if (hour == null || minute == null || hour !in 0..23 || minute !in 0..59) {
-                android.util.Log.w("ReminderScheduler", "bad time value: $timeStr")
+                AppLog.w("ReminderScheduler", "bad time value: $timeStr")
                 return
             }
 
@@ -627,12 +625,6 @@ class ReminderScheduler @Inject constructor(
                 "$CALENDAR_REMINDER_PREFIX$typeLabel"
             }
             val dateStr = date.toString()
-
-            // 检查是否已存在，避免重复创建（force-clean 后调用可跳过以省去一次查询）
-            if (!skipExistenceCheck) {
-                val existingId = calendarRepo.findEventByDateAndTitle(dateStr, title)
-                if (existingId != null) return
-            }
 
             val triggerTime = date.atTime(LocalTime.of(hour, minute))
                 .minusMinutes(advanceMinutes.toLong())
@@ -660,7 +652,7 @@ class ReminderScheduler @Inject constructor(
             throw e
         } catch (e: Exception) {
             // 日历提醒创建失败不能静默：否则用户表现为「提醒配了却从不响」且无线索
-            android.util.Log.w("ReminderScheduler", "scheduleCalendarReminder failed: $date $timeStr", e)
+            AppLog.w("ReminderScheduler", "scheduleCalendarReminder failed: $date $timeStr", e)
         }
     }
 
@@ -689,7 +681,7 @@ class ReminderScheduler @Inject constructor(
             throw e
         } catch (e: Exception) {
             // 清理失败必须留痕：残留事件会导致「明明关了提醒，通知还在弹」
-            android.util.Log.w("ReminderScheduler", "forceCleanupCalendarReminders failed", e)
+            AppLog.w("ReminderScheduler", "forceCleanupCalendarReminders failed", e)
         }
     }
 }
