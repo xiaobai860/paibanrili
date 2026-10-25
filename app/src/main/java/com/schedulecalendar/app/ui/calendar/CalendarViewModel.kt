@@ -1,9 +1,9 @@
 // app/src/main/java/com/schedulecalendar/app/ui/calendar/CalendarViewModel.kt
 package com.schedulecalendar.app.ui.calendar
+import com.schedulecalendar.app.domain.util.AppLog
 
 import com.schedulecalendar.app.domain.util.DateFormats
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.schedulecalendar.app.data.calendar.CalendarEventInfo
@@ -11,17 +11,16 @@ import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.data.repository.ExtraItemRepository
 import com.schedulecalendar.app.data.repository.ScheduleRepository
-import com.schedulecalendar.app.data.repository.ShiftBreakRepository
 import com.schedulecalendar.app.data.repository.ShiftRepository
 import com.schedulecalendar.app.data.repository.ShiftStatusRepository
 import com.schedulecalendar.app.domain.model.*
 import com.schedulecalendar.app.widget.applyS4StatusRange
 import com.schedulecalendar.app.widget.isBuiltInStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -29,6 +28,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
 
 // ── 待办中心数据 ───────────────────────────────────────────────────────────────
 
@@ -109,10 +109,8 @@ data class CalendarUiState(
 
 @HiltViewModel
 class CalendarViewModel @Inject constructor(
-    @param:ApplicationContext private val context: Context,
     private val shiftRepo: ShiftRepository,
     private val scheduleRepo: ScheduleRepository,
-    private val breakRepo: ShiftBreakRepository,
     private val extraRepo: ExtraItemRepository,
     private val statusRepo: ShiftStatusRepository,
     private val backupManager: com.schedulecalendar.app.ui.settings.BackupManager,
@@ -137,11 +135,11 @@ class CalendarViewModel @Inject constructor(
         // 以及 calendarEventRepo.getOrCreateLocalCalendarId() 内的 AccountManager/ContentResolver 同步 Binder
         // 都会阻塞主线程造成卡顿（已在 OPPO UISlowBinder 与 GC freed 59MB 中证实）。
         viewModelScope.launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(500)
+            delay(500.milliseconds)
             backupManager.autoBackupAppData()
         }
         viewModelScope.launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(1000)
+            delay(1000.milliseconds)
             calendarEventRepo.getOrCreateLocalCalendarId()
         }
     }
@@ -152,12 +150,6 @@ class CalendarViewModel @Inject constructor(
             val s = _state.value
 
             // 计算日历网格覆盖的完整日期范围（含跨月填充日期）
-            val ym = YearMonth.of(s.year, s.month)
-            val daysInMonth = ym.lengthOfMonth()
-            val firstDow = (LocalDate.of(s.year, s.month, 1).dayOfWeek.value + 6) % 7  // 周一=0..周日=6
-            val totalCells = firstDow + daysInMonth
-            val totalRows = (totalCells + 6) / 7
-            val remainingInLastRow = totalRows * 7 - totalCells
             // 上月（滑动联动用，需加载完整月份数据）
             val prevYM = if (s.month == 1) YearMonth.of(s.year - 1, 12) else YearMonth.of(s.year, s.month - 1)
             // 下月（滑动联动用，需加载完整月份数据）
@@ -184,7 +176,6 @@ class CalendarViewModel @Inject constructor(
                     val scheme     = schemes.firstOrNull { it.isActive } ?: DisplayScheme(
                         id = NO_SCHEME_ID, name = "预设方案", isNoScheme = true, builtIn = true, isActive = true
                     )
-                    val breaks     = breakRepo.getAll()
                     val extraItems = extraRepo.getAll()
                     val rawStatuses = statusRepo.getAllWithBuiltin()
                     // 配置与排序一次读盘（原先 4 次 first() = 4 次文件读 + 4 次整份反序列化）
@@ -192,7 +183,6 @@ class CalendarViewModel @Inject constructor(
                     val segments  = calcInputs.segmentsInRange(rangeFrom, rangeTo)
                     val inputsFor = segments.inputsLookup(calcInputs.fallbackInputs())
                     val inputsFp  = segments.inputsFingerprint()
-                    val salaryConf = calcCtx.salaryConfig
                     val attendConf = calcCtx.attendConfig
                     // 按用户自定义排序（与 ShiftsScreen 保持一致），并过滤已归档项
                     val shiftOrder = calcCtx.shiftOrder
@@ -213,20 +203,19 @@ class CalendarViewModel @Inject constructor(
                     }
                     // 完整列表用于历史数据展示查找（含已归档项）
                     val allShifts = rawShifts
-                    val allShiftStatuses = rawStatuses
                     // 计算当月详情（使用完整列表，确保历史归档班次也能正确计算）
                     val curDetails = CalcUtils.getMonthScheduleDetailsByDate(
                         s.year, s.month, schedules, allShifts, extraItems, inputsFor, inputsFp
                     ).associateBy { it.date }
                     // 计算完整相邻月份详情（支持滑动联动时显示相邻月份网格）
-                                        val prevDetails = CalcUtils.getMonthScheduleDetailsByDate(
+                    val prevDetails = CalcUtils.getMonthScheduleDetailsByDate(
                         prevYM.year, prevYM.monthValue, schedules, allShifts, extraItems, inputsFor, inputsFp
                     ).associateBy { it.date }
-                                        val nextDetails = CalcUtils.getMonthScheduleDetailsByDate(
+                    val nextDetails = CalcUtils.getMonthScheduleDetailsByDate(
                         nextYM.year, nextYM.monthValue, schedules, allShifts, extraItems, inputsFor, inputsFp
                     ).associateBy { it.date }
                     val allDetails = curDetails + prevDetails + nextDetails
-                    val todos      = buildTodos(s.year, s.month, schedules, allShifts, attendConf, allShiftStatuses)
+                    val todos      = buildTodos(s.year, s.month, schedules, allShifts, attendConf, rawStatuses)
                     // 切月竞态防护：若本次收集协程已被取消，则不回写状态，
                     // 避免被取消的旧月份计算完成后覆盖新月份的结果。
                     if (isActive) _state.update { it.copy(
@@ -239,7 +228,7 @@ class CalendarViewModel @Inject constructor(
                         todos          = todos,
                         extraItems     = extraItems,
                         shiftStatuses  = shiftStatuses,
-                        allShiftStatuses = allShiftStatuses,
+                        allShiftStatuses = rawStatuses,
                         loading        = false
                     )}
                     // Widget 同步由 ScheduleApp 全局数据变更信号统一驱动（任何排班/班次/状态落库后 400ms 自动同步）。
@@ -414,18 +403,6 @@ class CalendarViewModel @Inject constructor(
         loadCurrentMonth()
     }
 
-    /** 跳转到指定日期并自动点击该日期 */
-    fun goToDay(year: Int, month: Int, day: Int) {
-        val dateStr = DateFormats.date(year, month, day)
-        // 先跳转到目标月份
-        if (year != _state.value.year || month != _state.value.month) {
-            _state.update { it.copy(year = year, month = month, loading = true, todos = emptyList(), dayDetails = emptyMap()) }
-            loadCurrentMonth()
-        }
-        // 跳转到详情页
-        viewModelScope.launch { _uiEvent.send(CalendarUiEvent.NavigateToDetail(dateStr)) }
-    }
-
     // ── 日期操作 ──────────────────────────────────────────────────────
 
     fun onDayClick(date: String) {
@@ -445,14 +422,14 @@ class CalendarViewModel @Inject constructor(
     private fun loadSelectedDateEvents(date: String) {
         viewModelScope.launch {
             val events = try {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
                     val disabledIds = prefs.getDisabledAccountIds()
                     calendarEventRepo.getEventsForDate(date)
                         .filter { it.calendarId !in disabledIds }
                 }
             } catch (e: Exception) {
                 // 记日志：静默清空会让「明明有事件却显示无事件」无从排查
-                android.util.Log.w("CalendarViewModel", "loadSelectedDateEvents failed: $date", e)
+                AppLog.w("CalendarViewModel", "loadSelectedDateEvents failed: $date", e)
                 emptyList()
             }
             // 回写前校验仍是当前选中日期：慢查询返回时用户可能已切到别的日期，
@@ -470,12 +447,12 @@ class CalendarViewModel @Inject constructor(
     private fun loadDatesWithEvents(rangeFrom: String, rangeTo: String) {
         viewModelScope.launch {
             val datesWithEvents = try {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
                     val disabledIds = prefs.getDisabledAccountIds()
-                    val fromDate = try { java.time.LocalDate.parse(rangeFrom) } catch (_: Exception) { null }
-                    val toDate = try { java.time.LocalDate.parse(rangeTo) } catch (_: Exception) { null }
+                    val fromDate = try { LocalDate.parse(rangeFrom) } catch (_: Exception) { null }
+                    val toDate = try { LocalDate.parse(rangeTo) } catch (_: Exception) { null }
                     if (fromDate == null || toDate == null) {
-                        emptySet<String>()
+                        emptySet()
                     } else {
                         // 一次性按月区间在 ContentProvider 端过滤，避免 getAllEvents() 全量拉取
                         val rangeStartMs = fromDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
@@ -507,7 +484,7 @@ class CalendarViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.w("CalendarViewModel", "loadDatesWithEvents failed", e)
+                AppLog.w("CalendarViewModel", "loadDatesWithEvents failed", e)
                 // 失败时保留上一次结果：直接清空会让日历格上的事件指示点全部消失，误导用户
                 return@launch
             }
@@ -547,7 +524,7 @@ class CalendarViewModel @Inject constructor(
             if (timeMin < endMin) {
                 // 打卡时间早于班次结束 → 跨午夜，归属前一天
                 val prevDate = try {
-                    java.time.LocalDate.parse(date).minusDays(1).toString()
+                    LocalDate.parse(date).minusDays(1).toString()
                 } catch (_: Exception) { date }
                 prevDate
             } else date
@@ -607,18 +584,18 @@ class CalendarViewModel @Inject constructor(
             rec.copy(appliedStatus = newStatus)
         } else {
             // 跨午夜修正：下班打卡时间早于班次结束时间，视为前一天班次
-            var finalStartTime = startTime?.ifBlank { null } ?: rec.actualStartTime
+            val finalStartTime = startTime?.ifBlank { null } ?: rec.actualStartTime
             var finalEndTime   = endTime?.ifBlank { null } ?: rec.actualEndTime
             var targetDate     = date
 
-            if (endTime != null && endTime.isNotBlank()) {
+            if (!endTime.isNullOrBlank()) {
                 if (shift != null && shift.endTime.isNotEmpty()) {
                     val timeMin = CalcUtils.timeToMin(endTime)
                     val endMin  = CalcUtils.timeToMin(shift.endTime)
                     if (timeMin < endMin) {
                         // 打卡时间早于班次结束 → 跨午夜，归属前一天
                         val prevDate = try {
-                            java.time.LocalDate.parse(date).minusDays(1).toString()
+                            LocalDate.parse(date).minusDays(1).toString()
                         } catch (_: Exception) { date }
                         targetDate = prevDate
                         finalEndTime = endTime
@@ -738,57 +715,6 @@ class CalendarViewModel @Inject constructor(
         _uiEvent.send(CalendarUiEvent.ShowMessage("已撤销 $date 晚退加班忽略"))
     }
 
-    fun applyRule(overwrite: Boolean = false) = viewModelScope.launch {
-        val s    = _state.value
-        val rule = s.scheduleRule ?: return@launch
-        runCatching {
-            val results = applyScheduleRule(rule, s.year, s.month, s.schedules, overwrite)
-            scheduleRepo.saveAll(results)
-            _uiEvent.send(CalendarUiEvent.ShowMessage("已应用排班规则，共 ${results.size} 天"))
-        }.onFailure {
-            _uiEvent.send(CalendarUiEvent.ShowError("应用排班规则失败：${it.message}"))
-        }
-    }
-
-    /** 将 ScheduleRule 应用到当月 */
-    private fun applyScheduleRule(
-        rule: ScheduleRule,
-        year: Int, month: Int,
-        existing: Map<String, ScheduleRecord>,
-        overwrite: Boolean
-    ): List<ScheduleRecord> {
-        if (rule.shiftIds.isEmpty()) return emptyList()
-        val ym   = YearMonth.of(year, month)
-        val days = ym.lengthOfMonth()
-        val results = mutableListOf<ScheduleRecord>()
-
-        // 解析起始日期（用于连续循环模式）
-        val startDate: LocalDate? = runCatching {
-            val p = rule.startDate.split("-")
-            LocalDate.of(p[0].toInt(), p[1].toInt(), p[2].toInt())
-        }.getOrNull()
-
-        for (d in 1..days) {
-            val dateStr = DateFormats.date(year, month, d)
-            if (!overwrite && existing.containsKey(dateStr)) continue
-
-            val idx = if (rule.independentCycle || startDate == null) {
-                // 每月独立循环：月内第几天 + 起始偏移
-                (d - 1 + rule.startOffset) % rule.shiftIds.size
-            } else {
-                // 从 startDate 连续往后算
-                val dayDate  = LocalDate.of(year, month, d)
-                val diffDays = startDate.until(dayDate).days
-                val raw      = (diffDays + rule.startOffset) % rule.shiftIds.size
-                if (raw < 0) raw + rule.shiftIds.size else raw
-            }
-
-            val shiftId = rule.shiftIds[idx]
-            results.add((existing[dateStr] ?: ScheduleRecord(dateStr)).copy(shiftId = shiftId))
-        }
-        return results
-    }
-
     // ── 批量操作 ──────────────────────────────────────────────────────
 
     /** 退出所有操作模式 */
@@ -854,33 +780,9 @@ class CalendarViewModel @Inject constructor(
         loadCurrentMonth()
     }
 
-    /** 全选当月所有日期（不限有无排班） */
-    fun batchSelectAll() {
-        val s = _state.value
-        val daysInMonth = getDaysInMonth(s.year, s.month)
-        val allDates = (1..daysInMonth).map { DateFormats.date(s.year, s.month, it) }.toSet()
-        _state.update { it.copy(batchSelected = allDates) }
-    }
-
     /** 取消全选 */
     fun batchClearSelection() {
         _state.update { it.copy(batchSelected = emptySet()) }
-    }
-
-    /** 添加单个日期到选择集 */
-    fun batchAddToSelection(date: String) {
-        val sel = _state.value.batchSelected.toMutableSet()
-        sel.add(date)
-        _state.update { it.copy(batchSelected = sel) }
-    }
-
-    /** 复制排班模式：添加单个日期到源日期集合 */
-    fun copyAddToSelection(date: String) {
-        val st = _state.value
-        if (st.copyPhase != 1) return
-        val dates = st.copySourceDates.toMutableSet()
-        dates.add(date)
-        _state.update { it.copy(copySourceDates = dates) }
     }
 
     // ── 复制排班操作 ──────────────────────────────────────────────

@@ -1,4 +1,5 @@
 package com.schedulecalendar.app.data.repository
+import com.schedulecalendar.app.domain.util.AppLog
 
 import kotlinx.coroutines.flow.MutableSharedFlow
 
@@ -11,6 +12,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
  */
 internal fun MutableSharedFlow<Unit>.notifyChangedOrLog(tag: String) {
     if (!tryEmit(Unit)) {
-        android.util.Log.w(tag, "changeSignal emit dropped")
+        AppLog.w(tag, "changeSignal emit dropped")
     }
 }

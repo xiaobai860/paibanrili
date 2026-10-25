@@ -1,4 +1,5 @@
 ﻿package com.schedulecalendar.app.data.compat
+import com.schedulecalendar.app.domain.util.AppLog
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -139,13 +140,13 @@ class CompatGate @Inject constructor(
         val report = checker.check(snapshot?.counts)
         if (!report.ok) {
             // 失败必须留下日志：否则「升级失败」只有用户看得见弹窗，排查时无从下手
-            android.util.Log.e("CompatGate", "升级后校验未通过：${report.summary()}")
+            AppLog.e("CompatGate", "升级后校验未通过：${report.summary()}")
             val rollbackError = snapshot?.let {
                 runCatching { backupManager.restoreFromJson(it.json) }.exceptionOrNull()
             }
             val rolledBack = snapshot != null && rollbackError == null
             if (rollbackError != null) {
-                android.util.Log.e("CompatGate", "回滚失败", rollbackError)
+                AppLog.e("CompatGate", "回滚失败", rollbackError)
             }
             finished = true
             _state.value = State.Failed(
@@ -159,8 +160,8 @@ class CompatGate @Inject constructor(
         stampCurrentFormat()
         finished = true
         // 升级说明与校验警告写入日志：它们不影响使用，但排查数据问题时非常关键
-        notes.forEach { android.util.Log.i("CompatGate", it) }
-        report.warnings.forEach { android.util.Log.w("CompatGate", it) }
+        notes.forEach { AppLog.i("CompatGate", it) }
+        report.warnings.forEach { AppLog.w("CompatGate", it) }
         _state.value = State.Ready(report, fileVersion, notes)
     }
 

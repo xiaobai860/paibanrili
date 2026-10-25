@@ -1,7 +1,6 @@
 // app/src/main/java/com/schedulecalendar/app/data/repository/ExtraItemRepository.kt
 package com.schedulecalendar.app.data.repository
 
-import android.util.Log
 import com.schedulecalendar.app.data.db.dao.ExtraItemDao
 import com.schedulecalendar.app.domain.model.ExtraItem
 import javax.inject.Inject
@@ -9,7 +8,6 @@ import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 @Singleton
@@ -24,7 +22,7 @@ class ExtraItemRepository @Inject constructor(
     private val _changeSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val changeSignal: Flow<Unit> = _changeSignal.asSharedFlow()
 
-    private suspend fun notifyChanged() = _changeSignal.notifyChangedOrLog("ExtraItemRepo")
+    private fun notifyChanged() = _changeSignal.notifyChangedOrLog("ExtraItemRepo")
 
     /** 观察有效（未归档）的项目，用于UI显示 */
     fun observeActive(): Flow<List<ExtraItem>> = dao.observeActive().map { it.map { e -> e.toDomain() } }
@@ -34,7 +32,6 @@ class ExtraItemRepository @Inject constructor(
     /** 补贴扣款总数（轻量指纹查询） */
     suspend fun countAll(): Int = dao.countAll()
     suspend fun save(item: ExtraItem) { dao.upsert(item.toEntity()); notifyChanged() }
-    suspend fun saveAll(items: List<ExtraItem>) { dao.upsertAll(items.map { it.toEntity() }); notifyChanged() }
     /** 归档项目（逻辑删除） */
     suspend fun archive(id: String) { dao.archiveById(id, java.time.Instant.now().toString()); notifyChanged() }
     suspend fun delete(id: String) { dao.deleteById(id); notifyChanged() }

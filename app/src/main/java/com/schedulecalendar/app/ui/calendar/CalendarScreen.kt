@@ -1,14 +1,11 @@
 // app/src/main/java/com/schedulecalendar/app/ui/calendar/CalendarScreen.kt
 package com.schedulecalendar.app.ui.calendar
-import android.util.Log
-import com.schedulecalendar.app.BuildConfig
+import com.schedulecalendar.app.domain.util.AppLog
 
 import androidx.compose.animation.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,10 +16,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,11 +78,11 @@ private data class GridCacheKey(
 )
 
 @Composable
-private fun renderDateGrid(
+private fun RenderDateGrid(
     gridYear: Int, gridMonth: Int, totalRows: Int,
     shiftMap: Map<String, Shift>,
     state: CalendarUiState,
-    today: LocalDate, todayStr: String,
+    todayStr: String,
     vm: CalendarViewModel,
     navController: NavController
 ) {
@@ -233,7 +228,7 @@ private fun renderDateGrid(
         }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltViewModel(), onSubModeChange: (Boolean) -> Unit = {}) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -245,7 +240,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
     var batchExpanded by remember { mutableStateOf(false) }
     // 调试日志放到副作用里：原先直接写在组合体内会在每次重组都打印（滑动/动画时刷屏）
     LaunchedEffect(state.batchMode, state.copyMode, state.deleteMode, batchExpanded) {
-        if (BuildConfig.DEBUG) Log.e("WBD", "calendar: mode=[b=" + state.batchMode + ",c=" + state.copyMode + ",d=" + state.deleteMode + "] expanded=" + batchExpanded)
+        AppLog.d("WBD","calendar: mode=[b=" + state.batchMode + ",c=" + state.copyMode + ",d=" + state.deleteMode + "] expanded=" + batchExpanded)
     }
 
     // 处理快捷方式Intent
@@ -274,7 +269,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
     val activity = context as? MainActivity
     val pendingDate = activity?.pendingNavigateDate
     LaunchedEffect(pendingDate) {
-        if (BuildConfig.DEBUG) Log.e("WBD", "calendar: pendingDate effect, pending=" + (pendingDate ?: "null"))
+        AppLog.d("WBD","calendar: pendingDate effect, pending=" + (pendingDate ?: "null"))
         val date = activity?.consumeNavigateDate() ?: return@LaunchedEffect
         val parts = date.split("-")
         if (parts.size == 3) {
@@ -386,7 +381,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                     actions = {
                         // 编辑菜单按钮（位于导航栏右侧）
                         Box {
-                            IconButton(onClick = { if (BuildConfig.DEBUG) Log.e("WBD", "calendar: edit btn"); editMenuExpanded = true }) {
+                            IconButton(onClick = { AppLog.d("WBD","calendar: edit btn"); editMenuExpanded = true }) {
                                 Icon(
                                     Icons.Default.EditCalendar,
                                     contentDescription = "编辑",
@@ -399,14 +394,14 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                             ) {
                                 DropdownMenuItem(
                                     text = { Text("显示方案") },
-                                    onClick = { if (BuildConfig.DEBUG) Log.e("WBD", "calendar: menu 显示方案"); editMenuExpanded = false; navController.navigate(RouteDisplaySchemes) },
+                                    onClick = { AppLog.d("WBD","calendar: menu 显示方案"); editMenuExpanded = false; navController.navigate(RouteDisplaySchemes) },
                                     leadingIcon = { Icon(Icons.Default.ViewModule, null) }
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("批量排班") },
                                     onClick = {
-                                        if (BuildConfig.DEBUG) Log.e("WBD", "calendar: menu 批量排班")
+                                        AppLog.d("WBD","calendar: menu 批量排班")
                                         editMenuExpanded = false
                                         batchExpanded = false
                                         vm.enterBatchMode()
@@ -416,7 +411,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 DropdownMenuItem(
                                     text = { Text("复制排班") },
                                     onClick = {
-                                        if (BuildConfig.DEBUG) Log.e("WBD", "calendar: menu 复制排班")
+                                        AppLog.d("WBD","calendar: menu 复制排班")
                                         editMenuExpanded = false
                                         vm.enterCopyMode()
                                     },
@@ -425,7 +420,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                                 DropdownMenuItem(
                                     text = { Text("删除排班", color = MaterialTheme.colorScheme.error) },
                                     onClick = {
-                                        if (BuildConfig.DEBUG) Log.e("WBD", "calendar: menu 删除排班")
+                                        AppLog.d("WBD","calendar: menu 删除排班")
                                         editMenuExpanded = false
                                         vm.enterDeleteMode()
                                     },
@@ -474,18 +469,8 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
             // ══════════════════════════════════════════════════════════
             item(key = "calendar_section") {
                 val today = LocalDate.now()
-                val year  = state.year
-                val month = state.month
-                val ym          = YearMonth.of(year, month)
-                val firstDow    = LocalDate.of(year, month, 1).dayOfWeek.let {
-                    if (it == DayOfWeek.SUNDAY) 6 else it.value - 1
-                }
-                val daysInMonth = ym.lengthOfMonth()
                 val todayStr    = DateFormats.date(today)
-                val totalCells  = firstDow + daysInMonth
-
                 val isInOperMode = state.batchMode || state.deleteMode || state.copyMode
-                val maxRows = (totalCells + 6) / 7
 
                 // HorizontalPager for month swiping
                 val pagerState = rememberPagerState(initialPage = 500) { 1000 }
@@ -543,7 +528,7 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                         val prevPageRows = (prevFirstDow + prevPageYM.lengthOfMonth() + 6) / 7
                         val pageAlignment = if (pageRows > prevPageRows) Alignment.BottomStart else Alignment.TopStart
                         Box(Modifier.fillMaxWidth(), contentAlignment = pageAlignment) {
-                            renderDateGrid(pageYM.year, pageYM.monthValue, pageRows, shiftMap, state, today, todayStr, vm, navController)
+                            RenderDateGrid(pageYM.year, pageYM.monthValue, pageRows, shiftMap, state, todayStr, vm, navController)
                         }
                     }
                     if (state.loading) {
@@ -635,7 +620,6 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                     val detail = state.dayDetails[selectedDate]
 
                     SchedulePreviewSection(
-                        date = selectedDate,
                         record = record,
                         shift = shift,
                         detail = detail,
@@ -650,10 +634,8 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
                 // ══════════════════════════════════════════════════════════
                 if (state.selectedDateEvents.isNotEmpty()) {
                     item(key = "anniversary_event_section") {
-                        val todayStr2 = DateFormats.date(LocalDate.now())
                         AnniversaryEventSection(
-                            events = state.selectedDateEvents,
-                            selectedDate = state.selectedDate ?: todayStr2
+                            events = state.selectedDateEvents
                         )
                     }
                 }
@@ -695,7 +677,6 @@ fun CalendarScreen(navController: NavController, vm: CalendarViewModel = hiltVie
 // 批量操作工具栏
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BatchToolbar(
     selectedCount: Int,
@@ -726,7 +707,7 @@ private fun BatchToolbar(
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             // 动态提示语
             Text(
-                text = if (selectedCount > 0) "已选择 ${selectedCount} 天" else "点击选择",
+                text = if (selectedCount > 0) "已选择 $selectedCount 天" else "点击选择",
                 style = MaterialTheme.typography.bodySmall,
                 color = if (isDeleteMode) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.padding(bottom = 6.dp)
@@ -1106,7 +1087,7 @@ private fun DateDetailSection(
     val lunarDateText = "农历 ${lunarDate.monthText}${lunarDate.dayText}"
     // 第二行：年干支 + 生肖 + 月干支 + 日干支
     val yearGanZhiBase = lunarDate.yearGanZhi.removeSuffix("年")  // "丙午"
-    val lunarGanZhiText = "${yearGanZhiBase} [${lunarDate.zodiac}] 年 ${lunarDate.monthGanZhi} ${lunarDate.dayGanZhi}"
+    val lunarGanZhiText = "$yearGanZhiBase [${lunarDate.zodiac}] 年 ${lunarDate.monthGanZhi} ${lunarDate.dayGanZhi}"
 
     // 节气与节日信息
     val solarTerm = HolidayData.getSolarTerm(date)
@@ -1222,7 +1203,7 @@ private fun DateDetailSection(
                     val distancePart = if (daysDiff < 0) {
                         "距今已过 ${-daysDiff} 天"
                     } else {
-                        "距今还有 ${daysDiff} 天"
+                        "距今还有 $daysDiff 天"
                     }
                     val displayText = if (countdownText.isNotEmpty()) {
                         "$countdownText | $distancePart"
@@ -1297,7 +1278,6 @@ private fun DateDetailSection(
 
 @Composable
 private fun SchedulePreviewSection(
-    date: String,
     record: ScheduleRecord?,
     shift: Shift?,
     detail: DayScheduleDetail?,
@@ -1461,8 +1441,7 @@ private fun SchedulePreviewSection(
 
 @Composable
 private fun AnniversaryEventSection(
-    events: List<CalendarEventInfo>,
-    selectedDate: String
+    events: List<CalendarEventInfo>
 ) {
     Surface(
         modifier = Modifier
