@@ -1,6 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/ui/settings/StorageScreen.kt
 package com.schedulecalendar.app.ui.settings
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,7 +62,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                 vm.importFromJson(json)
             }
         }.onFailure { e ->
-            AppLog.w("StorageScreen", "import failed", e)
+            AppLog.w(LogTags.STORAGE_SCREEN, "import failed", e)
             importScope.launch { snackbar.showSnackbar("读取备份失败：${e.message ?: "未知错误"}") }
         }
     }
@@ -91,7 +92,7 @@ fun StorageScreen(navController: NavController, vm: StorageViewModel = hiltViewM
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
         }.onFailure {
-            AppLog.w("StorageScreen", "takePersistableUriPermission failed", it)
+            AppLog.w(LogTags.STORAGE_SCREEN, "takePersistableUriPermission failed", it)
         }.isSuccess
         if (!persisted) {
             importScope.launch { snackbar.showSnackbar("未获得该目录的长期访问权限，备份可能无法写入") }

@@ -204,17 +204,20 @@ class StorageViewModel @Inject constructor(
     /**
      * 统计本应用的储存占用。
      *
+     * ⚠️ 必须在 IO 线程：`dirSize` 会**递归遍历整个 dataDir + cacheDir**，
+     * 数据量大时（数据库 WAL、缓存、备份）能扫上千个文件 → 主线程扫会明显卡顿。
+     *
      * 口径（三项自洽，加起来 = 应用总量）：
      * - **应用数据**：数据库（含 WAL/SHM）+ 偏好设置 + 其它持久化数据；
      * - **备份文件**：应用内 `files/backups/`（自定义目录里的备份不占应用空间，另行统计）；
      * - **缓存**：`cacheDir`（临时文件，可随时回收）。
      */
-    private fun computeStorageUsage(): StorageUsage {
+    private suspend fun computeStorageUsage(): StorageUsage = withContext(Dispatchers.IO) {
         val total = dirSize(File(context.applicationInfo.dataDir))
         val cache = dirSize(context.cacheDir)
         val privateBackup = dirSize(File(context.filesDir, "backups"))
         val data = (total - cache - privateBackup).coerceAtLeast(0L)
-        return StorageUsage(total, data, cache, privateBackup)
+        StorageUsage(total, data, cache, privateBackup)
     }
 
     /** 递归求目录内所有文件的总大小（字节） */

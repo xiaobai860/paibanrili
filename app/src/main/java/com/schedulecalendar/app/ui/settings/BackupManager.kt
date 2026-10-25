@@ -18,12 +18,15 @@ import com.schedulecalendar.app.data.compat.ShiftConfigBackup
 import com.schedulecalendar.app.data.db.AppDatabase
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 import com.schedulecalendar.app.domain.util.DateFormats
 import com.schedulecalendar.app.data.repository.*
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -119,7 +122,7 @@ class BackupManager @Inject constructor(
                 }
             }
             customResult.onFailure {
-                AppLog.w("BackupManager", "custom backup path failed ($customPath), fallback to private dir", it)
+                AppLog.w(LogTags.BACKUP_MANAGER, "custom backup path failed ($customPath), fallback to private dir", it)
             }
             customResult.getOrNull()?.let { return it }
         }
@@ -153,7 +156,7 @@ class BackupManager @Inject constructor(
         for ((name, path) in oldestAutos) {
             if (free() >= neededBytes + margin) break
             if (runCatching { File(path).delete() }.getOrDefault(false)) {
-                AppLog.i("BackupManager", "freePrivateSpaceFor: deleted old auto $name to free space")
+                AppLog.i(LogTags.BACKUP_MANAGER, "freePrivateSpaceFor: deleted old auto $name to free space")
             }
         }
         return free() >= neededBytes + margin
@@ -242,7 +245,7 @@ class BackupManager @Inject constructor(
             existing.delete() -> docDir.createFile(mimeType, fileName)
             else -> {
                 // 旧文件删除失败：继续创建可能在部分 SAF provider 下生成重复名文件，记日志便于排查
-                AppLog.w("BackupManager", "writeSafBackupFile: delete existing $fileName failed, may duplicate")
+                AppLog.w(LogTags.BACKUP_MANAGER, "writeSafBackupFile: delete existing $fileName failed, may duplicate")
                 docDir.createFile(mimeType, fileName)
             }
         } ?: throw IllegalStateException("无法创建备份文件：$fileName")
@@ -272,23 +275,23 @@ class BackupManager @Inject constructor(
     private suspend fun autoBackupAppDataLocked(force: Boolean) {
         val keepCount = prefs.getAppDataKeepCount()
         if (keepCount <= 0) {
-            AppLog.i("BackupManager", "autoBackup skipped: keepCount<=0 (disabled)")
+            AppLog.i(LogTags.BACKUP_MANAGER, "autoBackup skipped: keepCount<=0 (disabled)")
             return  // 禁用
         }
 
         // R1：清理上次进程中断遗留的临时文件（*.json.tmp 永不有效、也不被列表收录）
         runCatching { cleanOrphanTmpFiles(privateBackupDir) }
-            .onFailure { AppLog.w("BackupManager", "clean orphan tmp failed", it) }
+            .onFailure { AppLog.w(LogTags.BACKUP_MANAGER, "clean orphan tmp failed", it) }
 
         // 0. 兜底 prune：每次启动都先按"每天 1 份最新、保留 N 天"清理历史脏数据
         // 即使 backup 后续被指纹判断跳过，prune 也会执行——保证当天 1 份、保留 N 天严格成立
         runCatching { pruneAppDataBackups(keepCount, listAppDataBackups()) }
-            .onFailure { AppLog.w("BackupManager", "autoBackup prune failed", it) }
+            .onFailure { AppLog.w(LogTags.BACKUP_MANAGER, "autoBackup prune failed", it) }
 
         // 1. 计算当前数据指纹（轻量，~30ms）
         val currentFp = runCatching { computeBackupDataSignature() }
             .getOrElse {
-                AppLog.e("BackupManager", "autoBackup skipped: signature compute failed", it)
+                AppLog.e(LogTags.BACKUP_MANAGER, "autoBackup skipped: signature compute failed", it)
                 return
             }
 
@@ -302,7 +305,7 @@ class BackupManager @Inject constructor(
         //    - 今天已经备份过 → 保证"每天至少 1 份最新"：跨天即便没改数据也补一份（符合设计注释），
         //      同一天重复启动且无变更则跳过，保留省 IO 的优化。
         if (!force && backedUpToday && prefs.getLastAppDataBackupFp() == currentFp) {
-            AppLog.i("BackupManager", "autoBackup skipped: unchanged & already backed up today ($today)")
+            AppLog.i(LogTags.BACKUP_MANAGER, "autoBackup skipped: unchanged & already backed up today ($today)")
             return
         }
 
@@ -311,7 +314,7 @@ class BackupManager @Inject constructor(
             // P1：force 路径内容去重——与上次成功备份一致则跳过写，避免 repairS4 额外轮/无操作保存的冗余重写
             val contentHash = json.hashCode()
             if (force && contentHash == lastAppDataContentHash) {
-                AppLog.i("BackupManager", "autoBackup skipped(force): content unchanged (hash=$contentHash)")
+                AppLog.i(LogTags.BACKUP_MANAGER, "autoBackup skipped(force): content unchanged (hash=$contentHash)")
                 return@runCatching
             }
             val customPath = prefs.getBackupCustomPath()
@@ -319,7 +322,7 @@ class BackupManager @Inject constructor(
 
             // S2：写前确保私有目录（自定义路径失败的回退目标）有足够空间，不足删最旧自动档腾位
             runCatching { freePrivateSpaceFor(json.length.toLong()) }
-                .onFailure { AppLog.w("BackupManager", "free private space check failed", it) }
+                .onFailure { AppLog.w(LogTags.BACKUP_MANAGER, "free private space check failed", it) }
 
             // 先清理当天的旧自动备份（避免写完新文件后被自身清理逻辑删除）
             deleteTodayAutoBackups(today, privateBackupDir)
@@ -347,10 +350,10 @@ class BackupManager @Inject constructor(
             // 末尾再 prune 一次（如果 backup 期间产生了多份当天备份，强制收敛到 1 份）
             pruneAppDataBackups(keepCount, listAppDataBackups())
 
-            AppLog.i("BackupManager", "autoBackup written: $lastBackupLocation (force=$force, fp=$currentFp)")
+            AppLog.i(LogTags.BACKUP_MANAGER, "autoBackup written: $lastBackupLocation (force=$force, fp=$currentFp)")
         }.onFailure {
             lastAppBackupError = it.message ?: it::class.simpleName
-            AppLog.e("BackupManager", "autoBackup write failed", it)
+            AppLog.e(LogTags.BACKUP_MANAGER, "autoBackup write failed", it)
         }
     }
 
@@ -433,9 +436,17 @@ class BackupManager @Inject constructor(
      * 班次配置自动备份，每次修改保存后生成新备份。
      * keepCount=0 时完全跳过。
      */
-    /** 班次配置自动备份入口（C1：经 backupMutex 串行化）。 */
+    /**
+     * 班次配置自动备份入口（C1：经 backupMutex 串行化）。
+     *
+     * ⚠️ 必须在 IO 线程：内部要写 JSON 文件、列举目录、裁剪旧备份 ——
+     * 调用方（ShiftsViewModel 等）多在 viewModelScope（主线程）里直接调，
+     * 在主线程做这些 IO 会掉帧，备份量大时可能 ANR。
+     */
     suspend fun autoBackupShiftConfig() {
-        backupMutex.withLock { autoBackupShiftConfigLocked() }
+        withContext(Dispatchers.IO) {
+            backupMutex.withLock { autoBackupShiftConfigLocked() }
+        }
     }
 
     private suspend fun autoBackupShiftConfigLocked() {
@@ -444,14 +455,14 @@ class BackupManager @Inject constructor(
 
         // R1：清理进程中断遗留的临时文件（与应用数据备份共用私有目录，统一清 *.json.tmp）
         runCatching { cleanOrphanTmpFiles(privateBackupDir) }
-            .onFailure { AppLog.w("BackupManager", "autoBackupShiftConfig clean orphan tmp failed", it) }
+            .onFailure { AppLog.w(LogTags.BACKUP_MANAGER, "autoBackupShiftConfig clean orphan tmp failed", it) }
 
         runCatching {
             val json = buildShiftConfigJson()
             // T2：内容未变则跳过写（避免拖拽排序等连续触发的冗余重写）
             val contentHash = json.hashCode()
             if (contentHash == lastShiftConfigContentHash) {
-                AppLog.i("BackupManager", "autoBackupShiftConfig skipped: content unchanged")
+                AppLog.i(LogTags.BACKUP_MANAGER, "autoBackupShiftConfig skipped: content unchanged")
                 return@runCatching
             }
             val ts = LocalDateTime.now().format(tsFormatter)
@@ -459,7 +470,7 @@ class BackupManager @Inject constructor(
             val customPath = prefs.getBackupCustomPath()
             // S2：写前确保私有目录（自定义路径失败的回退目标）有足够空间，不足删最旧自动档腾位
             runCatching { freePrivateSpaceFor(json.length.toLong()) }
-                .onFailure { AppLog.w("BackupManager", "autoBackupShiftConfig free space check failed", it) }
+                .onFailure { AppLog.w(LogTags.BACKUP_MANAGER, "autoBackupShiftConfig free space check failed", it) }
             if (customPath.isNotBlank() && isSafPath(customPath)) {
                 writeSafBackupFile(customPath.toUri(), fileName, json)
             } else {
@@ -473,8 +484,8 @@ class BackupManager @Inject constructor(
             }
             lastShiftConfigContentHash = contentHash
             pruneShiftConfigBackups(keepCount, listShiftConfigBackups())
-            AppLog.i("BackupManager", "autoBackupShiftConfig written: $fileName")
-        }.onFailure { AppLog.e("BackupManager", "autoBackupShiftConfig failed", it) }
+            AppLog.i(LogTags.BACKUP_MANAGER, "autoBackupShiftConfig written: $fileName")
+        }.onFailure { AppLog.e(LogTags.BACKUP_MANAGER, "autoBackupShiftConfig failed", it) }
     }
 
     // ── 手动备份（由 StorageViewModel 调用） ─────────────
@@ -499,7 +510,7 @@ class BackupManager @Inject constructor(
 
     // ── 备份列表（合并私有目录 + 自定义路径） ─────────
 
-    suspend fun listAppDataBackups(): List<BackupFile> {
+    suspend fun listAppDataBackups(): List<BackupFile> = withContext(Dispatchers.IO) {
         val customPath = prefs.getBackupCustomPath()
         val result = listBackupFiles(BackupType.APP_DATA, privateBackupDir).toMutableList()
         if (customPath.isNotBlank()) {
@@ -513,13 +524,13 @@ class BackupManager @Inject constructor(
                     if (dir.exists()) result += listBackupFiles(BackupType.APP_DATA, dir)
                 }
             }.onFailure {
-                AppLog.w("BackupManager", "list custom-path APP_DATA backups failed ($customPath), show private-dir only", it)
+                AppLog.w(LogTags.BACKUP_MANAGER, "list custom-path APP_DATA backups failed ($customPath), show private-dir only", it)
             }
         }
-        return result.distinctBy { it.path }
+        result.distinctBy { it.path }
     }
 
-    suspend fun listShiftConfigBackups(): List<BackupFile> {
+    suspend fun listShiftConfigBackups(): List<BackupFile> = withContext(Dispatchers.IO) {
         val customPath = prefs.getBackupCustomPath()
         val result = listBackupFiles(BackupType.SHIFT_CONFIG, privateBackupDir).toMutableList()
         if (customPath.isNotBlank()) {
@@ -533,10 +544,10 @@ class BackupManager @Inject constructor(
                     if (dir.exists()) result += listBackupFiles(BackupType.SHIFT_CONFIG, dir)
                 }
             }.onFailure {
-                AppLog.w("BackupManager", "list custom-path SHIFT_CONFIG backups failed ($customPath), show private-dir only", it)
+                AppLog.w(LogTags.BACKUP_MANAGER, "list custom-path SHIFT_CONFIG backups failed ($customPath), show private-dir only", it)
             }
         }
-        return result.distinctBy { it.path }
+        result.distinctBy { it.path }
     }
 
     /**
@@ -553,8 +564,14 @@ class BackupManager @Inject constructor(
         val root = runCatching {
             com.google.gson.JsonParser.parseString(json).asJsonObject
         }.getOrNull() ?: run {
-            // 解析失败：把内容前段写进日志，否则用户只看到一句「JSON 解析失败」，无从排查
-            AppLog.e("BackupManager", "restore: JSON 解析失败，前 200 字符：${json.take(200)}")
+            // 解析失败：给出可判断的线索（长度 / 是否像 JSON / 是否带 BOM），
+            // 但**不打印内容** —— 备份里可能含用户备注等隐私数据，且日志文件可被用户导出分享
+            AppLog.e(
+                LogTags.BACKUP_MANAGER,
+                "restore: JSON 解析失败，内容长度=${json.length}，" +
+                    "去空白后以{开头=${json.trimStart().startsWith("{")}，" +
+                    "含BOM=${json.isNotEmpty() && json.first().code == 0xFEFF}"
+            )
             throw IllegalArgumentException("JSON 解析失败（文件可能不是本应用导出的备份，或带有 BOM/UTF-16 编码）")
         }
         // 有些工具会把 JSON 再套一层（如 {"data":{...}}）→ 先解包再判定
@@ -564,8 +581,9 @@ class BackupManager @Inject constructor(
             // 识别失败：**必须说清文件长什么样**，否则用户无从判断是不是选错了文件
             val keys = root.keySet().joinToString(", ").ifBlank { "（空）" }
             AppLog.e(
-                "BackupManager",
-                "restore: 无法识别备份格式，顶层字段=[$keys]，前 200 字符：${json.take(200)}"
+                LogTags.BACKUP_MANAGER,
+                "restore: 无法识别备份格式，顶层字段=[$keys]，内容长度=${json.length}" +
+                    "（不打印内容：备份里可能含用户备注等隐私数据，且日志文件可被用户导出分享）"
             )
             throw IllegalArgumentException(
                 "无法识别的备份格式（文件顶层字段：$keys）。" +
@@ -575,7 +593,7 @@ class BackupManager @Inject constructor(
         // 版本闸门：太老或缺版本信息 → 明确拒绝
         val rejected = BackupFormat.checkRestoreAllowed(kind, BackupFormat.detectVersion(effectiveRoot))
         if (rejected != null) {
-            AppLog.e("BackupManager", "restore: 备份版本不被支持（kind=$kind）")
+            AppLog.e(LogTags.BACKUP_MANAGER, "restore: 备份版本不被支持（kind=$kind）")
             throw IllegalArgumentException(rejected)
         }
         val result = when (kind) {
@@ -680,7 +698,7 @@ class BackupManager @Inject constructor(
             snapshotJson?.let { snap ->
                 runCatching {
                     gson.fromJson(snap, AppDataBackup::class.java)?.let { applyAppData(it) }
-                }.onFailure { AppLog.w("BackupManager", "rollback after failed restore", it) }
+                }.onFailure { AppLog.w(LogTags.BACKUP_MANAGER, "rollback after failed restore", it) }
             }
             throw IllegalStateException("恢复后数据校验未通过，已回滚到恢复前的数据：${report.summary()}")
         }
@@ -728,7 +746,7 @@ class BackupManager @Inject constructor(
                 calcProfileRepo.getCurrentProfile()?.let { cur ->
                     calcProfileRepo.syncBreaksToTable(cur.breaks)
                 }
-            }.onFailure { AppLog.w("BackupManager", "sync breaks after restore failed", it) }
+            }.onFailure { AppLog.w(LogTags.BACKUP_MANAGER, "sync breaks after restore failed", it) }
         }
 
         // 偏好设置在 DB 事务成功后再写（避免 DB 回滚后偏好仍被改）
@@ -757,7 +775,7 @@ class BackupManager @Inject constructor(
                     }
                 }
             }.onFailure {
-                AppLog.w("BackupManager", "align profile after restore failed", it)
+                AppLog.w(LogTags.BACKUP_MANAGER, "align profile after restore failed", it)
             }
         }
         backup.scheduleRule?.let { prefs.saveScheduleRule(it) }
@@ -827,7 +845,7 @@ class BackupManager @Inject constructor(
                     breaks = breakRepo.getAll()
                 )
             }.onFailure {
-                AppLog.w("BackupManager", "sync profile after restore failed", it)
+                AppLog.w(LogTags.BACKUP_MANAGER, "sync profile after restore failed", it)
             }
         }
 
@@ -881,7 +899,7 @@ class BackupManager @Inject constructor(
             // 删除组内非最新文件
             files.filter { it.path != latest.path }.forEach { old ->
                 val ok = deleteBackupFile(old.path)
-                AppLog.i("BackupManager", "prune in-day: delete ${old.name} (kept ${latest.name}) ok=$ok")
+                AppLog.i(LogTags.BACKUP_MANAGER, "prune in-day: delete ${old.name} (kept ${latest.name}) ok=$ok")
             }
         }
 
@@ -890,7 +908,7 @@ class BackupManager @Inject constructor(
         if (sortedLatest.size > keepDays) {
             sortedLatest.drop(keepDays).forEach { expired ->
                 val ok = deleteBackupFile(expired.path)
-                AppLog.i("BackupManager", "prune expired-date: delete ${expired.name} ok=$ok")
+                AppLog.i(LogTags.BACKUP_MANAGER, "prune expired-date: delete ${expired.name} ok=$ok")
             }
         }
 

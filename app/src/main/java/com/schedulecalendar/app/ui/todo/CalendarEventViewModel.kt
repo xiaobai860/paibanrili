@@ -1,5 +1,6 @@
 package com.schedulecalendar.app.ui.todo
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import android.Manifest
 import android.content.Context
@@ -142,7 +143,7 @@ class CalendarEventViewModel @Inject constructor(
                         calendarRepo.getAllAccounts()
                     }
                 } catch (e: SecurityException) {
-                    AppLog.w("CalendarEventVM", "init load accounts failed", e)
+                    AppLog.w(LogTags.CALENDAR_EVENT_VIEW_MODEL, "init load accounts failed", e)
                     emptyList()
                 }
                 _accounts.value = accountsList
@@ -183,7 +184,7 @@ class CalendarEventViewModel @Inject constructor(
                     calendarRepo.getAllAccounts()
                 }
             } catch (e: SecurityException) {
-                AppLog.w("CalendarEventVM", "load accounts failed", e)
+                AppLog.w(LogTags.CALENDAR_EVENT_VIEW_MODEL, "load accounts failed", e)
                 emptyList()
             }
             _accounts.value = accountsList
@@ -254,7 +255,13 @@ class CalendarEventViewModel @Inject constructor(
         val has = ContextCompat.checkSelfPermission(
             context, Manifest.permission.READ_CALENDAR
         ) == PackageManager.PERMISSION_GRANTED
+        val wasGranted = _state.value.hasPermission
         _state.update { it.copy(hasPermission = has) }
+        // ⚠️ 权限从「无」变「有」时必须补注册 observer：
+        // init 里无权限时整段初始化（含 startObserving）会被跳过，
+        // 而运行时授权走的是 loadAccounts/loadEvents 这条路 → 若不补注册，
+        // 之后系统日历的变化就再也刷不到列表了（症状：日程页「不更新」）。
+        if (has && !wasGranted) startObserving()
     }
 
     /**
@@ -283,7 +290,7 @@ class CalendarEventViewModel @Inject constructor(
                 rebuildCategoryMapping()
                 _state.update { it.copy(isLoading = false) }
             } catch (e: Exception) {
-                AppLog.w("CalendarEventVM", "load events failed", e)
+                AppLog.w(LogTags.CALENDAR_EVENT_VIEW_MODEL, "load events failed", e)
                 _state.update { it.copy(isLoading = false) }
             }
         }
@@ -291,8 +298,12 @@ class CalendarEventViewModel @Inject constructor(
 
     /**
      * 开始监听系统日历变化
+     *
+     * 幂等：已注册过就直接返回 —— 重复注册会叠加多个 observer，
+     * 导致同一次系统变更被处理多次，且旧 observer 永远不会被注销。
      */
     private fun startObserving() {
+        if (observer != null) return
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         observer = object : android.database.ContentObserver(handler) {
             override fun onChange(selfChange: Boolean) {
@@ -383,7 +394,7 @@ class CalendarEventViewModel @Inject constructor(
                     calendarRepo.getEventById(eventId)
                 }
             } catch (e: Exception) {
-                AppLog.w("CalendarEventVM", "load event by id failed", e)
+                AppLog.w(LogTags.CALENDAR_EVENT_VIEW_MODEL, "load event by id failed", e)
                 null
             }
             _singleEvent.value = event
@@ -431,7 +442,7 @@ class CalendarEventViewModel @Inject constructor(
     fun updateEvent(updatedEvent: CalendarEventInfo, onResult: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
             val success = runCatching { calendarRepo.updateEvent(updatedEvent) }
-                .onFailure { AppLog.w("CalendarEventVM", "updateEvent failed", it) }
+                .onFailure { AppLog.w(LogTags.CALENDAR_EVENT_VIEW_MODEL, "updateEvent failed", it) }
                 .getOrDefault(false)
             if (success) {
                 loadEvents()

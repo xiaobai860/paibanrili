@@ -110,14 +110,23 @@ private fun WidgetConfigScreen(
     onDone: () -> Unit
 ) {
     val context = LocalContext.current
-    val prefs = context.getSharedPreferences(WIDGET_CONFIG_PREFS, Context.MODE_PRIVATE)
+    // ⚠️ 必须 remember 住：原先这些读取写在 remember(...) 的**参数位置**，
+    // 每次重组都会重新求值 → 每帧都读一遍 SharedPreferences。
+    // 这里缓存成 remember 后只在首次组合（或 key 变化）时读一次。
+    val prefs = remember { context.getSharedPreferences(WIDGET_CONFIG_PREFS, Context.MODE_PRIVATE) }
     // 读取各自独立的透明度
-    val calendarTransparencyKey = if (isScheduleWidget) KEY_CFG_SCHEDULE_BG_TRANSPARENCY else KEY_CFG_CALENDAR_BG_TRANSPARENCY
-    val savedTransparency = prefs.getFloat(calendarTransparencyKey, 0.0f)  // 默认0%=不透明
+    val calendarTransparencyKey = remember(isScheduleWidget) {
+        if (isScheduleWidget) KEY_CFG_SCHEDULE_BG_TRANSPARENCY else KEY_CFG_CALENDAR_BG_TRANSPARENCY
+    }
+    val savedTransparency = remember(calendarTransparencyKey) {
+        prefs.getFloat(calendarTransparencyKey, 0.0f)  // 默认0%=不透明
+    }
     var bgTransparency by remember { mutableFloatStateOf(savedTransparency) }
 
-    val savedMode = prefs.getString(KEY_CFG_DISPLAY_MODE, DISPLAY_MODE_SHIFT_TOMORROW)
-        ?: DISPLAY_MODE_SHIFT_TOMORROW
+    val savedMode = remember {
+        prefs.getString(KEY_CFG_DISPLAY_MODE, DISPLAY_MODE_SHIFT_TOMORROW)
+            ?: DISPLAY_MODE_SHIFT_TOMORROW
+    }
     var selectedMode by remember { mutableStateOf(savedMode) }
 
     val displayModes = listOf(

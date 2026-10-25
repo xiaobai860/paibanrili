@@ -32,10 +32,13 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.google.gson.Gson
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 import com.google.gson.annotations.SerializedName
 import com.schedulecalendar.app.domain.model.*
 import java.time.LocalDate
 import java.time.LocalTime
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -121,7 +124,7 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
         // 组合期异常会被 Glance 框架捕获并保留上一次快照（不会崩进程），
         // 但仍记录日志便于排查渲染失败原因。
         runCatching { provideContent { ClockInWidgetContent() } }
-            .onFailure { AppLog.e("ScheduleGlanceWidget", "provideGlance failed", it) }
+            .onFailure { AppLog.e(LogTags.SCHEDULE_GLANCE_WIDGET, "provideGlance failed", it) }
     }
 
     companion object {
@@ -132,7 +135,7 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
             // 保证 HOLIDAY 模式的节假日倒计时（组合期按今天现算）等按天内容准时更新。
             // 交互路径（编辑/打卡/后台兜底/手动刷新）传 allowSkipUnchanged=false 强制推送。
             if (allowSkipUnchanged && json == lastPushedClockInJson && lastPushedClockInDay == todayStr) {
-                AppLog.d("WIDGET_SYNC", "2x1 update skipped (unchanged)")
+                AppLog.d(LogTags.WIDGET_SYNC, "2x1 update skipped (unchanged)")
                 return
             }
             // 打卡时间真值统一来自数据库（由 CalendarViewModel.syncWidget 计算并写入 data），
@@ -234,7 +237,7 @@ class WidgetClockInAction : ActionCallback {
 
             scheduleRepo.save(record)
         } catch (e: Exception) {
-            AppLog.e("WIDGET", "clockIn save failed", e)
+            AppLog.e(LogTags.WIDGET_CLOCK_IN_ACTION, "clockIn save failed", e)
         }
 
         // 打卡反馈：Toast 即时提示（组件自身重渲染为主要反馈，Toast 作补充；
@@ -270,7 +273,12 @@ class WidgetClockInAction : ActionCallback {
             scheduleRepo.save(updated)
         }
         // 全局变更信号会自动触发同步；Toast 作即时反馈（后台可能被部分 OEM 拦截，以组件重渲染为准）
-        Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
+        // ⚠️ 必须切主线程：ActionCallback.onAction 由 Glance 后台线程派发，而 Toast 内部的
+        // Handler 绑定的是创建它的 Looper → 在无 Looper 的后台线程调用会抛 RuntimeException
+        // （同文件 L244/L341 的写法也是先切主线程）。
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
+        }
     }
 }
 
@@ -331,7 +339,7 @@ class WidgetClockOutAction : ActionCallback {
 
             scheduleRepo.save(record)
         } catch (e: Exception) {
-            AppLog.e("WIDGET", "clockOut save failed", e)
+            AppLog.e(LogTags.WIDGET_CLOCK_OUT_ACTION, "clockOut save failed", e)
         }
 
         // 打卡反馈：Toast 即时提示（组件自身重渲染为主要反馈，Toast 作补充；
@@ -367,7 +375,12 @@ class WidgetClockOutAction : ActionCallback {
             scheduleRepo.save(updated)
         }
         // 全局变更信号会自动触发同步；Toast 作即时反馈（后台可能被部分 OEM 拦截，以组件重渲染为准）
-        Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
+        // ⚠️ 必须切主线程：ActionCallback.onAction 由 Glance 后台线程派发，而 Toast 内部的
+        // Handler 绑定的是创建它的 Looper → 在无 Looper 的后台线程调用会抛 RuntimeException
+        // （同文件 L244/L341 的写法也是先切主线程）。
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, "已打卡 $currentTime", Toast.LENGTH_SHORT).show()
+        }
     }
 }
 

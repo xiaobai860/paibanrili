@@ -5,12 +5,16 @@ import androidx.lifecycle.viewModelScope
 import com.schedulecalendar.app.data.calendar.CalendarAccountInfo
 import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.data.prefs.AppPreferences
+import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -49,11 +53,15 @@ class CalendarAccountViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
             try {
-                // 确保应用日历账户已创建
-                calendarRepo.getOrCreateLocalCalendarId()
-                calendarRepo.getOrCreateAnniversaryCalendarId()
-                calendarRepo.getOrCreateReminderCalendarId()
-                val accounts = calendarRepo.getAllAccounts()
+                // ⚠️ 这几个调用内部是 ContentResolver / AccountManager 的**同步 Binder IPC**
+                // （创建日历、查询账户）→ 必须在 IO 线程，否则主线程卡顿（系统账户多时可达数百 ms）。
+                val accounts = withContext(Dispatchers.IO) {
+                    // 确保应用日历账户已创建
+                    calendarRepo.getOrCreateLocalCalendarId()
+                    calendarRepo.getOrCreateAnniversaryCalendarId()
+                    calendarRepo.getOrCreateReminderCalendarId()
+                    calendarRepo.getAllAccounts()
+                }
                 var disabledIds = prefs.getDisabledAccountIds()
     
                 // 首次加载：自动禁用非应用账户，并设置应用日历默认分类
@@ -63,7 +71,9 @@ class CalendarAccountViewModel @Inject constructor(
                         .flatMap { it.calendarIds }
                         .toSet()
                     // 默认禁用提醒账户（不显示在日历视图中）
-                    val reminderCalId = calendarRepo.getOrCreateReminderCalendarId()
+                    val reminderCalId = withContext(Dispatchers.IO) {
+                        calendarRepo.getOrCreateReminderCalendarId()
+                    }
                     val reminderIds = if (reminderCalId != null) setOf(reminderCalId) else emptySet()
                     if (nonAppCalIds.isNotEmpty() || reminderIds.isNotEmpty()) {
                         disabledIds = disabledIds + nonAppCalIds + reminderIds
@@ -90,6 +100,8 @@ class CalendarAccountViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                // 静默吞掉会让「日历账户页一直空白」无从排查 → 必须留下原因
+                AppLog.e(LogTags.CALENDAR_ACCOUNT_VIEW_MODEL, "loadAccounts failed", e)
                 _state.update { it.copy(isLoading = false) }
             }
         }

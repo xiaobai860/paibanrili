@@ -6,7 +6,10 @@ import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.schedulecalendar.app.ScheduleApp
 import com.schedulecalendar.app.data.prefs.AppPreferences
+import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.LogTags
 import com.schedulecalendar.app.reminder.ReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -165,10 +168,19 @@ class ReminderSettingsViewModel @Inject constructor(
     /**
      * 退出页面时统一应用：根据当前设置执行一次调度。
      * 统一入口会按当前方式（精确闹钟 / 日历）自动清理其它模式残留并重新注册。
+     *
+     * ⚠️ 必须用**应用级 scope**（ScheduleApp.appScope），不能用 viewModelScope：
+     * 本方法是在「退出页面」时调用的（返回键 / 顶栏返回），紧接着就 popBackStack
+     * → ViewModel 被清除 → viewModelScope 被取消 → 重排任务会被中途取消，
+     * 结果是「设置改了但提醒没按新设置重排」。应用级 scope 与页面生命周期解耦。
      */
     fun applyChanges() {
-        viewModelScope.launch {
-            scheduler.scheduleActiveReminders(force = true)
-            }
+        val app = context.applicationContext as? ScheduleApp ?: return
+        app.appScope.launch {
+            runCatching { scheduler.scheduleActiveReminders(force = true) }
+                .onFailure {
+                    AppLog.w(LogTags.REMINDER_SETTINGS_VIEW_MODEL, "applyChanges reschedule failed", it)
+                }
+        }
     }
 }

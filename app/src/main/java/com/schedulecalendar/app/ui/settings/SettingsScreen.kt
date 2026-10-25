@@ -1,5 +1,7 @@
 package com.schedulecalendar.app.ui.settings
 import com.schedulecalendar.app.domain.util.AppLog
+import com.schedulecalendar.app.domain.util.FileLog
+import com.schedulecalendar.app.domain.util.LogTags
 
 import android.Manifest
 import android.content.Context
@@ -28,9 +30,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.navigation.NavController
 import com.schedulecalendar.app.ui.navigation.*
 
@@ -136,6 +143,7 @@ fun SettingsScreen(navController: NavController) {
             // ── 关于 ──────────────────────────────────────────────
             item {
                 val context = LocalContext.current
+                val exportScope = rememberCoroutineScope()
                 val versionName = remember {
                     try {
                         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
@@ -155,9 +163,81 @@ fun SettingsScreen(navController: NavController) {
                         Text(versionName, style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                    // 导出诊断日志：把 App 私有目录里的日志合并成一份 → 拉起系统分享面板
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable { exportDiagnosticLog(context, exportScope) }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("导出日志文件", style = MaterialTheme.typography.bodyMedium)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+// ── 导出诊断日志 ─────────────────────────────────────────────────────────────
+
+/**
+ * 把 App 私有目录里的诊断日志合并成一份，拉起系统分享面板。
+ *
+ * - **耗时部分在 IO 线程**：`FileLog.exportFile()` 会等待写盘队列落盘（最长 2s）
+ *   并读取最多 1MB 日志文件，直接在主线程做会掉帧甚至 ANR；
+ * - 没有任何日志时只提示「暂无日志文件」，不弹面板；
+ * - 分享必须走 FileProvider：App 私有目录不能直接用 `file://` 分享
+ *   （Android 7+ 会抛 FileUriExposedException）；
+ * - 失败只提示不崩溃 —— 日志功能不能影响主流程。
+ */
+private fun exportDiagnosticLog(context: Context, scope: CoroutineScope) {
+    scope.launch {
+        val result = withContext(Dispatchers.IO) {
+            runCatching { FileLog.exportFile() }
+        }
+        result.fold(
+            onSuccess = { file ->
+                if (file == null || !file.exists()) {
+                    android.widget.Toast.makeText(
+                        context, "暂无日志文件", android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    return@fold
+                }
+                runCatching {
+                    val uri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        file
+                    )
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        putExtra(Intent.EXTRA_SUBJECT, "排班日历 · 诊断日志")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "导出诊断日志"))
+                }.onFailure {
+                    AppLog.e(LogTags.SETTINGS_SCREEN, "export diagnostic log failed", it)
+                    android.widget.Toast.makeText(
+                        context, "导出失败，请稍后重试", android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            },
+            onFailure = {
+                AppLog.e(LogTags.SETTINGS_SCREEN, "export diagnostic log failed", it)
+                android.widget.Toast.makeText(
+                    context, "导出失败，请稍后重试", android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+        )
     }
 }
 
@@ -361,7 +441,7 @@ private fun PermissionManagementSection() {
                             } catch (e: Exception) {
                                 // 国产 ROM 常不支持该 Action（抛 ActivityNotFoundException），
                                 // 回退到应用详情页，否则用户点「去开启」完全没反应
-                                AppLog.w("SettingsScreen", "battery opt intent failed", e)
+                                AppLog.w(LogTags.SETTINGS_SCREEN, "battery opt intent failed", e)
                                 openAppDetails(context)
                                 android.widget.Toast.makeText(
                                     context, "已打开应用设置，请在其中关闭电池优化",
@@ -465,7 +545,7 @@ private fun openAppDetails(context: Context) {
         }
         context.startActivity(intent)
     }.onFailure {
-        AppLog.w("SettingsScreen", "open app details failed", it)
+        AppLog.w(LogTags.SETTINGS_SCREEN, "open app details failed", it)
     }
 }
 
