@@ -79,7 +79,7 @@
 | 偏好存储 | DataStore（`app_config`）+ SharedPreferences（仅组件数据缓存） |
 | 导航 | Navigation Compose（类型安全路由） |
 | 异步 | Kotlin Coroutines + Flow |
-| 桌面组件 | Glance 1.2.0 + WorkManager 2.11.2 |
+| 桌面组件 | Glance 1.2.0 + WorkManager 2.12.0 |
 | 序列化 | Gson（配置/组件数据 JSON）+ kotlinx-serialization（Navigation 路由） |
 | 农历/节气/黄历 | tyme4j 1.5.1（`cn.6tail:tyme4j`，依据紫金山天文台《农历的编算和颁行》） |
 | 单元测试 | JUnit 4（守护法定节假日表 + 历法数据对账 + 加班判定与三档计薪金额映射 + 计算口径档案区间选择 + 备份反序列化默认值） |
@@ -89,7 +89,7 @@
 ### 构建参数（`app/build.gradle.kts`）
 - `compileSdk = 37`，`minSdk = 34`（Android 14+），`targetSdk = 36`
 - Java 17 编译目标；release 开启 R8 混淆 + 资源收缩
-- Room schema 导出目录：`app/schemas/`（当前已导出版本 2/3/4/5/6）
+- Room schema 导出目录：`app/schemas/`（只保留当前版本 7；栅栏已抬到 v7，不再需要历史 schema）
 
 ### 版本号规则
 - `versionName`：展示用版本号 = `年月日 + 两位当天迭代号`，如 `2026091001`（设置页展示的就是它）
@@ -156,7 +156,7 @@ app/src/main/java/com/schedulecalendar/app/
 ├── MainActivity.kt          # 唯一 Activity：权限引导 + AppNavHost + 组件跳转日期
 ├── ScheduleApp.kt           # @HiltAndroidApp：数据变更→刷新组件；WorkManager 兜底
 ├── data/                    # 数据层
-│   ├── db/                  #   AppDatabase(v5) + 5 Entity + 5 DAO
+│   ├── db/                  #   AppDatabase(v7) + 6 Entity + 6 DAO
 │   ├── calendar/            #   系统日历集成（认证器 + CalendarProvider 仓库）
 │   ├── repository/          #   仓库层（Entity↔Domain 映射 + 变更信号 Flow）
 │   └── prefs/               #   AppPreferences（DataStore 封装）
@@ -173,10 +173,10 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 ```
 
 ### 数据层（`data/`）
-- **Room**（`AppDatabase`，版本 6，库名 `schedule_calendar.db`，WAL 模式）：
+- **Room**（`AppDatabase`，版本 7，库名 `schedule_calendar.db`，WAL 模式）：
   - Entity：`ShiftEntity`、`ScheduleRecordEntity`、`ExtraItemEntity`、`ShiftBreakEntity`、`ShiftStatusEntity`、`CalcProfileEntity`
   - DAO：`ShiftDao`、`ScheduleRecordDao`、`ExtraItemDao`、`ShiftBreakDao`、`ShiftStatusDao`、`CalcProfileDao`
-  - 升级注意：`DatabaseModule` 使用 `.addMigrations()`（**fail-fast**）——改了 `@Database(version = )` 却没补对应 Migration 会**直接抛异常**，不会再静默清库
+  - 升级注意：**只接受数据格式 v7 及以后**（`DataFormat.MIN_SUPPORTED_DB_VERSION`）；更老的库在启动期被 `CompatGate` 判为 `Unsupported` 并阻断界面，不会静默清库、也不会被"尽力解析"
 - **仓库层**：各 Repository 在 Entity↔Domain 映射基础上暴露 `refreshSignal` / `changeSignal`（SharedFlow），供全局监听数据变化
 - **DataStore**（`AppPreferences`）：全部应用配置（薪资/考勤/排班规则/显示方案/组件配置/备份设置），复杂对象 Gson 序列化
 - **SharedPreferences**：仅组件数据缓存（`calendar_widget_data_prefs`）与组件外观（`widget_config_prefs`）
@@ -187,8 +187,8 @@ app/src/test/java/com/schedulecalendar/app/   # 单元测试（HolidayDataTest +
 
 | 备份类型 | 载体 | 内容 | 保留策略 |
 |---|---|---|---|
-| 应用数据（全量） | `AppDataBackup`（当前 version=4） | DB 全部 6 张表（含计算口径档案）+ 薪资/考勤/排班规则/显示方案/排序/颜色索引/提醒设置/账户分类与禁用账户 | 按**天**保留（每天 1 份最新，默认 5 天），手动备份（`_manual`）不参与裁剪 |
-| 班次配置（可分享） | `ShiftExportData`（当前 version=6） | 班次/休息时段/附加状态/补贴项 + 排序 + 颜色索引（**不含**排班记录与薪资考勤口径） | 按**份**保留最近 N 份（默认 10），手动备份不参与裁剪 |
+| 应用数据（全量） | `AppDataBackup`（当前 version=5） | DB 全部 6 张表（含计算口径档案）+ 薪资/考勤/排班规则/显示方案/排序/颜色索引/提醒设置/账户分类与禁用账户 | 按**天**保留（每天 1 份最新，默认 5 天），手动备份（`_manual`）不参与裁剪 |
+| 班次配置（可分享） | `ShiftConfigBackup`（当前 version=7） | 班次/休息时段/附加状态/补贴项 + 排序 + 颜色索引（**不含**排班记录与薪资考勤口径） | 按**份**保留最近 N 份（默认 10），手动备份不参与裁剪 |
 
 - **自动备份**：应用数据每次启动做一次（轻量指纹：表计数 + 档案计数 + 全部备份覆盖的偏好哈希，未变则跳过写盘）；班次配置在每次增删改后立即生成
 - **不在备份范围**（均为设备相关或可重建数据）：组件数据缓存与外观配置、备份设置自身（保留份数/自定义路径/指纹）、一次性初始化标记、**系统日历中的纪念日/日程**（存 CalendarProvider，随系统日历账户存续）
@@ -474,7 +474,7 @@ Manifest 中 `<application android:enableOnBackInvokedCallback="false">`。
 2. **涉及 Glance / WorkManager 的改动必须构建 release 验证**（debug 不混淆，掩盖 R8 导致的运行时崩溃）
 3. **禁止在 ViewModel `init` 的默认 Main 协程里做 CPU 密集计算或同步 IO/Binder**——重活用 `withContext(Dispatchers.Default/IO)` 包住（历史卡顿根因）
 4. **调用组件刷新前先用脏数据指纹判断**，数据未变跳过（Glance `update()` 内部会切主线程做 Binder）
-5. **数据库升级必须新增 Migration**：`DatabaseModule` 已移除破坏性迁移，缺 Migration 会 fail-fast 抛异常（而非清库）
+5. **数据库升级只写一条前向迁移**：从当前版本（v7）到新版本；栅栏已抬到 v7，更老的数据格式一律**明确拒绝**（不转换、不兜底解析）
 6. 高频纯计算（农历/工时换算/月排班明细）已有 LRU 缓存，新增同类函数应照做
 7. 日历页查询事件必须用区间过滤，只有事项页允许全量 + TTL 缓存
 8. **降级/回退安装只能「完整卸载（不带 `-k`）→ 安装」**：`adb install -d` 对 release 包无效，

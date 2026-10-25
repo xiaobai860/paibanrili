@@ -8,8 +8,8 @@ import java.io.File
  * 「备份载荷类必须被 R8 保留」守护测试。
  *
  * ## 背景（2026-10-24 真实事故）
- * 备份载荷类 `AppDataBackup` / `ShiftConfigBackup` 从 `ui.settings` / `ui.shifts`
- * 迁到 `data.compat` 后，**proguard 规则没跟着改**（规则按包路径匹配）→
+ * 备份载荷类 `AppDataBackup` / `ShiftConfigBackup` 曾从 `ui.settings` / `ui.shifts`
+ * 迁到 `data.compat`，**proguard 规则没跟着改**（规则按包路径匹配）→
  * release 包 R8 混淆了字段名 → 导出的备份顶层 key 变成 `a`/`b`/`c`…
  * → 恢复时报「无法识别的备份格式」，**所有 release 包导出的备份全部不可恢复**。
  *

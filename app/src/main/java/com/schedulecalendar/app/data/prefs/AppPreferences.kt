@@ -58,7 +58,6 @@ class AppPreferences @Inject constructor(
         val KEY_REMINDER_CLOCK_OUT       = stringPreferencesKey("reminder_clock_out")
         val KEY_REMINDER_CLOCK_IN_MINUTES = intPreferencesKey("reminder_clock_in_minutes")
         val KEY_REMINDER_CLOCK_OUT_MINUTES = intPreferencesKey("reminder_clock_out_minutes")
-        val KEY_REMINDER_NOTIFY_BAR        = stringPreferencesKey("reminder_notify_bar")
         val KEY_REMINDER_INITIALIZED      = stringPreferencesKey("reminder_initialized")
         val KEY_DISABLED_ACCOUNT_IDS     = stringPreferencesKey("disabled_calendar_accounts")
         val KEY_ACCOUNT_CATEGORIES         = stringPreferencesKey("account_categories")
@@ -287,7 +286,6 @@ class AppPreferences @Inject constructor(
         context.dataStore.edit {
             it[KEY_REMINDER_ENABLED] = "true"
             it[KEY_REMINDER_METHOD] = "alarm"
-            it[KEY_REMINDER_NOTIFY_BAR] = "true"
             it[KEY_REMINDER_INITIALIZED] = "true"
         }
         return true
@@ -319,19 +317,6 @@ class AppPreferences @Inject constructor(
         context.dataStore.data.first()[KEY_REMINDER_CLOCK_OUT_MINUTES] ?: 15
     suspend fun saveReminderClockOutMinutes(minutes: Int) = context.dataStore.edit {
         it[KEY_REMINDER_CLOCK_OUT_MINUTES] = minutes
-    }
-    /**
-     * 通知栏提醒开关：是否通过通知栏推送提醒（默认开启，关闭后仅日历事件可见、不弹通知）。
-     *
-     * ⚠️ 已废弃：提醒现在以「总开关」[getReminderEnabled] 为唯一真相源，UI 无此开关，
-     * [com.schedulecalendar.app.reminder.AlarmReceiver] 也不再读取它。
-     * 保留仅为了备份文件的向后兼容（旧备份仍可能写入该字段）。
-     */
-    @Deprecated("提醒以总开关为唯一真相源，此开关仅保留备份兼容")
-    suspend fun getReminderNotifyBar(): Boolean =
-        context.dataStore.data.first()[KEY_REMINDER_NOTIFY_BAR] != "false"
-    suspend fun saveReminderNotifyBar(enabled: Boolean) = context.dataStore.edit {
-        it[KEY_REMINDER_NOTIFY_BAR] = enabled.toString()
     }
 
     /** 已禁用的日历账户 ID 列表 */

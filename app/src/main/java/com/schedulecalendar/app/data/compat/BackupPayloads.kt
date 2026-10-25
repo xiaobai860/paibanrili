@@ -58,7 +58,6 @@ internal data class AppDataBackup(
     @SerializedName("reminderClockOut") val reminderClockOut: Boolean? = null,
     @SerializedName("reminderClockInMinutes") val reminderClockInMinutes: Int? = null,
     @SerializedName("reminderClockOutMinutes") val reminderClockOutMinutes: Int? = null,
-    @SerializedName("reminderNotifyBar") val reminderNotifyBar: Boolean? = null,
     /** 计算口径档案（薪资/考勤/休息时段的带生效日快照） */
     @SerializedName("calcProfiles") val calcProfiles: List<CalcProfile>? = null,
     @SerializedName("shiftOrder") val shiftOrder: List<String>? = null,

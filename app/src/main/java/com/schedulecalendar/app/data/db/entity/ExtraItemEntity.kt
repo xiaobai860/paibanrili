@@ -4,7 +4,7 @@ package com.schedulecalendar.app.data.db.entity
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-/** 附加补贴/扣款项目表（v2：移除旧 trigger/enabled/color 字段） */
+/** 附加补贴/扣款项目表 */
 @Entity(tableName = "extra_items")
 data class ExtraItemEntity(
     @PrimaryKey val id: String,

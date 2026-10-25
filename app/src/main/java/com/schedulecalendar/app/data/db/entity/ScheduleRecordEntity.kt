@@ -4,7 +4,7 @@ package com.schedulecalendar.app.data.db.entity
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-/** 每日排班记录表（v2：补全全部字段） */
+/** 每日排班记录表 */
 @Entity(tableName = "schedule_records")
 data class ScheduleRecordEntity(
     @PrimaryKey val date: String,           // yyyy-MM-dd

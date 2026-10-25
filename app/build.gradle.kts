@@ -36,11 +36,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    sourceSets {
-        // Room 迁移测试（androidTest）需要从 assets 读取导出的 schema JSON
-        getByName("androidTest") { assets.directories.add("$projectDir/schemas") }
-    }
-
     signingConfigs {
         create("release") {
             storeFile     = file(localProperties.getProperty("RELEASE_STORE_FILE"))
@@ -131,7 +126,6 @@ dependencies {
     // 仪器测试（Room 迁移测试用）
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
-    androidTestImplementation(libs.room.testing)
     implementation(libs.appcompat)
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)
@@ -170,7 +164,6 @@ dependencies {
 
     // Glance（Compose-first 桌面小组件）
     implementation(libs.glance.appwidget)
-    // 注：glance-material3 已移除（GlanceTheme 全项目 0 引用）
 
     // WorkManager（小组件周期刷新兜底：事件驱动为主 + 15min 周期兜底）
     implementation(libs.workmanager.runtime)

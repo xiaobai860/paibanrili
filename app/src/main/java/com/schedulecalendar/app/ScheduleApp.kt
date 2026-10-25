@@ -36,13 +36,14 @@ class ScheduleApp : Application() {
 
     internal val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    /** 计算口径档案仓库（迁移后幂等创建初始档案） */
+    /** 计算口径档案仓库（幂等创建初始档案） */
     @Inject lateinit var calcProfileRepository: com.schedulecalendar.app.data.repository.CalcProfileRepository
 
     /**
-     * 数据兼容闸门（兼容版的升级入口）。
+     * 数据兼容闸门（版本闸门 + 完整性校验）。
      *
-     * 必须在任何业务逻辑读库**之前**跑完：它负责版本检查、旧数据格式转换、迁移后校验与回滚。
+     * 必须在任何业务逻辑读库**之前**跑完：它负责版本检查（低于栅栏即阻断）、
+     * 打开数据库、口径档案兜底与数据自洽校验。
      */
     @Inject lateinit var compatGate: com.schedulecalendar.app.data.compat.CompatGate
 
@@ -63,12 +64,12 @@ class ScheduleApp : Application() {
         widgetRefreshScheduler = ep.widgetRefreshScheduler()
         // 小组件周期刷新兜底：事件驱动为主，WorkManager 15min 周期兜底
         scheduleWidgetPeriodicRefresh()
-        // 数据兼容闸门：先完成「版本检查 → 旧数据格式转换 → 迁移后校验 →（必要时）回滚」，
-        // 再让业务逻辑读库。后续所有启动任务都 await 它，保证读到的一定是转换后的数据。
+        // 数据兼容闸门：先完成「版本检查 →（过低则阻断）→ 打开库 → 口径兜底 → 校验」，
+        // 再让业务逻辑读库。后续所有启动任务都 await 它，保证读到的一定是可用数据。
         appScope.launch {
             runSafely("ensureUpgraded") { compatGate.ensureUpgraded() }
         }
-        // 计算口径档案：首次启动（含 v5→v6 迁移后）幂等创建初始档案，
+        // 计算口径档案：首次启动幂等创建初始档案，
         // 内容取迁移时刻的现值（薪资/考勤/休息时段）→ 保证历史月份计算结果逐分不变
         appScope.launch {
             // 数据不可用（版本过老 / 校验未过）时**一律不碰数据库**：

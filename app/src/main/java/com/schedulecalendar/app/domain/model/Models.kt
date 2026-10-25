@@ -293,9 +293,3 @@ data class SalarySummary(
     val totalSalary: Double         = 0.0   // 实发工资（已扣社保/公积金）
 )
 
-/** 日期节假日信息 */
-data class HolidayInfo(
-    val name: String,
-    val isHoliday: Boolean,
-    val isMakeupDay: Boolean        = false
-)

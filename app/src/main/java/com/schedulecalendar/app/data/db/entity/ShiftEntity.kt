@@ -4,7 +4,7 @@ package com.schedulecalendar.app.data.db.entity
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-/** 班次表（v2：对齐新数据模型，移除旧的 workHours/isRest/excludePeriodsJson） */
+/** 班次表 */
 @Entity(tableName = "shifts")
 data class ShiftEntity(
     @PrimaryKey val id: String,

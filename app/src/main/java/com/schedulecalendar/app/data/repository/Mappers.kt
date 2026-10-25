@@ -11,7 +11,7 @@ import com.schedulecalendar.app.data.db.entity.ShiftEntity
 import com.schedulecalendar.app.data.db.entity.ShiftStatusEntity
 import com.schedulecalendar.app.domain.model.*
 
-/** Entity <-> Domain 映射扩展函数（对齐 v2 数据模型） */
+/** Entity <-> Domain 映射扩展函数 */
 
 private val gson = Gson()
 
@@ -75,7 +75,7 @@ internal data class AppliedStatusJson(
     @SerializedName("statusId") val statusId: String,
     @SerializedName("startTime") val startTime: String?,
     @SerializedName("endTime") val endTime: String?,
-    /** 旧数据无此字段 → Gson 反序列化后为 false，天然向后兼容 */
+    /** 缺字段时 Gson 反序列化后为 false（缺省即"不计加班"，保守取值） */
     @SerializedName("isOvertime") val isOvertime: Boolean = false
 )
 

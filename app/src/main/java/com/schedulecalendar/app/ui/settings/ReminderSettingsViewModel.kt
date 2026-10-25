@@ -84,11 +84,9 @@ class ReminderSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val newEnabled = !_state.value.enabled
             prefs.saveReminderEnabled(newEnabled)
-            if (newEnabled) {
-                // 提醒以「总开关」为唯一真相源：开启即必定弹通知，不再维护独立的通知栏开关
-                // （历史遗留的 reminder_notify_bar 仅保留兼容，无 UI 入口、不再写入）
-            } else {
-                // 关闭总开关后，立即清理两种提醒方式（精确闹钟/日历）的残留调度
+            // 提醒以「总开关」为唯一真相源：开启即必定弹通知，不再维护独立的通知栏开关。
+            // 关闭总开关后，立即清理两种提醒方式（精确闹钟/日历）的残留调度
+            if (!newEnabled) {
                 scheduler.scheduleActiveReminders(force = true)
             }
             _state.update { it.copy(enabled = newEnabled) }

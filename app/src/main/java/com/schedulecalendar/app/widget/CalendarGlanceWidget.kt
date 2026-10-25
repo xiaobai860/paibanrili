@@ -321,7 +321,6 @@ private fun CalendarDayCellContent(
 
 // === 3x4 排班日历小组件 (3 格宽 \u00d7 4 格高，可拉伸到 4 格宽) ===
 // 与 3x3 共用 widgetData（读同一份 CalendarWidgetInfo JSON）与样式配置，只是 baseHeight 不同
-// 9:35 AM 2026-8-22
 class Calendar3x4GlanceWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         // 3x4 widget：显示 4 项内容（日期+班次+附加状态+农历），渲染完整所有行（保证 31 号可见）

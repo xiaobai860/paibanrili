@@ -383,7 +383,6 @@ class BackupManager @Inject constructor(
                 p[AppPreferences.KEY_REMINDER_ENABLED], p[AppPreferences.KEY_REMINDER_METHOD],
                 p[AppPreferences.KEY_REMINDER_CLOCK_IN], p[AppPreferences.KEY_REMINDER_CLOCK_OUT],
                 p[AppPreferences.KEY_REMINDER_CLOCK_IN_MINUTES], p[AppPreferences.KEY_REMINDER_CLOCK_OUT_MINUTES],
-                p[AppPreferences.KEY_REMINDER_NOTIFY_BAR],
                 p[AppPreferences.KEY_SHIFT_ORDER], p[AppPreferences.KEY_STATUS_ORDER],
                 p[AppPreferences.KEY_EXTRA_ORDER], p[AppPreferences.KEY_BREAK_ORDER],
                 p[AppPreferences.KEY_SHIFT_COLOR_INDEX], p[AppPreferences.KEY_STATUS_COLOR_INDEX],
@@ -601,7 +600,6 @@ class BackupManager @Inject constructor(
 
     // ── 内部工具 ──────────────────────────────────────────
 
-    @Suppress("DEPRECATION") // reminderNotifyBar 已废弃，仅为兼容旧备份格式继续导出
     private suspend fun buildAppDataJson(): String {
         val now = LocalDateTime.now().format(exportFormatter)
         // 全量备份：导出所有排班记录（含历史与未来），不再仅限最近 12 个月，避免恢复后更早数据丢失
@@ -620,7 +618,7 @@ class BackupManager @Inject constructor(
             disabledAccountIds = prefs.getDisabledAccountIds().toList(),
             accountCategories = prefs.getAccountCategories(),
             accountsInitialized = prefs.isAccountsInitialized(),
-            // 计算口径档案（v4）：不导出则恢复后历史口径会丢失
+            // 计算口径档案：不导出则恢复后历史口径会丢失
             calcProfiles = calcProfileRepo.getAll(),
             // ── 提醒设置 ──
             reminderEnabled = prefs.getReminderEnabled(),
@@ -629,8 +627,7 @@ class BackupManager @Inject constructor(
             reminderClockOut = prefs.getReminderClockOut(),
             reminderClockInMinutes = prefs.getReminderClockInMinutes(),
             reminderClockOutMinutes = prefs.getReminderClockOutMinutes(),
-            reminderNotifyBar = prefs.getReminderNotifyBar(),
-            // ── 排序顺序 ──
+                // ── 排序顺序 ──
             shiftOrder = prefs.getShiftOrder(),
             statusOrder = prefs.getStatusOrder(),
             extraOrder = prefs.getExtraOrder(),
@@ -650,7 +647,7 @@ class BackupManager @Inject constructor(
             globalBreaks = breakRepo.getAll(),
             shiftStatuses = statusRepo.getAll().filter { !it.builtIn },
             extraItems = extraRepo.getAll(),
-            // 班次 Tab 内配置：排序顺序与颜色索引（v6 新增）
+            // 班次 Tab 内配置：排序顺序与颜色索引
             shiftOrder = prefs.getShiftOrder().takeIf { it.isNotEmpty() },
             statusOrder = prefs.getStatusOrder().takeIf { it.isNotEmpty() },
             extraOrder = prefs.getExtraOrder().takeIf { it.isNotEmpty() },
@@ -707,7 +704,7 @@ class BackupManager @Inject constructor(
                 shiftRepo.deleteAll()   // 内置班次是代码常量，不在表内，不会被删
                 shiftRepo.saveAll(list.filter { !it.builtIn }.map { it.copy(builtIn = false) })
             }
-            // 仅当备份中确实存在该字段才做「全删 + 重建」；旧版备份缺字段时保持现状，
+            // 仅当备份中确实存在该字段才做「全删 + 重建」；字段缺失时保持现状，
             // 否则会把用户的休息时段/补贴项目全部清空。
             if (backup.globalBreaks != null) {
                 breakRepo.deleteAll()
@@ -721,8 +718,8 @@ class BackupManager @Inject constructor(
                 extraRepo.deleteAll()
                 backup.extraItems.forEach { extraRepo.save(it) }
             }
-            // 计算口径档案（v4+）：整表替换，保证恢复后历史日期用的口径与备份时完全一致。
-            // 旧备份没有该字段时保持现状（不删已有档案）。
+            // 计算口径档案：整表替换，保证恢复后历史日期用的口径与备份时完全一致。
+            // 备份里没有该字段时保持现状（不删已有档案）。
             backup.calcProfiles?.let { calcProfileRepo.replaceAll(it) }
             // 恢复后对齐「当前生效集合」：档案里存的是时段快照，表里存的是编辑中集合，
             // 两者若不一致（老备份或中途改过），编辑器显示的时段就会与实际计算口径对不上。
@@ -738,7 +735,7 @@ class BackupManager @Inject constructor(
         backup.salaryConfig?.let { prefs.saveSalaryConfig(it) }
         backup.attendConfig?.let { prefs.saveAttendConfig(it) }
         // ── 档案与「现值」对齐（避免两份真相分裂）────────────────────────
-        // 旧备份（应用数据 v1~v3）不带 calc_profiles：恢复出来的是**薪资/考勤现值**，
+        // 备份里没有 calc_profiles 字段时：恢复出来的是**薪资/考勤现值**，
         // 但本地仍留着旧档案 → 当前生效口径可能还是旧档案那份，
         // 用户在设置页看到的新值实际不参与计算（现值与口径分裂）。
         // 修法：用恢复后的现值补一份「今天生效」的档案（**不改更早的历史**）；
@@ -760,7 +757,7 @@ class BackupManager @Inject constructor(
                     }
                 }
             }.onFailure {
-                AppLog.w("BackupManager", "align profile after legacy restore failed", it)
+                AppLog.w("BackupManager", "align profile after restore failed", it)
             }
         }
         backup.scheduleRule?.let { prefs.saveScheduleRule(it) }
@@ -782,7 +779,6 @@ class BackupManager @Inject constructor(
         if (backup.reminderClockOut != null) prefs.saveReminderClockOut(backup.reminderClockOut)
         if (backup.reminderClockInMinutes != null) prefs.saveReminderClockInMinutes(backup.reminderClockInMinutes)
         if (backup.reminderClockOutMinutes != null) prefs.saveReminderClockOutMinutes(backup.reminderClockOutMinutes)
-        if (backup.reminderNotifyBar != null) prefs.saveReminderNotifyBar(backup.reminderNotifyBar)
         // ── 恢复排序顺序 ──
         if (backup.shiftOrder != null) prefs.saveShiftOrder(backup.shiftOrder)
         if (backup.statusOrder != null) prefs.saveStatusOrder(backup.statusOrder)
@@ -835,7 +831,7 @@ class BackupManager @Inject constructor(
             }
         }
 
-        // v6：恢复排序顺序与颜色索引（旧版备份为 null 时跳过，保持现状）
+        // 恢复排序顺序与颜色索引（备份里为 null 时跳过，保持现状）
         data.shiftOrder?.let { prefs.saveShiftOrder(it) }
         data.statusOrder?.let { prefs.saveStatusOrder(it) }
         data.extraOrder?.let { prefs.saveExtraOrder(it) }

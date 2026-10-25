@@ -85,6 +85,10 @@ class CalendarEventViewModel @Inject constructor(
             events.filter { event ->
                 if (event.calendarId in appCalIds) {
                     val isAnniversaryCal = anniversaryCalendarId != null && event.calendarId == anniversaryCalendarId
+                    // 旧版 App 建的纪念日事件（标题「纪念日: xxx」+ 年度重复）。
+                    // ⚠️ 系统日历是 **App 无法迁移的外部状态**（App 卸载/升级都改不了它），
+                    //    设备上仍可能留着旧版建的这类事件 → 必须继续识别，否则用户的纪念日会"消失"。
+                    //    故这不是"历史兼容代码"，而是**对外部存量数据的识别**，不可删除。
                     val isLegacyAnniversary = event.title.startsWith("纪念日: ") &&
                         event.rrule?.contains("FREQ=YEARLY") == true
                     isAnniversaryCal || isLegacyAnniversary

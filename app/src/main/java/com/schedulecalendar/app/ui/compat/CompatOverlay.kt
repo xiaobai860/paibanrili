@@ -25,7 +25,7 @@ import com.schedulecalendar.app.data.compat.DataFormat
  * 数据升级遮罩。
  *
  * - 检查中：全屏遮罩 + 进度提示（稍候）；
- * - 失败：显示失败原因（已回滚 / 需手动恢复），可关闭继续使用；
+ * - 失败：显示失败原因（数据需从备份恢复），可关闭继续使用；
  * - 版本过旧：阻断式提示（必须先装回兼容版）。
  */
 @Composable
@@ -38,7 +38,6 @@ fun CompatOverlay(
         is CompatGate.State.Idle, is CompatGate.State.Ready -> Unit
 
         is CompatGate.State.Checking -> BlockingBox("正在检查数据版本…")
-
 
 
         is CompatGate.State.Failed -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
