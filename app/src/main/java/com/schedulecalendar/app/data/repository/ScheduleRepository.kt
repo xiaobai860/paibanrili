@@ -18,7 +18,7 @@ class ScheduleRepository @Inject constructor(
     private val _refreshSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val refreshSignal: Flow<Unit> = _refreshSignal.asSharedFlow()
 
-    private suspend fun notifyChanged() = _refreshSignal.notifyChangedOrLog("ScheduleRepo")
+    private fun notifyChanged() = _refreshSignal.notifyChangedOrLog("ScheduleRepo")
 
     /**
      * 把 "yyyy-MM" 转成该月的闭区间日期范围 [start, end]（"yyyy-MM-01" ~ "yyyy-MM-31"）。
@@ -68,8 +68,8 @@ class ScheduleRepository @Inject constructor(
         val shiftIds = dao.distinctShiftIds().toSet()
         val statusIds = HashSet<String>()
         val extraIds = HashSet<String>()
-        for (row in dao.getReferenceColumns()) {
-            parseReferencedIds(row.appliedStatusesJson, row.extraItemIdsJson, statusIds, extraIds)
+        for ((appliedStatusesJson, extraItemIdsJson) in dao.getReferenceColumns()) {
+            parseReferencedIds(appliedStatusesJson, extraItemIdsJson, statusIds, extraIds)
         }
         return Triple(shiftIds, statusIds, extraIds)
     }

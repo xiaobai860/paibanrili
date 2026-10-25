@@ -111,8 +111,8 @@ class DataIntegrityChecker @Inject constructor(
         for (shiftId in scheduleRecordDao.distinctShiftIds()) {
             if (shiftId !in shiftIds) danglingShift++
         }
-        for (row in scheduleRecordDao.getReferenceColumns()) {
-            val statusJson = row.appliedStatusesJson.trim()
+        for ((appliedStatusesJson, extraItemIdsJson) in scheduleRecordDao.getReferenceColumns()) {
+            val statusJson = appliedStatusesJson.trim()
             if (statusJson.isNotEmpty() && statusJson != "null" && statusJson != "\"\"") {
                 val parsed = runCatching { JsonParser.parseString(statusJson) }.getOrNull()
                 when {
@@ -132,7 +132,7 @@ class DataIntegrityChecker @Inject constructor(
                     }
                 }
             }
-            val extraJson = row.extraItemIdsJson.trim()
+            val extraJson = extraItemIdsJson.trim()
             if (extraJson.isNotEmpty() && extraJson != "null") {
                 val parsed = runCatching { JsonParser.parseString(extraJson) }.getOrNull()
                 if (parsed == null || !parsed.isJsonArray) {

@@ -1,4 +1,5 @@
 package com.schedulecalendar.app.ui.settings
+import com.schedulecalendar.app.domain.util.AppLog
 
 import android.Manifest
 import android.content.Context
@@ -27,17 +28,15 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.schedulecalendar.app.ui.navigation.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(navController: NavController, vm: SettingsViewModel = hiltViewModel()) {
-    val state  by vm.state.collectAsStateWithLifecycle()
+fun SettingsScreen(navController: NavController) {
 
     Scaffold(
         topBar = {
@@ -250,7 +249,6 @@ private fun PermissionManagementSection() {
     // 精确闹钟权限
     // minSdk = 34 (Android 14)，USE_EXACT_ALARM 为安装时自动授予的普通权限，始终已授予
     val hasExactAlarm = true
-    val needsExactAlarmAction = false
 
     // 电池优化白名单状态
     val isBatteryOptimizationIgnored = remember(refreshTrigger) {
@@ -258,13 +256,11 @@ private fun PermissionManagementSection() {
         pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
-    // 通知权限（Android 13+）
+    // 通知权限（minSdk 34 = Android 14+，POST_NOTIFICATIONS 必然为运行时权限）
     val hasNotification = remember(refreshTrigger) {
-        if (Build.VERSION.SDK_INT >= 33) {
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-        } else true
+        ContextCompat.checkSelfPermission(
+            context, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     // 权限请求 launcher（同时处理存储和通知权限）
@@ -319,9 +315,7 @@ private fun PermissionManagementSection() {
                         description = "上下班打卡提醒、班次变更通知等",
                         granted = hasNotification,
                         onAction = {
-                            if (Build.VERSION.SDK_INT >= 33) {
-                                permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            }
+                            permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         }
                     )
 
@@ -361,13 +355,13 @@ private fun PermissionManagementSection() {
                             try {
                                 @Suppress("BatteryLife")
                                 val intent = Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                    data = Uri.parse("package:${context.packageName}")
+                                    data = "package:${context.packageName}".toUri()
                                 }
                                 context.startActivity(intent)
                             } catch (e: Exception) {
                                 // 国产 ROM 常不支持该 Action（抛 ActivityNotFoundException），
                                 // 回退到应用详情页，否则用户点「去开启」完全没反应
-                                android.util.Log.w("SettingsScreen", "battery opt intent failed", e)
+                                AppLog.w("SettingsScreen", "battery opt intent failed", e)
                                 openAppDetails(context)
                                 android.widget.Toast.makeText(
                                     context, "已打开应用设置，请在其中关闭电池优化",
@@ -461,24 +455,24 @@ private fun PermissionItem(
 }
 
 /**
- * 检测当前设备是否为国产厂商 ROM
- * 国产 ROM 对后台运行有额外限制，需要引导用户手动开启相关权限
- */
-/**
  * 打开系统「应用详情」设置页。
  * 统一兜底：部分 ROM 不支持特定设置 Action，跳详情页至少让用户能手动调整权限。
  */
-private fun openAppDetails(context: android.content.Context) {
+private fun openAppDetails(context: Context) {
     runCatching {
         val intent = Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", context.packageName, null)
         }
         context.startActivity(intent)
     }.onFailure {
-        android.util.Log.w("SettingsScreen", "open app details failed", it)
+        AppLog.w("SettingsScreen", "open app details failed", it)
     }
 }
 
+/**
+ * 检测当前设备是否为国产厂商 ROM
+ * 国产 ROM 对后台运行有额外限制，需要引导用户手动开启相关权限
+ */
 private fun isOemRestricted(): Boolean {
     val manufacturer = Build.MANUFACTURER.lowercase()
     return manufacturer in listOf(

@@ -22,7 +22,7 @@ class ShiftBreakRepository @Inject constructor(
     private val _changeSignal = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
     val changeSignal: Flow<Unit> = _changeSignal.asSharedFlow()
 
-    private suspend fun notifyChanged() = _changeSignal.notifyChangedOrLog("ShiftBreakRepo")
+    private fun notifyChanged() = _changeSignal.notifyChangedOrLog("ShiftBreakRepo")
 
     /** 观察有效（未归档）的时段 */
     fun observeActive(): Flow<List<ShiftBreak>> = dao.observeActive().map { it.map { e -> e.toDomain() } }
@@ -31,7 +31,6 @@ class ShiftBreakRepository @Inject constructor(
     suspend fun countAll(): Int = dao.countAll()
     suspend fun getAllWithArchived(): List<ShiftBreak> = dao.getAllWithArchived().map { it.toDomain() }
     suspend fun save(item: ShiftBreak) { dao.upsert(item.toEntity()); notifyChanged() }
-    suspend fun saveAll(items: List<ShiftBreak>) { dao.upsertAll(items.map { it.toEntity() }); notifyChanged() }
     /** 归档项目（逻辑删除） */
     suspend fun archive(id: String) { dao.archiveById(id, java.time.Instant.now().toString()); notifyChanged() }
     suspend fun delete(id: String) { dao.deleteById(id); notifyChanged() }
