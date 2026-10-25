@@ -369,7 +369,7 @@ app/src/androidTest/java/com/schedulecalendar/app/  # 仪器测试（5 个测试
 **`ReferenceIdParserTest.kt`**（7 用例，守护归档记录引用的班次/状态 id 解析）
 
 ```bash
-# 单元测试（116 例）
+# 单元测试（117 例）
 ./gradlew testDebugUnitTest
 
 # 仪器测试（5 例，必须连真机）
