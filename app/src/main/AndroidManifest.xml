@@ -7,6 +7,17 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.AUTHENTICATE_ACCOUNTS"/>
+    <!--
+      电池优化豁免：跳系统「忽略电池优化」确认页的必要权限（normal 权限，安装即授予）。
+
+      - 缺了它：系统的 RequestIgnoreBatteryOptimizations 页会校验调用方权限 → 无权限直接退出；
+        而**应用侧 startActivity 不会抛异常** → 表现为「点「前往设置」完全没反应」
+        （无界面、无异常、无提示，纯静默失败）。
+      - 授予后：会弹出系统的「是否允许本应用忽略电池优化」确认框，用户点确定即完成豁免。
+      - 注：Google Play 对该权限有政策要求（需属许可用例并申请豁免）；
+        本应用走国内分发/自用，不受 Play 审核约束。
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 
     <!--
       关闭系统「预测式返回」（Predictive Back）：

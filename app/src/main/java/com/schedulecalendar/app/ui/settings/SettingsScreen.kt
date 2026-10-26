@@ -465,26 +465,11 @@ private fun PermissionManagementSection() {
                         description = if (isBatteryOptimizationIgnored)
                             "已设为无限制，后台运行不受系统省电策略影响"
                         else
-                            "未设置，后台运行时可能被系统省电策略限制",
+                            "未设置，后台运行时可能被系统省电策略限制。国产 ROM 通常在「设置 → 电池 → 更多设置 → 应用耗电管理」中为本应用关闭省电策略",
                         granted = isBatteryOptimizationIgnored,
-                        onAction = {
-                            try {
-                                @Suppress("BatteryLife")
-                                val intent = Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                    data = "package:${context.packageName}".toUri()
-                                }
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                // 国产 ROM 常不支持该 Action（抛 ActivityNotFoundException），
-                                // 回退到应用详情页，否则用户点「去开启」完全没反应
-                                AppLog.w(LogTags.SETTINGS_SCREEN, "battery opt intent failed", e)
-                                openAppDetails(context)
-                                android.widget.Toast.makeText(
-                                    context, "已打开应用设置，请在其中关闭电池优化",
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
+                        onAction = { requestIgnoreBatteryOptimizations(context) },
+                        secondaryLabel = "系统电池优化列表",
+                        onSecondaryAction = { openBatteryOptimizationSettings(context) }
                     )
                     
                     // 国产 ROM 后台运行保障引导
@@ -543,7 +528,10 @@ private fun PermissionItem(
     name: String,
     description: String,
     granted: Boolean,
-    onAction: () -> Unit
+    onAction: () -> Unit,
+    /** 可选第二入口（如「系统电池优化列表」）：主入口在部分 ROM 上不生效时的备用路径 */
+    secondaryLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null
 ) {
     Row(
         Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -561,12 +549,62 @@ private fun PermissionItem(
             Text(description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (!granted) {
-            TextButton(onClick = onAction, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
-                Text("前往设置", style = MaterialTheme.typography.labelSmall)
+            Column(horizontalAlignment = Alignment.End) {
+                TextButton(onClick = onAction, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                    Text("前往设置", style = MaterialTheme.typography.labelSmall)
+                }
+                if (secondaryLabel != null && onSecondaryAction != null) {
+                    TextButton(onClick = onSecondaryAction, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                        Text(secondaryLabel, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
             }
         } else {
             Text("已授权", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         }
+    }
+}
+
+/**
+ * 请求系统忽略电池优化（首选路径：系统确认对话框，点确定即完成豁免）。
+ *
+ * ⚠️ 依赖 manifest 中的 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`（normal 权限，安装即授予）：
+ * 缺了它，系统 `RequestIgnoreBatteryOptimizations` 页会校验调用方权限 → 无权限直接退出，
+ * 而**应用侧 startActivity 不会抛异常** → 表现为「点「前往设置」完全没反应」
+ * （无界面、无异常、无提示 —— 纯静默失败）。
+ *
+ * 国产 ROM 上若该确认页不弹或抛异常，降级到系统电池优化列表页
+ * （见 [openBatteryOptimizationSettings]，不需要任何权限，最可靠）。
+ */
+private fun requestIgnoreBatteryOptimizations(context: Context) {
+    try {
+        @Suppress("BatteryLife")
+        val intent = Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = "package:${context.packageName}".toUri()
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        AppLog.w(LogTags.SETTINGS_SCREEN, "battery opt request intent failed", e)
+        openBatteryOptimizationSettings(context)
+        android.widget.Toast.makeText(
+            context, "已打开系统电池优化列表，请找到本应用并设为「不受限制」",
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
+    }
+}
+
+/**
+ * 打开系统「电池优化」列表页（`ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS`）。
+ *
+ * 该入口**不需要任何权限**、所有 ROM 都有，是国产 ROM 上最可靠的备选路径：
+ * 用户在列表里找到本应用 → 选「忽略」即可。
+ */
+private fun openBatteryOptimizationSettings(context: Context) {
+    runCatching {
+        context.startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+    }.onFailure { e ->
+        AppLog.w(LogTags.SETTINGS_SCREEN, "battery opt list intent failed", e)
+        openAppDetails(context)
     }
 }
 
