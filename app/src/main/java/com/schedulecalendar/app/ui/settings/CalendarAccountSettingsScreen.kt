@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.schedulecalendar.app.data.calendar.CalendarAccountInfo
 import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 
@@ -133,7 +134,7 @@ fun CalendarAccountSettingsScreen(
                     val accountKey = vm.getAccountKey(account)
                     // 显示**生效**分类（未设置过的已兜底为「日程」）；原始值用于判断"这是默认值"
                     val category = state.effectiveCategories[accountKey]
-                        ?: com.schedulecalendar.app.data.calendar.CalendarEventRepository.DEFAULT_CATEGORY
+                        ?: CalendarEventRepository.DEFAULT_CATEGORY
                     val isDefaultCategory = state.accountCategories[accountKey] == null
                     AccountCard(
                         account = account,
@@ -156,7 +157,7 @@ fun CalendarAccountSettingsScreen(
  */
 @Composable
 private fun AccountCard(
-    account: com.schedulecalendar.app.data.calendar.CalendarAccountInfo,
+    account: CalendarAccountInfo,
     isDisabled: Boolean,
     /** 生效分类（已兜底默认值，非空） */
     category: String,
