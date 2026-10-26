@@ -4,6 +4,26 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.READ_CALENDAR"/>
     <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
+    <!--
+      USE_EXACT_ALARM（Android 14 / API 34 起引入）：精确闹钟权限。
+
+      【为什么不用 SCHEDULE_EXACT_ALARM（API 33+）】
+      - SCHEDULE_EXACT_ALARM 需要用户**手动授权**「闹钟和提醒」，且用户**可随时撤销**；
+        一旦被撤销，上下班提醒会静默失效，而用户往往不知道自己关掉了它 —— 提醒是本应用的核心功能。
+      - USE_EXACT_ALARM 是 normal 权限，安装即授予、无需任何用户交互 → 提醒链路可靠。
+
+      【为什么符合 Google Play 政策】
+      IDE 在此处提示「will be automatically granted to apps with core functions needing precise
+      timing (alarms, calendars). You'll need to justify the need for this API.」——
+      本应用的核心功能正是**排班日历 + 上下班精确提醒**，同时命中该政策明确列出的
+      许可用例（alarms / calendars），因此属政策允许范围，无需申请豁免。
+      若将来上架 Google Play，需在 Play Console 的 justification 中填写同样理由。
+
+      【技术前提】
+      - minSdk = 34（Android 14+），USE_EXACT_ALARM 自 API 34 引入，故无需兼容旧版本分支；
+      - 提醒统一用 AlarmManager.setAlarmClock —— 被系统视为「用户设置的闹钟」，
+        在 Doze / 省电模式下同样准时触发，且不在系统闹钟 UI 留记录。
+    -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.AUTHENTICATE_ACCOUNTS"/>
