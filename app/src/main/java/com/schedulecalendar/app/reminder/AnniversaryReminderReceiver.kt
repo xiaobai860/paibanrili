@@ -37,7 +37,7 @@ class AnniversaryReminderReceiver : BroadcastReceiver() {
             createNotificationChannelIfNeeded(context)
 
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            // Android 13+ 未授予通知权限时 notify 会被静默丢弃，仅记录日志便于排查
+            // 未授予通知权限时 notify 会被静默丢弃，仅记录日志便于排查
             if (!nm.areNotificationsEnabled()) {
                 AppLog.w(LogTags.ANNIVERSARY_REMINDER_RECEIVER, "notifications disabled, skip remind")
                 return

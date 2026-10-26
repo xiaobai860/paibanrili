@@ -257,7 +257,7 @@ class WidgetClockInAction : ActionCallback {
         }
 
         // 打卡反馈：Toast 即时提示（组件自身重渲染为主要反馈，Toast 作补充；
-        // 注：Android 12+ 后台 Toast 可能被部分 OEM 拦截，届时以组件按钮态变化为准）。
+        // 注：部分 OEM（含 OPPO/ColorOS）会拦截后台 Toast，届时以组件按钮态变化为准）。
         // 刷新小组件：数据落库后由 ScheduleApp 全局变更信号自动触发同步（避免动作内多次 update 被桌面丢弃）
         Handler(Looper.getMainLooper()).postDelayed({
             Toast.makeText(context, "已打上班卡 $currentTime", Toast.LENGTH_SHORT).show()
@@ -359,7 +359,7 @@ class WidgetClockOutAction : ActionCallback {
         }
 
         // 打卡反馈：Toast 即时提示（组件自身重渲染为主要反馈，Toast 作补充；
-        // 注：Android 12+ 后台 Toast 可能被部分 OEM 拦截，届时以组件按钮态变化为准）。
+        // 注：部分 OEM（含 OPPO/ColorOS）会拦截后台 Toast，届时以组件按钮态变化为准）。
         // 刷新小组件：数据落库后由 ScheduleApp 全局变更信号自动触发同步
         Handler(Looper.getMainLooper()).postDelayed({
             Toast.makeText(context, "已打下班卡 $currentTime", Toast.LENGTH_SHORT).show()

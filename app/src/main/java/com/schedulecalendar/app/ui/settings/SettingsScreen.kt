@@ -212,7 +212,7 @@ fun SettingsScreen(navController: NavController) {
  *   并读取最多 1MB 日志文件，直接在主线程做会掉帧甚至 ANR；
  * - 没有任何日志时只提示「暂无日志文件」，不弹面板；
  * - 分享必须走 FileProvider：App 私有目录不能直接用 `file://` 分享
- *   （Android 7+ 会抛 FileUriExposedException）；
+ *   （会抛 FileUriExposedException）；
  * - 失败只提示不崩溃 —— 日志功能不能影响主流程。
  */
 private fun exportDiagnosticLog(context: Context, scope: CoroutineScope) {
@@ -425,7 +425,7 @@ private fun PermissionManagementSection() {
                     HorizontalDivider()
                     Spacer(Modifier.height(4.dp))
 
-                    // 通知权限（Android 13+ 需要用户授权）
+                    // 通知权限（运行时权限，需用户授权）
                     PermissionItem(
                         name = "通知权限",
                         description = "上下班打卡提醒、班次变更通知等",

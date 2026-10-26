@@ -64,7 +64,7 @@ class AlarmReceiver : BroadcastReceiver() {
                         // 创建通知渠道（兼容性保障）
                         createNotificationChannelIfNeeded(context)
 
-                        // Android 13+ 未授予通知权限时 notify 会被静默丢弃，用户表现为「提醒莫名不弹」。
+                        // 未授予通知权限时 notify 会被静默丢弃，用户表现为「提醒莫名不弹」。
                         // 此处仅记录日志便于排查（授权引导由设置页提供）。
                         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         if (!nm.areNotificationsEnabled()) {

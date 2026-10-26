@@ -7,7 +7,7 @@
     <cache-path name="cache" path="/" />
     <!-- 覆盖用户通过 SAF 选择的自定义备份路径（可能位于任意存储位置，如 /storage/emulated/0/...）
          ⚠️ 这是有意保留的宽授权：备份可存到用户在系统文件管理器里选的任意目录，
-            分享时才能把它映射成 content:// URI（Android 7+ 禁止直接分享 file://）。
+            分享时才能把它映射成 content:// URI（直接分享 file:// 会被系统拒绝：FileUriExposedException）。
             实际暴露面可控：FileProvider 只在「用户主动点击分享」时才会为具体文件生成 URI。 -->
     <root-path name="root" path="." />
 </paths>

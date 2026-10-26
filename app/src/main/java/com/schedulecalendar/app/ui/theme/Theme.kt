@@ -10,7 +10,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 @Composable
 fun ScheduleCalendarTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,   // Android 12+ 动态取色
+    dynamicColor: Boolean = true,   // 动态取色（minSdk 34 必然支持）
     content: @Composable () -> Unit
 ) {
     // ═══ Preview / 无 Activity Context 环境使用 Material 默认色板 ═══
