@@ -9,11 +9,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -65,7 +68,7 @@ fun CompatOverlay(
     when (state) {
         is CompatGate.State.Idle, is CompatGate.State.Ready -> Unit
 
-        is CompatGate.State.Checking -> BlockingBox("正在检查数据版本…")
+        is CompatGate.State.Checking -> CheckingBox()
 
 
         is CompatGate.State.Failed -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -133,6 +136,11 @@ private fun UnsupportedScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            // ⚠️ 必须自己处理系统栏内边距：本遮罩挂在 Scaffold 之外，拿不到 Scaffold 的
+            // contentWindowInsets；而 Activity 是 enableEdgeToEdge（内容延伸到状态栏下方），
+            // 不加这层 padding 首行文字会被状态栏压住。
+            // 用 safeDrawing 而非 statusBars：页面可滚动到底，底部也要避开导航栏手势条。
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -250,8 +258,14 @@ private fun formatSize(bytes: Long): String =
 private fun formatBackupTime(epochMs: Long): String =
     SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(epochMs))
 
+/**
+ * 「正在检查数据版本」的阻断框。
+ *
+ * ⚠️ 早期它是个带 `message` 形参的通用阻断框，但改造后只剩本处一个调用点、
+ * 且文案固定 —— 形参恒为常量反而是冗余，故直接内联为固定文案。
+ */
 @Composable
-private fun BlockingBox(message: String) {
+private fun CheckingBox() {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -269,7 +283,7 @@ private fun BlockingBox(message: String) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 CircularProgressIndicator(modifier = Modifier.padding(bottom = 4.dp))
-                Text(message, style = MaterialTheme.typography.bodyMedium)
+                Text("正在检查数据版本…", style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
