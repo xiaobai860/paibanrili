@@ -81,7 +81,17 @@ class CalendarGlanceWidget : GlanceAppWidget() {
                     compact = true
                 )
             }
-        }.onFailure { AppLog.e(LogTags.CALENDAR_GLANCE_WIDGET, "provideGlance failed", it) }
+        }.onFailure { e ->
+            // 预期竞态（Glance 取消上一轮 composition）→ D 级；真失败 → E 级。详见 GlanceSessionError.kt
+            if (e.isGlanceSessionCancelled()) {
+                AppLog.d(
+                    LogTags.CALENDAR_GLANCE_WIDGET,
+                    "provideGlance session cancelled (expected): ${e.message}"
+                )
+            } else {
+                AppLog.e(LogTags.CALENDAR_GLANCE_WIDGET, "provideGlance failed", e)
+            }
+        }
     }
     companion object {
         suspend fun updateWidgetData(context: Context, data: CalendarWidgetInfo) {
@@ -334,7 +344,17 @@ class Calendar3x4GlanceWidget : GlanceAppWidget() {
                     maxVisibleRows = Int.MAX_VALUE
                 )
             }
-        }.onFailure { AppLog.e(LogTags.CALENDAR_3X4_GLANCE_WIDGET, "provideGlance failed", it) }
+        }.onFailure { e ->
+            // 预期竞态（Glance 取消上一轮 composition）→ D 级；真失败 → E 级。详见 GlanceSessionError.kt
+            if (e.isGlanceSessionCancelled()) {
+                AppLog.d(
+                    LogTags.CALENDAR_3X4_GLANCE_WIDGET,
+                    "provideGlance session cancelled (expected): ${e.message}"
+                )
+            } else {
+                AppLog.e(LogTags.CALENDAR_3X4_GLANCE_WIDGET, "provideGlance failed", e)
+            }
+        }
     }
 
     companion object {

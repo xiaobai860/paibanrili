@@ -168,17 +168,7 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
     }
 }
 
-/**
- * 是否为 Glance 的「会话被取消」竞态异常。
- *
- * Glance 每次收到新的 widget 更新请求时会取消上一轮 composition，并抛出
- * `IllegalStateException("The coroutine scope left the composition")`。
- * 属预期竞态（后续 update 会覆盖结果），需与真正的渲染失败区分开：
- * 前者降级为 D 级，后者保留 E 级。
- */
-private fun Throwable.isGlanceSessionCancelled(): Boolean =
-    this is IllegalStateException &&
-        message?.contains("coroutine scope left the composition", ignoreCase = true) == true
+
 
 // ── Widget 上班打卡动作 ──────────────────────────────────────────
 
