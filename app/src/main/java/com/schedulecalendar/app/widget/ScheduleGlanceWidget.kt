@@ -124,7 +124,21 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
         // 组合期异常会被 Glance 框架捕获并保留上一次快照（不会崩进程），
         // 但仍记录日志便于排查渲染失败原因。
         runCatching { provideContent { ClockInWidgetContent() } }
-            .onFailure { AppLog.e(LogTags.SCHEDULE_GLANCE_WIDGET, "provideGlance failed", it) }
+            .onFailure { e ->
+                // ⚠️ Glance 在同一 widget 短时间收到多次更新请求时，会取消上一轮 composition
+                // 并抛出 IllegalStateException("The coroutine scope left the composition")。
+                // 这是**预期的竞态**（后一次 update 会覆盖结果），不是渲染失败 →
+                // 降级为 D 级，避免 E 级被这类噪音淹没（E 级应只留给真正的错误）。
+                // release 下 DIAGNOSTIC_LOGS=false，该调用被 R8 整个剔除 → 零开销。
+                if (e.isGlanceSessionCancelled()) {
+                    AppLog.d(
+                        LogTags.SCHEDULE_GLANCE_WIDGET,
+                        "provideGlance session cancelled (expected): ${e.message}"
+                    )
+                } else {
+                    AppLog.e(LogTags.SCHEDULE_GLANCE_WIDGET, "provideGlance failed", e)
+                }
+            }
     }
 
     companion object {
@@ -153,6 +167,18 @@ class ScheduleGlanceWidget : GlanceAppWidget() {
         }
     }
 }
+
+/**
+ * 是否为 Glance 的「会话被取消」竞态异常。
+ *
+ * Glance 每次收到新的 widget 更新请求时会取消上一轮 composition，并抛出
+ * `IllegalStateException("The coroutine scope left the composition")`。
+ * 属预期竞态（后续 update 会覆盖结果），需与真正的渲染失败区分开：
+ * 前者降级为 D 级，后者保留 E 级。
+ */
+private fun Throwable.isGlanceSessionCancelled(): Boolean =
+    this is IllegalStateException &&
+        message?.contains("coroutine scope left the composition", ignoreCase = true) == true
 
 // ── Widget 上班打卡动作 ──────────────────────────────────────────
 
