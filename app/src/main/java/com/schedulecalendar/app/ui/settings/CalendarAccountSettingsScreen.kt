@@ -130,11 +130,15 @@ fun CalendarAccountSettingsScreen(
 
                 items(state.accounts, key = { it.id }) { account ->
                     val accountKey = vm.getAccountKey(account)
-                    val category = state.accountCategories[accountKey]
+                    // 显示**生效**分类（未设置过的已兜底为「日程」）；原始值用于判断"这是默认值"
+                    val category = state.effectiveCategories[accountKey]
+                        ?: com.schedulecalendar.app.data.calendar.CalendarEventRepository.DEFAULT_CATEGORY
+                    val isDefaultCategory = state.accountCategories[accountKey] == null
                     AccountCard(
                         account = account,
                         isDisabled = account.calendarIds.any { it in state.disabledAccountIds },
                         category = category,
+                        isDefaultCategory = isDefaultCategory,
                         onToggle = { vm.toggleAccount(account) },
                         onCategoryChange = { newCategory ->
                             vm.setAccountCategory(accountKey, newCategory)
@@ -153,7 +157,10 @@ fun CalendarAccountSettingsScreen(
 private fun AccountCard(
     account: com.schedulecalendar.app.data.calendar.CalendarAccountInfo,
     isDisabled: Boolean,
-    category: String?,
+    /** 生效分类（已兜底默认值，非空） */
+    category: String,
+    /** 该分类是否为默认值（用户没手动设置过） */
+    isDefaultCategory: Boolean,
     onToggle: () -> Unit,
     onCategoryChange: (String?) -> Unit
 ) {
@@ -213,8 +220,11 @@ private fun AccountCard(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    // ⚠️ 必须精确比较：早前写成 `category != "anniversary"`，
+                    // 导致**未分类（null）时「日程」chip 也显示选中** ——
+                    // 用户看到「分类：日程」以为已被归类，实际却是「未分类」。
                     FilterChip(
-                        selected = category != "anniversary",
+                        selected = category == "schedule",
                         onClick = { onCategoryChange("schedule") },
                         label = { Text("日程", style = MaterialTheme.typography.labelSmall) }
                     )
@@ -222,6 +232,14 @@ private fun AccountCard(
                         selected = category == "anniversary",
                         onClick = { onCategoryChange("anniversary") },
                         label = { Text("纪念日", style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+                if (isDefaultCategory) {
+                    Text(
+                        "默认归入「日程」：点「纪念日」可改为纪念日分类",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
             }

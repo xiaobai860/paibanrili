@@ -72,6 +72,18 @@ class CalendarEventRepository @Inject constructor(
         cachedReminderCalendarId = null
     }
 
+    /**
+     * 提醒日历 ID（读取「事项」时用于排除）。
+     *
+     * 提醒日历是应用为「系统闹钟提醒」创建的第三个日历，它的事件**不是用户的事项**
+     * （只是给系统闹钟用的载体），因此所有事项读取入口都必须排除 ——
+     * 即使用户在「日历账户」里启用了该账户也一样。
+     *
+     * 取不到时返回 null（无写权限 / 账户尚未创建）→ 退化为不过滤，不影响主流程。
+     */
+    private fun reminderCalendarIdForFilter(): Long? =
+        cachedReminderCalendarId ?: getOrCreateReminderCalendarId()
+
     companion object {
         /** 自定义账户类型，与应用包名一致，对应 authenticator.xml 中的 accountType */
         const val ACCOUNT_TYPE = "com.schedulecalendar.app"
@@ -83,6 +95,21 @@ class CalendarEventRepository @Inject constructor(
         private const val ANNIVERSARY_SUFFIX = "-纪念日"
         /** 提醒日历显示名称后缀 */
         private const val REMINDER_SUFFIX = "-提醒"
+
+        /** 分类标识：日程 */
+        const val CATEGORY_SCHEDULE = "schedule"
+        /** 分类标识：纪念日 */
+        const val CATEGORY_ANNIVERSARY = "anniversary"
+        /**
+         * 未设置分类时的**默认分类**：日程。
+         *
+         * 系统日历与第三方应用账户默认没有分类标记，其事件统一按日程处理
+         * （显示在「事项 → 日程」）。
+         *
+         * ⚠️ 读路径与 UI 显示必须用**同一个**兜底值：否则会出现
+         * 「界面写未分类、实际按日程走」的自相矛盾（用户看到的与实际行为对不上）。
+         */
+        const val DEFAULT_CATEGORY = CATEGORY_SCHEDULE
         /** 国产 ROM 闹钟提醒标志（写入 ExtendedProperties 的 VALUE，全项目取值唯一） */
         private const val NEED_ALARM_PROPERTY_VALUE = "{\"need_alarm\":true}"
         /** getAllEvents 结果缓存有效时长（毫秒）：短 TTL 避免首次/频繁进入时反复全量拉取系统日历 */
@@ -165,12 +192,13 @@ class CalendarEventRepository @Inject constructor(
         }
     
         // 应用自定义账户类型排在最前面，固定顺序：日程 > 纪念日 > 提醒 > 外部账户
+        // ⚠️ 用 endsWith 而非 contains：contains 会把「我的日程备份」这类名字误判成日程日历
         accounts.sortWith(compareBy {
             when {
                 it.accountType != ACCOUNT_TYPE -> "ZZZ" // 外部账户排在最后
-                it.displayName.contains(SCHEDULE_SUFFIX) -> "A"      // 日程
-                it.displayName.contains(ANNIVERSARY_SUFFIX) -> "B"  // 纪念日
-                it.displayName.contains(REMINDER_SUFFIX) -> "C"     // 提醒
+                it.displayName.endsWith(SCHEDULE_SUFFIX) -> "A"      // 日程
+                it.displayName.endsWith(ANNIVERSARY_SUFFIX) -> "B"  // 纪念日
+                it.displayName.endsWith(REMINDER_SUFFIX) -> "C"     // 提醒
                 else -> "D"
             }
         })
@@ -253,6 +281,9 @@ class CalendarEventRepository @Inject constructor(
 
         // 先批量加载所有日历信息
         val calendarInfoMap = loadAllCalendarInfo()
+        // ⚠️ 提醒日历的事件**不是用户的事项**（它是给系统闹钟用的载体）→ 事项入口一律排除，
+        // 即使用户在「日历账户」里启用了该账户也一样。
+        val reminderCalId = reminderCalendarIdForFilter()
 
         // 系统日历查询：缺权限/日历账户异常时不应崩溃（调用方也有兜底，函数内自保护）
         try {
@@ -265,6 +296,7 @@ class CalendarEventRepository @Inject constructor(
                 while (cursor.moveToNext()) {
                     val eventId = cursor.getLong(0)
                     val calendarId = cursor.getLong(1)
+                    if (calendarId == reminderCalId) continue // 提醒日历 → 不是事项
                     val title = cursor.getString(2) ?: "无标题"
                     val description = cursor.getString(3)
                     val dtStart = cursor.getLong(4)
@@ -553,8 +585,11 @@ class CalendarEventRepository @Inject constructor(
             context.contentResolver.query(
                 CalendarContract.Calendars.CONTENT_URI,
                 arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME),
-                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ? AND ${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} NOT LIKE ?",
-                arrayOf(ACCOUNT_NAME, ACCOUNT_TYPE, "%$ANNIVERSARY_SUFFIX"),
+                // ⚠️ 必须同时排除「纪念日」与「提醒」两个后缀：
+                // 只排除纪念日时，提醒日历可能被误当成日程日历取到 → 下面的 needsUpdate
+                // 会把它的显示名改写成「排班日历-日程」，造成重名并毁掉提醒日历。
+                "${CalendarContract.Calendars.ACCOUNT_NAME} = ? AND ${CalendarContract.Calendars.ACCOUNT_TYPE} = ? AND ${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} NOT LIKE ? AND ${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} NOT LIKE ?",
+                arrayOf(ACCOUNT_NAME, ACCOUNT_TYPE, "%$ANNIVERSARY_SUFFIX", "%$REMINDER_SUFFIX"),
                 null
             )?.use { cursor ->
                 if (cursor.moveToFirst()) {
@@ -923,8 +958,19 @@ class CalendarEventRepository @Inject constructor(
             CalendarContract.Events.RRULE
         )
         // 选择参数为 (DTEND > rangeStart) AND (DTSTART < rangeEnd)，覆盖区间内发生或跨越边界的事件
-        val selection = "(${CalendarContract.Events.DTEND} > ?) AND (${CalendarContract.Events.DTSTART} < ?)"
-        val selectionArgs = arrayOf(rangeStartMs.toString(), rangeEndMs.toString())
+        // 并排除提醒日历（在 Provider 端过滤，省得把提醒事件拉进 JVM 再丢）
+        val reminderCalId = reminderCalendarIdForFilter()
+        val selection = buildString {
+            append("(${CalendarContract.Events.DTEND} > ?) AND (${CalendarContract.Events.DTSTART} < ?)")
+            if (reminderCalId != null) {
+                append(" AND ${CalendarContract.Events.CALENDAR_ID} != ?")
+            }
+        }
+        val selectionArgs = if (reminderCalId != null) {
+            arrayOf(rangeStartMs.toString(), rangeEndMs.toString(), reminderCalId.toString())
+        } else {
+            arrayOf(rangeStartMs.toString(), rangeEndMs.toString())
+        }
 
         val calendarInfoMap = loadAllCalendarInfo()
         // Provider 异常（权限撤销 / ROM 定制）时与同类方法一致加 try 保护

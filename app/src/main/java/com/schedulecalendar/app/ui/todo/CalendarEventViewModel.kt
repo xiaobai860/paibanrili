@@ -74,6 +74,9 @@ class CalendarEventViewModel @Inject constructor(
     /** 纪念日专用日历ID */
     private var anniversaryCalendarId: Long? = null
 
+    /** 提醒专用日历ID：它的事件不属于事项（数据层已排除），这里用于不把它纳入分类映射 */
+    private var reminderCalendarId: Long? = null
+
     /** 日程专用日历ID */
     private var scheduleCalendarId: Long? = null
 
@@ -181,6 +184,7 @@ class CalendarEventViewModel @Inject constructor(
                 withContext(Dispatchers.IO) {
                     calendarRepo.getOrCreateLocalCalendarId()
                     anniversaryCalendarId = calendarRepo.getOrCreateAnniversaryCalendarId()
+                    reminderCalendarId = calendarRepo.getOrCreateReminderCalendarId()
                     calendarRepo.getAllAccounts()
                 }
             } catch (e: SecurityException) {
@@ -238,11 +242,14 @@ class CalendarEventViewModel @Inject constructor(
         val calIdToCategory = mutableMapOf<Long, String>()
         _accounts.value.forEach { acct ->
             val key = calendarRepo.getAccountKey(acct)
-            val category = categories[key]
-            if (category != null) {
-                acct.calendarIds.forEach { calId ->
-                    calIdToCategory[calId] = category
-                }
+            // 未设置分类的账户（系统日历 / 第三方应用）**一律按「日程」处理**：
+            // 显式兜底，而不是靠下游 `category != "anniversary"` 碰巧通过 ——
+            // 否则将来新增第三种分类时，这些账户的事件会集体"消失"。
+            val category = categories[key] ?: CalendarEventRepository.DEFAULT_CATEGORY
+            acct.calendarIds.forEach { calId ->
+                // 「提醒」日历不参与分类：它的事件不是事项（数据层已排除）
+                if (calId == reminderCalendarId) return@forEach
+                calIdToCategory[calId] = category
             }
         }
         accountCategoriesFlow.value = calIdToCategory
