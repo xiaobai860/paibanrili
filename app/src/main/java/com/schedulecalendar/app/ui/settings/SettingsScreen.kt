@@ -180,6 +180,23 @@ fun SettingsScreen(navController: NavController) {
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                    // 清空诊断日志：清掉历史噪音，便于「先清空→复现→导出」精准定位
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable { clearDiagnosticLog(context, exportScope) }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("清空日志文件", style = MaterialTheme.typography.bodyMedium)
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -238,6 +255,25 @@ private fun exportDiagnosticLog(context: Context, scope: CoroutineScope) {
                 ).show()
             }
         )
+    }
+}
+
+/**
+ * 清空诊断日志文件（当前 + 归档）。
+ *
+ * - 删除在 IO 线程执行：避免在主线程做文件操作（与导出同理，直接做会掉帧/ANR）；
+ * - 用 Toast 反馈结果；日志功能自身故障绝不能影响主流程 —— 清空失败也只提示。
+ */
+private fun clearDiagnosticLog(context: Context, scope: CoroutineScope) {
+    scope.launch {
+        val ok = withContext(Dispatchers.IO) {
+            runCatching { FileLog.clear() }.isSuccess
+        }
+        android.widget.Toast.makeText(
+            context,
+            if (ok) "已清空日志" else "清空失败",
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
     }
 }
 

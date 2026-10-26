@@ -70,7 +70,7 @@ object FileLog {
 
     private val executor = ThreadPoolExecutor(
         1, 1, 30L, TimeUnit.SECONDS,
-        ArrayBlockingQueue<Runnable>(QUEUE_CAPACITY),
+        ArrayBlockingQueue(QUEUE_CAPACITY),
         { r -> Thread(r, "AppLogFileWriter").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } },
         ThreadPoolExecutor.DiscardOldestPolicy()
     )
@@ -139,6 +139,22 @@ object FileLog {
             }
         }.isSuccess
         return if (ok) out else null
+    }
+
+    /**
+     * 清空诊断日志（当前文件 + 归档）。
+     * 必须在 IO 线程调用：会短暂持有写锁并删除文件，避免与写线程竞争。
+     * 清空后下次写入会重新创建空文件，不影响后续记录。
+     */
+    fun clear() {
+        synchronized(stateLock) {
+            closeWriter()
+            writtenBytes = 0
+            targetDir?.let { dir ->
+                runCatching { File(dir, FILE_NAME).delete() }
+                runCatching { File(dir, ARCHIVE_NAME).delete() }
+            }
+        }
     }
 
     // ── 写线程内操作 ────────────────────────────────────────────────────────
