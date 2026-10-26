@@ -1,9 +1,7 @@
 // app/src/main/java/com/schedulecalendar/app/widget/WidgetConfigActivity.kt
 package com.schedulecalendar.app.widget
 
-import android.appwidget.AppWidgetManager
 import android.content.Context
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -67,42 +65,30 @@ class WidgetConfigActivity : ComponentActivity() {
         // 桌面添加小组件已不再配置（android:configure 已移除），避免部分 ROM 在
         // 配置完成前抢先渲染导致「载入窗口小部件时出现问题」。
         val widgetType = intent?.getStringExtra("widget_type")
-        val isFromSettings = widgetType != null
-
-        val isScheduleWidget: Boolean
-        val appWidgetId: Int
-
-        if (isFromSettings) {
-            appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-            isScheduleWidget = widgetType == WIDGET_TYPE_SCHEDULE
-        } else {
-            // 兜底：若被意外以桌面配置方式启动，直接以默认配置结束
-            appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-            isScheduleWidget = true
-        }
+        // widget_type 为空 = 被意外以桌面配置方式启动 → 兜底按排班组件处理
+        val isScheduleWidget = widgetType?.let { it == WIDGET_TYPE_SCHEDULE } ?: true
 
         setContent {
             ScheduleCalendarTheme {
                 WidgetConfigScreen(
-                    appWidgetId = appWidgetId,
                     isScheduleWidget = isScheduleWidget,
-                    onDone = { finishConfig(appWidgetId) }
+                    onDone = { finishConfig() }
                 )
             }
         }
     }
 
-    private fun finishConfig(appWidgetId: Int) {
-        // 组件更新由 ScheduleApp 的「退到后台」钩子统一驱动（桌面可见时刻单次更新，避免 Activity 关闭瞬间
-        // 的桌面切换窗口期更新被 OEM 桌面丢弃）；此处不再自行 update。
-        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-            val resultIntent = Intent().apply {
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-            }
-            setResult(RESULT_OK, resultIntent)
-        } else {
-            setResult(RESULT_CANCELED)
-        }
+    /**
+     * 结束配置页。
+     *
+     * - 组件更新由 ScheduleApp 的「退到后台」钩子统一驱动（桌面可见时刻单次更新，
+     *   避免 Activity 关闭瞬间的桌面切换窗口期更新被 OEM 桌面丢弃）；此处不再自行 update。
+     * - 结果**恒为 RESULT_CANCELED**：本 Activity 只从「设置 → 小组件样式」进入，
+     *   桌面配置入口（android:configure）已移除 → **不存在真实 widgetId**，
+     *   没有「配置成功并回传 widgetId」可言；且从设置页进入时无人接收结果。
+     */
+    private fun finishConfig() {
+        setResult(RESULT_CANCELED)
         finish()
     }
 }
@@ -112,7 +98,6 @@ class WidgetConfigActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun WidgetConfigScreen(
-    appWidgetId: Int,
     isScheduleWidget: Boolean,
     onDone: () -> Unit
 ) {
