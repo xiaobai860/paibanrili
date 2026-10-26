@@ -129,8 +129,8 @@ class CalendarAccountViewModel @Inject constructor(
                     if (currentCategories.containsKey(key)) return@forEach
                     val calId = acct.calendarIds.firstOrNull()
                     val default = when (calId) {
-                        appCalIds.anniversary -> "anniversary"
-                        appCalIds.schedule -> "schedule"
+                        appCalIds.anniversary -> CalendarEventRepository.CATEGORY_ANNIVERSARY
+                        appCalIds.schedule -> CalendarEventRepository.CATEGORY_SCHEDULE
                         else -> null // 「提醒」日历不参与分类
                     }
                     if (default != null) {

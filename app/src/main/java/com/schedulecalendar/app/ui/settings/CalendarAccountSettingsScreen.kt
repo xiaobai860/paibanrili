@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.schedulecalendar.app.data.calendar.CalendarEventRepository
 import com.schedulecalendar.app.ui.component.ScheduleTopBar
 
 /**
@@ -224,13 +225,13 @@ private fun AccountCard(
                     // 导致**未分类（null）时「日程」chip 也显示选中** ——
                     // 用户看到「分类：日程」以为已被归类，实际却是「未分类」。
                     FilterChip(
-                        selected = category == "schedule",
-                        onClick = { onCategoryChange("schedule") },
+                        selected = category == CalendarEventRepository.CATEGORY_SCHEDULE,
+                        onClick = { onCategoryChange(CalendarEventRepository.CATEGORY_SCHEDULE) },
                         label = { Text("日程", style = MaterialTheme.typography.labelSmall) }
                     )
                     FilterChip(
-                        selected = category == "anniversary",
-                        onClick = { onCategoryChange("anniversary") },
+                        selected = category == CalendarEventRepository.CATEGORY_ANNIVERSARY,
+                        onClick = { onCategoryChange(CalendarEventRepository.CATEGORY_ANNIVERSARY) },
                         label = { Text("纪念日", style = MaterialTheme.typography.labelSmall) }
                     )
                 }

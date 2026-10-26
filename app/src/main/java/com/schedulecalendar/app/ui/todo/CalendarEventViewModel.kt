@@ -98,7 +98,7 @@ class CalendarEventViewModel @Inject constructor(
                     isAnniversaryCal || isLegacyAnniversary
                 } else {
                     val category = categories[event.calendarId]
-                    category == "anniversary"
+                    category == CalendarEventRepository.CATEGORY_ANNIVERSARY
                 }
             }
         }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -129,7 +129,7 @@ class CalendarEventViewModel @Inject constructor(
                     } else {
                         // 外部账户：按分类过滤
                         val category = categories[event.calendarId]
-                        category != "anniversary"
+                        category != CalendarEventRepository.CATEGORY_ANNIVERSARY
                     }
                 }
             }.collect { filtered ->

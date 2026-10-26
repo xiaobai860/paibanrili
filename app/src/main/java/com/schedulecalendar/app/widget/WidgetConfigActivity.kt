@@ -47,6 +47,13 @@ const val DISPLAY_MODE_SHIFT_HOLIDAY  = "shift_holiday"     // 当天班次 + �
 
 // ── 从设置页面打开时传递的小组件类型 ─────────────────────────────────
 const val WIDGET_TYPE_CALENDAR = "calendar"
+/**
+ * 小组件类型：2x1 打卡排班。
+ *
+ * ⚠️ 值与「账户分类」的 `schedule` 同形，但**语义完全无关**：
+ * 这里是小组件类型标识，那里是账户分类标识 —— 两者各自独立，改动互不影响。
+ * （正因为同形，才更要用各自的常量而不是随手写字面量，否则后人容易误改错地方。）
+ */
 const val WIDGET_TYPE_SCHEDULE = "schedule"
 
 // ── 配置 Activity ────────────────────────────────────────────────────
