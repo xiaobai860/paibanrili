@@ -55,13 +55,17 @@ class ReminderScheduler @Inject constructor(
         const val EXTRA_TIME = "reminder_time"
         const val EXTRA_SHIFT_NAME = "reminder_shift_name"
         /**
-         * 通知渠道 ID。
+         * 通知渠道 ID（语义化常量，不随实现变化而改）。
          *
-         * ⚠️ 带 `_v2` 后缀：旧版本创建的 `work_reminder` 渠道**没有声音**
-         *   （渠道的 sound 一经创建不可修改 → 只能换 ID 才能拿到带铃声的新渠道）。
-         *   旧渠道已不再被使用，留在系统设置里也不影响功能（需要清理时手动删即可）。
+         * 渠道的 sound / importance / vibration **在创建时一次设定**（AOSP 规定
+         * "Only modifiable before the channel is submitted to createNotificationChannel"），
+         * 之后系统不会再改、我们也不会去改 —— 这是官方标准做法。
+         *
+         * 若该渠道被 ROM（如 MIUI 的通知管控）或用户在系统设置里锁定/接管，
+         * 那是**系统行为**：应用侧不通过换 ID 绕过（只会不断堆积残留渠道），
+         * 由用户在「通知管理」里按需调整铃声与重要程度。
          */
-        const val CHANNEL_ID = "work_reminder_v2"
+        const val CHANNEL_ID = "work_reminder"
         const val CHANNEL_NAME = "上下班提醒"
         const val NOTIFICATION_ID_CLOCK_IN = 1001
         const val NOTIFICATION_ID_CLOCK_OUT = 1002
