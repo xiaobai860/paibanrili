@@ -35,6 +35,8 @@ class WidgetRefreshReceiver : BroadcastReceiver() {
                 ep.widgetRefreshScheduler().scheduleWidgetRefreshes()
                 // 自愈：本进程是被这条闹钟唤醒的，说明部分闹钟仍存活；顺带 force 重排上下班提醒，
                 // 防止 ROM 清理导致的提醒闹钟缺失长期得不到恢复。
+                // （提醒方式为「日历」时 ReminderScheduler 会忽略 force：日历事件存在系统日历里，
+                //  ROM 不会清理它，强制重建只会造成 ContentProvider 写风暴。）
                 ep.reminderScheduler().scheduleActiveReminders(force = true)
             } catch (e: Exception) {
                 AppLog.e(LogTags.WIDGET_REFRESH_RECEIVER, "widget refresh failed", e)

@@ -39,7 +39,8 @@ class WidgetRefreshWorker(
             syncAllWidgets(appContext, allowSkipUnchanged = true)
 
             // 2) 自愈：force 重排上下班提醒闹钟 + 小组件刷新闹钟
-            //    （force=true 绕过「签名未变则跳过」，确保被 ROM 取消的闹钟一定被重新注册）
+            //    （force=true 绕过「签名未变则跳过」，确保被 ROM 取消的闹钟一定被重新注册；
+            //      提醒方式为「日历」时该 force 会被忽略 —— 日历事件存在系统日历里，ROM 不会清理它）
             val ep = EntryPointAccessors.fromApplication(
                 appContext.applicationContext, WidgetClockEntryPoint::class.java
             )

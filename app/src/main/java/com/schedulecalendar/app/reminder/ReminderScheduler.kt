@@ -75,10 +75,12 @@ class ReminderScheduler @Inject constructor(
          * force 重排的最小间隔（毫秒）。
          *
          * 自愈路径（WidgetRefreshWorker 15 分钟周期、WidgetRefreshReceiver 闹钟）会以 force=true
-         * 调用，若每次都全量重排：日历模式下会对 CalendarProvider 做「删全部 + 重建」写风暴
-         * （耗电、易超时、删与重建之间被杀会丢事件）；闹钟模式下也会反复 cancel/rebuild 用户闹钟。
+         * 调用，若每次都全量重排，闹钟模式下会反复 cancel/rebuild 用户闹钟（耗电、状态抖动）。
          * 因此这里做时间节流：距上次成功 force 不足该值则降级为「按签名判断」，
          * 签名未变直接跳过。真正的即时需求（开机/时区/设置变更）由调用方保证间隔足够或首次必然执行。
+         *
+         * 注：**日历方式不吃 force、也不参与这个节流**（见 [scheduleActiveReminders]）——
+         * 日历事件存在系统日历里，ROM 不会清理它，不需要靠 force 自愈。
          */
         private const val MIN_FORCE_INTERVAL_MILLIS = 30 * 60 * 1000L // 30 分钟
     }
@@ -137,7 +139,9 @@ class ReminderScheduler @Inject constructor(
      * @param force 为 true 时忽略「签名未变」跳过逻辑、强制全量重排。
      *             开机、应用更新、时间/时区变更、设置变更等「必须保证重排生效」的场景应传 true；
      *             回到前台 / 冷启动 / 数据变更等「可能冗余」的场景用默认 false，
-     *             当配置与排班均未变化时直接跳过整轮重排（日历方式尤其受益，省去大量 ContentProvider 往返）。
+     *             当配置与排班均未变化时直接跳过整轮重排。
+     *             ⚠️ **仅对「精确闹钟」方式生效**：日历方式的事件存在系统日历里、不会被 ROM 清理，
+     *             force 自愈对它无收益（反而造成写风暴），故日历方式一律按签名判断。
      */
     suspend fun scheduleActiveReminders(force: Boolean = false) {
         scheduleMutex.withLock {
@@ -147,8 +151,19 @@ class ReminderScheduler @Inject constructor(
             val signature = computeScheduleSignature(prefsSnapshot)
             val now = System.currentTimeMillis()
             // force 节流：自愈路径高频 force 时，距上次成功 force 过近则降级为按签名判断，
-            // 避免日历模式 15 分钟一次「删全部+重建」写风暴、闹钟模式反复 cancel/rebuild。
-            val effectiveForce = force && (now - lastForceScheduleAt) >= MIN_FORCE_INTERVAL_MILLIS
+            // 避免闹钟模式反复 cancel/rebuild 用户闹钟。
+            //
+            // ⚠️ **日历方式不适用 force 强制重排**（此时 effectiveForce 恒为 false）：
+            // - force 的目的是「恢复被 ROM 清理掉的 AlarmManager 闹钟」，而日历事件存在**系统日历**里，
+            //   ROM 不会清理它 → 强制重排没有收益，只会造成每 30 分钟一次「删光 + 重建」的
+            //   ContentProvider 写风暴（耗电、易超时、删与重建之间被杀会丢事件）；
+            // - 顺带好处：用户在系统日历里**手动删掉**的提醒事件不会被立刻复活（尊重用户操作）。
+            // - 两种「必须重建」的场景不受影响：
+            //   ① 卸载重装 → 冷启动时 lastScheduledSignature 为 null → 必然全量重排；
+            //   ② 提醒方式切换 → 签名里含 method → 签名变化 → 照常重排。
+            val effectiveForce = force &&
+                prefsSnapshot.method != METHOD_CALENDAR &&
+                (now - lastForceScheduleAt) >= MIN_FORCE_INTERVAL_MILLIS
             if (!effectiveForce && signature == lastScheduledSignature) return@withLock
             if (effectiveForce) lastForceScheduleAt = now
 
