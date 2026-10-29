@@ -1,12 +1,10 @@
 package com.schedulecalendar.app.reminder
 
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.net.Uri
 import androidx.core.app.NotificationCompat
@@ -14,6 +12,7 @@ import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.data.prefs.AppPreferences
 import com.schedulecalendar.app.domain.util.AppLog
 import com.schedulecalendar.app.domain.util.LogTags
+import com.schedulecalendar.app.domain.util.ReminderChannels
 import dagger.hilt.EntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.InstallIn
@@ -61,8 +60,13 @@ class AlarmReceiver : BroadcastReceiver() {
                         // 总开关关闭时不弹通知；开启总开关后通知栏提醒强制开启（以总开关为唯一真相源）
                         if (!prefs.getReminderEnabled()) return@launch
 
-                        // 创建通知渠道（兼容性保障）
-                        createNotificationChannelIfNeeded(context)
+                        // 创建通知渠道（兼容性保障）：统一走 ReminderChannels（带闹钟铃声 + 旧渠道迁移）
+                        ReminderChannels.ensureAlarmChannel(
+                            context,
+                            ReminderScheduler.CHANNEL_ID,
+                            ReminderScheduler.CHANNEL_NAME,
+                            "上下班打卡提醒"
+                        )
 
                         // 未授予通知权限时 notify 会被静默丢弃，用户表现为「提醒莫名不弹」。
                         // 此处仅记录日志便于排查（授权引导由设置页提供）。
@@ -104,6 +108,11 @@ class AlarmReceiver : BroadcastReceiver() {
                             .setContentText(body)
                             .setPriority(NotificationCompat.PRIORITY_MAX)
                             .setCategory(NotificationCompat.CATEGORY_ALARM)
+                            // 官方推荐的「闹钟式提醒」做法：屏幕锁定/熄屏时也会以 heads-up 形式出现，
+                            // 且持续 60 秒（比普通 heads-up 更"粘"），到点不容易被忽略。
+                            // 前提：渠道 importance ≥ IMPORTANCE_HIGH（我们的渠道正是 HIGH），
+                            // 且需 manifest 声明 USE_FULL_SCREEN_INTENT。
+                            .setFullScreenIntent(tapPending, true)
                             .setContentIntent(tapPending)
                             .setSound(soundUri)
                             .setVibrate(longArrayOf(0, 400, 200, 400))
@@ -125,28 +134,4 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun createNotificationChannelIfNeeded(context: Context) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (nm.getNotificationChannel(ReminderScheduler.CHANNEL_ID) == null) {
-            val channel = NotificationChannel(
-                ReminderScheduler.CHANNEL_ID,
-                ReminderScheduler.CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "上下班打卡提醒"
-                setSound(
-                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                enableVibration(true)
-                vibrationPattern = longArrayOf(0, 400, 200, 400)
-                setBypassDnd(true)
-            }
-            nm.createNotificationChannel(channel)
-        }
-    }
 }

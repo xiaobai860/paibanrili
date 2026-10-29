@@ -1,11 +1,10 @@
 package com.schedulecalendar.app.reminder
 import com.schedulecalendar.app.domain.util.AppLog
 import com.schedulecalendar.app.domain.util.LogTags
+import com.schedulecalendar.app.domain.util.ReminderChannels
 
 import android.annotation.SuppressLint
 import android.app.AlarmManager
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -55,7 +54,14 @@ class ReminderScheduler @Inject constructor(
         const val EXTRA_DATE = "reminder_date"
         const val EXTRA_TIME = "reminder_time"
         const val EXTRA_SHIFT_NAME = "reminder_shift_name"
-        const val CHANNEL_ID = "work_reminder"
+        /**
+         * 通知渠道 ID。
+         *
+         * ⚠️ 带 `_v2` 后缀：旧版本创建的 `work_reminder` 渠道**没有声音**
+         *   （渠道的 sound 一经创建不可修改 → 只能换 ID 才能拿到带铃声的新渠道）。
+         *   旧渠道已不再被使用，留在系统设置里也不影响功能（需要清理时手动删即可）。
+         */
+        const val CHANNEL_ID = "work_reminder_v2"
         const val CHANNEL_NAME = "上下班提醒"
         const val NOTIFICATION_ID_CLOCK_IN = 1001
         const val NOTIFICATION_ID_CLOCK_OUT = 1002
@@ -107,22 +113,11 @@ class ReminderScheduler @Inject constructor(
     private var lastForceScheduleAt: Long = 0L
 
     init {
-        createNotificationChannel()
-    }
-
-    /**
-     * 创建通知渠道（Android 8.0+）
-     */
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "上下班打卡提醒"
-        }
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(channel)
+        // ⚠️ 渠道必须**带闹钟铃声**：渠道的 sound 创建后不可改，
+        // 而旧代码这里建的是「无声音」渠道、AlarmReceiver 里带声音的那套因渠道已存在而从未执行
+        // → 提醒只弹通知不响铃。现在统一交由 ReminderChannels 创建（渠道 ID 已换新，
+        // 保证拿到的是带铃声的全新渠道）。
+        ReminderChannels.ensureAlarmChannel(context, CHANNEL_ID, CHANNEL_NAME, "上下班打卡提醒")
     }
 
     /**
@@ -644,7 +639,9 @@ class ReminderScheduler @Inject constructor(
                 dtEnd = dtEnd,
                 allDay = false,
                 calendarId = calendarRepo.getOrCreateReminderCalendarId(), // 强制使用提醒专用日历
-                reminderMinutes = reminderMinutes
+                reminderMinutes = reminderMinutes,
+                // 额外写一条「响铃提醒」（method=METHOD_ALARM）→ 系统日历里的「响铃提醒」开关默认打开
+                includeAlarmReminder = true
             )
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e

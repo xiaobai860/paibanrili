@@ -38,6 +38,30 @@
         本应用走国内分发/自用，不受 Play 审核约束。
     -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <!--
+      全屏意图（USE_FULL_SCREEN_INTENT）：官方推荐的「闹钟式提醒」做法。
+
+      AOSP 注释（Notification.Builder.setFullScreenIntent）：带全屏意图的通知
+      *"在屏幕锁定或关闭时也会以 heads-up 形式出现，且持续 60 秒"*，
+      前提是渠道 importance ≥ IMPORTANCE_HIGH。
+
+      【Android 14+ 的授予规则（IDE 会就此提示）】
+      该权限**只对「核心闹钟 / 通话」类应用自动授予**，其它用途需用户显式同意。
+      本应用的核心功能正是「排班日历 + 上下班精确提醒」（打卡类闹钟），
+      属日历/闹钟范畴，符合自动授予条件 —— 真机实测 `granted=true`。
+
+      【为什么不改成"只通知不响铃"】
+      全屏意图用于到点**抢注意力**（锁屏/熄屏时也顶屏 60 秒），配合渠道的闹钟铃声与振动，
+      这是官方文档给出的闹钟式提醒的标准做法；缺少它时提醒容易被锁屏界面吞掉。
+
+      【若上架 Google Play】
+      与 `USE_EXACT_ALARM` 一样需在 Play Console 填 justification，理由同上。
+
+      【降级行为】
+      若 ROM 未授予该权限，系统会把全屏意图**降级为普通通知**，
+      不影响提醒本身的声音与弹出（渠道铃声与振动仍生效）。
+    -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
 
     <!--
       关闭系统「预测式返回」（Predictive Back）：

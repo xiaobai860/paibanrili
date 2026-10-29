@@ -1,6 +1,5 @@
 package com.schedulecalendar.app.reminder
 
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -8,6 +7,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.schedulecalendar.app.domain.util.AppLog
 import com.schedulecalendar.app.domain.util.LogTags
+import com.schedulecalendar.app.domain.util.ReminderChannels
 
 /**
  * 纪念日提醒接收器
@@ -20,7 +20,8 @@ class AnniversaryReminderReceiver : BroadcastReceiver() {
         const val EXTRA_DATE = "anniversary_date"
         /** 稳定唯一通知 ID（替代原 title.hashCode()，避免哈希冲突互相覆盖） */
         const val EXTRA_NOTIFICATION_ID = "anniversary_notification_id"
-        const val CHANNEL_ID = "anniversary_reminder"
+        /** 通知渠道 ID（`_v2`：旧渠道无声音，渠道的 sound 创建后不可改 → 只能换 ID） */
+        const val CHANNEL_ID = "anniversary_reminder_v2"
         const val CHANNEL_NAME = "纪念日提醒"
         const val BASE_NOTIFICATION_ID = 2000
         /** 通知 ID 取模范围：越大越不容易出现两个纪念日互相覆盖 */
@@ -34,7 +35,7 @@ class AnniversaryReminderReceiver : BroadcastReceiver() {
             val date = intent.getStringExtra(EXTRA_DATE) ?: ""
             val stableId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
 
-            createNotificationChannelIfNeeded(context)
+            ReminderChannels.ensureAlarmChannel(context, CHANNEL_ID, CHANNEL_NAME, "纪念日到期提醒")
 
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             // 未授予通知权限时 notify 会被静默丢弃，仅记录日志便于排查
@@ -62,17 +63,4 @@ class AnniversaryReminderReceiver : BroadcastReceiver() {
         }.onFailure { AppLog.e(LogTags.ANNIVERSARY_REMINDER_RECEIVER, "show anniversary reminder failed", it) }
     }
 
-    private fun createNotificationChannelIfNeeded(context: Context) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (nm.getNotificationChannel(CHANNEL_ID) == null) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "纪念日到期提醒"
-            }
-            nm.createNotificationChannel(channel)
-        }
-    }
 }

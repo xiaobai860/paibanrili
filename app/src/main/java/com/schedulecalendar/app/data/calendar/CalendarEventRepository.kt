@@ -110,6 +110,17 @@ class CalendarEventRepository @Inject constructor(
          * 「界面写未分类、实际按日程走」的自相矛盾（用户看到的与实际行为对不上）。
          */
         const val DEFAULT_CATEGORY = CATEGORY_SCHEDULE
+        /**
+         * 允许的提醒方式：默认 / 通知 / 邮件 / 短信 + **响铃**（`METHOD_ALARM`=4）。
+         *
+         * ⚠️ **必须包含 4**，否则「响铃提醒」永远开不了：
+         *   `ALLOWED_REMINDERS` 是**日历账户级**属性（创建时写入，已存在的日历不会自动更新），
+         *   而系统日历（OPPO/ColorOS 2026-10-29 实测）在把提醒切到「响铃提醒」时
+         *   会先校验这一位是否含 4 —— 不含就**拒绝写入**：
+         *   用户手动打开开关，UI 看似变了，但 `reminders.method` 始终停在 1、
+         *   `extendedproperties` 表也是空的（该表标准 provider 禁止非 sync adapter 写）。
+         */
+        private const val ALLOWED_REMINDERS_WITH_ALARM = "0,1,2,3,4"
         /** getAllEvents 结果缓存有效时长（毫秒）：短 TTL 避免首次/频繁进入时反复全量拉取系统日历 */
         private const val EVENTS_CACHE_TTL_MS = 30_000L
     }
@@ -411,7 +422,16 @@ class CalendarEventRepository @Inject constructor(
         calendarId: Long? = null,
         rrule: String? = null,
         reminderMinutes: Int? = null,
-        colorHex: String? = null
+        colorHex: String? = null,
+        /**
+         * 是否额外写一条「响铃提醒」（`METHOD_ALARM`=4，minutes=0）。
+         *
+         * 依据：系统日历（OPPO/ColorOS 实测）的事件详情里有一个**独立的「响铃提醒」开关**，
+         * 它对应的正是 Reminders 表里 `method = METHOD_ALARM` 的提醒行
+         * （AOSP 官方常量：`METHOD_ALARM=4`；日历账户需以 `ALLOWED_REMINDERS` 允许 4）。
+         * 只写 `METHOD_ALERT` 的通知提醒时，该开关恒为关闭 → 响铃功能用户永远开不了。
+         */
+        includeAlarmReminder: Boolean = false
     ): Long {
         return try {
             val calId = calendarId ?: getFirstWritableCalendarId() ?: return -1L
@@ -454,6 +474,18 @@ class CalendarEventRepository @Inject constructor(
                     runCatching { deleteEvent(eventId) }
                     return -1L
                 }
+                // 追加「响铃提醒」行（method=METHOD_ALARM, minutes=0）：让系统日历里的
+                // 「响铃提醒」开关默认是开的（该开关只认 method=4 的提醒行）。
+                // 写失败不影响通知提醒（通知行已就绪），仅留痕。
+                if (includeAlarmReminder) {
+                    val alarmReminderId = addReminder(eventId, 0, CalendarContract.Reminders.METHOD_ALARM)
+                    if (alarmReminderId == null) {
+                        AppLog.w(
+                            LogTags.CALENDAR_EVENT_REPOSITORY,
+                            "alarm reminder row write failed for $eventId"
+                        )
+                    }
+                }
                 // ⚠️ 这里**不再**写 ExtendedProperties 的 need_alarm（曾用于国产 ROM 兼容）：
                 //   2026-10-29 真机实测（OPPO/ColorOS）：**标准 CalendarProvider 直接拒绝** ——
                 //   `IllegalArgumentException: Only sync adapters may write using
@@ -472,18 +504,45 @@ class CalendarEventRepository @Inject constructor(
     /**
      * 为事件添加提醒
      */
-    private fun addReminder(eventId: Long, minutesBefore: Int): Long? {
+    private fun addReminder(eventId: Long, minutesBefore: Int, method: Int = CalendarContract.Reminders.METHOD_ALERT): Long? {
         return try {
             val values = ContentValues().apply {
                 put(CalendarContract.Reminders.EVENT_ID, eventId)
                 put(CalendarContract.Reminders.MINUTES, minutesBefore)
-                put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
+                put(CalendarContract.Reminders.METHOD, method)
             }
             val uri = context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, values)
             // 成功返回提醒行 ID；失败（uri 为 null）返回 null，由调用方决定回滚
             uri?.let { ContentUris.parseId(it) }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    /**
+     * 确保日历账户允许「响铃提醒」方式（`METHOD_ALARM`=4）。
+     *
+     * `ALLOWED_REMINDERS` 只在**创建**日历时写入 → 已存在的日历不会自动更新，
+     * 而系统日历切「响铃提醒」时又要求这一位含 4，否则静默拒绝写入
+     * （2026-10-29 OPPO/ColorOS 实测：手动开开关后 reminders.method 始终为 1）。
+     * → 因此每次拿到已存在的日历都要显式补一次 UPDATE（幂等，代价一次 Provider 写）。
+     */
+    private fun ensureAllowedReminders(calId: Long) {
+        runCatching {
+            val values = ContentValues().apply {
+                put(CalendarContract.Calendars.ALLOWED_REMINDERS, ALLOWED_REMINDERS_WITH_ALARM)
+            }
+            // 只按 _ID 精确更新我们自己的日历（owner = 本应用账户，有写权限，
+            // 无需 CALLER_IS_SYNCADAPTER —— 那反而要求 sync adapter 身份）
+            context.contentResolver.update(
+                CalendarContract.Calendars.CONTENT_URI,
+                values,
+                "${CalendarContract.Calendars._ID} = ?",
+                arrayOf(calId.toString())
+            )
+        }.onFailure { e ->
+            // 更新失败只影响「响铃提醒」能否被打开，不影响提醒本身 → 记一笔即可
+            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "ensure allowedReminders failed for $calId", e)
         }
     }
 
@@ -593,6 +652,7 @@ class CalendarEventRepository @Inject constructor(
             }
             
             if (existingCalId != null) {
+                ensureAllowedReminders(existingCalId)
                 return existingCalId
             }
 
@@ -609,7 +669,7 @@ class CalendarEventRepository @Inject constructor(
                 put(CalendarContract.Calendars.CALENDAR_COLOR, 0xFF4285F4.toInt())
                 put(CalendarContract.Calendars.CALENDAR_TIME_ZONE, TimeZone.getDefault().id)
                 put(CalendarContract.Calendars.CAN_ORGANIZER_RESPOND, 0)
-                put(CalendarContract.Calendars.ALLOWED_REMINDERS, "0,1,2,3")
+                put(CalendarContract.Calendars.ALLOWED_REMINDERS, ALLOWED_REMINDERS_WITH_ALARM)
                 put(CalendarContract.Calendars.ALLOWED_AVAILABILITY, "0,1,2")
                 put(CalendarContract.Calendars.ALLOWED_ATTENDEE_TYPES, "0,1,2")
             }
@@ -665,6 +725,7 @@ class CalendarEventRepository @Inject constructor(
                 }
             }
             if (existingCalId != null) {
+                ensureAllowedReminders(existingCalId)
                 cachedReminderCalendarId = existingCalId
                 return existingCalId
             }
@@ -685,7 +746,7 @@ class CalendarEventRepository @Inject constructor(
                 put(CalendarContract.Calendars.CALENDAR_COLOR, 0xFF059669.toInt()) // 绿色
                 put(CalendarContract.Calendars.CALENDAR_TIME_ZONE, TimeZone.getDefault().id)
                 put(CalendarContract.Calendars.CAN_ORGANIZER_RESPOND, 0)
-                put(CalendarContract.Calendars.ALLOWED_REMINDERS, "0,1,2,3")
+                put(CalendarContract.Calendars.ALLOWED_REMINDERS, ALLOWED_REMINDERS_WITH_ALARM)
                 put(CalendarContract.Calendars.ALLOWED_AVAILABILITY, "0,1,2")
                 put(CalendarContract.Calendars.ALLOWED_ATTENDEE_TYPES, "0,1,2")
             }
@@ -734,7 +795,10 @@ class CalendarEventRepository @Inject constructor(
                     existingCalId = cursor.getLong(0)
                 }
             }
-            if (existingCalId != null) return existingCalId
+            if (existingCalId != null) {
+                ensureAllowedReminders(existingCalId)
+                return existingCalId
+            }
 
             // 确保账户存在
             getOrCreateLocalCalendarId() ?: return null
@@ -752,7 +816,7 @@ class CalendarEventRepository @Inject constructor(
                 put(CalendarContract.Calendars.CALENDAR_COLOR, 0xFFE53935.toInt()) // 红色
                 put(CalendarContract.Calendars.CALENDAR_TIME_ZONE, TimeZone.getDefault().id)
                 put(CalendarContract.Calendars.CAN_ORGANIZER_RESPOND, 0)
-                put(CalendarContract.Calendars.ALLOWED_REMINDERS, "0,1,2,3")
+                put(CalendarContract.Calendars.ALLOWED_REMINDERS, ALLOWED_REMINDERS_WITH_ALARM)
                 put(CalendarContract.Calendars.ALLOWED_AVAILABILITY, "0,1,2")
                 put(CalendarContract.Calendars.ALLOWED_ATTENDEE_TYPES, "0,1,2")
             }
