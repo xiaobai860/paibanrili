@@ -2,6 +2,7 @@
 package com.schedulecalendar.app.domain.util
 
 import android.util.Log
+import com.schedulecalendar.app.BuildConfig
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileOutputStream
@@ -23,6 +24,13 @@ import java.util.concurrent.TimeUnit
  * release 默认 **true**（只收 w/e —— d/i 被 `DIAGNOSTIC_LOGS=false` 挡在门外），
  * debug 亦为 true；`-PlogToFile=false` 可显式关掉 → `AppLog` 里的分支被 R8 整个剔除
  * → 零代码、零线程、零磁盘 IO。
+ *
+ * ## 版本隔离（2026-10-29 加）
+ * 日志文件首行是 header：`# version=<versionName> code=<versionCode> started=<时间>`
+ * - **版本一变即自动清空**：升级 / 降级后首次写入时，若文件首行的版本号与当前版本不一致
+ *   → 丢弃旧内容（当前文件 + 归档）从头开始 → 旧版本日志不会污染新版本的现场排查；
+ * - **版本一眼可辨**：拿到日志文件第一行就知道它来自哪一版，不必追问；
+ * - 导出（合并归档 + 当前）时会在头部再写一行「由哪个版本导出」。
  *
  * ## 滚动策略
  * 保留 **2 份**：
@@ -55,10 +63,22 @@ object FileLog {
     private const val QUEUE_CAPACITY = 256
     /** 导出时等待队列落盘的最长时间 */
     private const val FLUSH_TIMEOUT_MS = 2_000L
+    /**
+     * 日志文件**头部行**前缀：记录版本号。
+     *
+     * 作用：① 拿到日志文件即可一眼确认它来自哪个版本；
+     *      ② 版本变化（升级/降级）时据此判定「旧日志作废」→ 自动清空，
+     *      避免旧版本日志污染新版本的现场排查。
+     */
+    private const val HEADER_PREFIX = "# version="
 
     /** 线程安全（DateTimeFormatter 不可变；SimpleDateFormat 非线程安全，append 可被任意线程调用） */
     private val timeFormat: DateTimeFormatter =
         DateTimeFormatter.ofPattern("MM-dd HH:mm:ss.SSS", Locale.US)
+
+    /** header 用完整日期（含年份），跨年也能看清日志起始时间 */
+    private val headerTimeFormat: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
 
     /** 目标目录；未 init 时所有写入直接丢弃（保证 Application 之前调用 AppLog 也安全） */
     @Volatile
@@ -130,6 +150,13 @@ object FileLog {
         val out = File(outDir, "app-log-${System.currentTimeMillis()}.txt")
         val ok = runCatching {
             out.outputStream().bufferedWriter(Charsets.UTF_8).use { w ->
+                // 合并文件的头部：标明「这份导出是由哪个版本导出的」
+                // （源文件各自的头部也会随内容带过来，正好作为归档/当前的分界标记）
+                w.write(
+                    "$HEADER_PREFIX${BuildConfig.VERSION_NAME} code=${BuildConfig.VERSION_CODE} " +
+                        "exported=${LocalDateTime.now().format(headerTimeFormat)}"
+                )
+                w.newLine()
                 if (archive.exists()) {
                     archive.inputStream().bufferedReader(Charsets.UTF_8).use { it.copyTo(w) }
                 }
@@ -175,15 +202,51 @@ object FileLog {
         }
     }
 
+    /**
+     * 打开写入句柄。
+     *
+     * **版本隔离**：文件首行是 header（记录版本号）。
+     * 若已存在的文件属于**另一个版本**（升级 / 降级 / 旧版没写过 header / 首次运行），
+     * 则把旧内容（当前文件 + 归档）整体丢弃、从头开始 ——
+     * 避免旧版本日志污染新版本的现场排查，同时让「这份日志是哪一版写的」一眼可辨。
+     *
+     * 判定只需读文件首行，成本可忽略（进程内仅首次写入时发生一次）。
+     */
     private fun openWriter(dir: File): BufferedWriter {
         val file = File(dir, FILE_NAME)
-        val existed = file.exists()
-        val fos = FileOutputStream(file, true) // 追加
-        writtenBytes = if (existed) file.length() else 0
-        return BufferedWriter(OutputStreamWriter(fos, Charsets.UTF_8), 8 * 1024)
+        val expectedPrefix = HEADER_PREFIX + BuildConfig.VERSION_NAME + " "
+        val firstLine = runCatching {
+            if (file.exists()) file.useLines { lines -> lines.firstOrNull() } else null
+        }.getOrNull()
+        val sameVersion = firstLine != null && firstLine.startsWith(expectedPrefix)
+
+        return if (sameVersion) {
+            writtenBytes = file.length()
+            BufferedWriter(OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8), 8 * 1024)
+        } else {
+            // 版本变了（或首次运行）：旧日志整体丢弃，避免污染
+            runCatching { File(dir, ARCHIVE_NAME).delete() }
+            val header = headerLine()
+            val w = BufferedWriter(OutputStreamWriter(FileOutputStream(file, false), Charsets.UTF_8), 8 * 1024)
+            w.write(header)
+            w.flush()
+            writtenBytes = header.toByteArray(Charsets.UTF_8).size.toLong()
+            w
+        }
     }
 
-    /** 轮转：当前文件 → 归档（覆盖上一份归档），随后重新开一个空的当前文件 */
+    /** header 行：版本号 + versionCode + 本次会话起始时间 */
+    private fun headerLine(): String {
+        val started = LocalDateTime.now().format(headerTimeFormat)
+        return "$HEADER_PREFIX${BuildConfig.VERSION_NAME} code=${BuildConfig.VERSION_CODE} started=$started"
+    }
+
+    /**
+     * 轮转：当前文件 → 归档（覆盖上一份归档），随后重新开一个带 header 的当前文件。
+     *
+     * ⚠️ 新文件**必须补 header**：否则下次进程启动时首行不是 header →
+     *    openWriter 会误判成「版本变化」→ 把刚滚过去的归档与当前一起丢掉。
+     */
     private fun rotate(dir: File) {
         closeWriter()
         val current = File(dir, FILE_NAME)
@@ -192,7 +255,9 @@ object FileLog {
             if (archive.exists()) archive.delete()
             if (current.exists()) current.renameTo(archive)
         }
-        writtenBytes = 0
+        val header = headerLine()
+        runCatching { File(dir, FILE_NAME).writeText(header, Charsets.UTF_8) }
+        writtenBytes = header.toByteArray(Charsets.UTF_8).size.toLong()
     }
 
     private fun closeWriter() {

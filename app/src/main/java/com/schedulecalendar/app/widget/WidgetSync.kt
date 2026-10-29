@@ -186,11 +186,24 @@ suspend fun syncAllWidgets(context: Context, allowSkipUnchanged: Boolean = false
         // 2x1 与日历各自独立：一类失败不影响另一类，并分别记录便于定位是哪类出问题
         var ok = true
         runCatching { ScheduleGlanceWidget.updateWidgetData(context, widgetData, allowSkipUnchanged) }
-            .onFailure { ok = false; AppLog.e(LogTags.WIDGET_SYNC, "sync 2x1 widget failed", it) }
+            .onFailure { e ->
+                // 协程取消**不是失败**：必须原样抛出。
+                // ⚠️ runCatching 会吞掉 CancellationException → 取消被误记成 E 级错误
+                //    （实测 2 天刷了 24 条 E/WidgetSync），且破坏取消语义（调用方无法中止本轮同步），
+                //    外层那个 `catch (CancellationException) { throw e }` 因此永远等不到。
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                ok = false
+                AppLog.e(LogTags.WIDGET_SYNC, "sync 2x1 widget failed", e)
+            }
         // 日历组件：仅当存在日历组件实例时才回源重算整月（无实例则跳过，省一次整月查询+逐日计算）
         if (hasCalendarWidgetInstance(context)) {
             runCatching { refreshCalendarWidgets(context, scheduleRepo, shifts, statusMap, allowSkipUnchanged) }
-                .onFailure { ok = false; AppLog.e(LogTags.WIDGET_SYNC, "sync calendar widgets failed", it) }
+                .onFailure { e ->
+                    // 同上：协程取消原样抛出，不算失败、不记 E
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    ok = false
+                    AppLog.e(LogTags.WIDGET_SYNC, "sync calendar widgets failed", e)
+                }
         }
         if (ok) lastWidgetSyncSuccessAt = System.currentTimeMillis()
         AppLog.d(LogTags.WIDGET_SYNC, "syncAllWidgets done, ok=$ok")

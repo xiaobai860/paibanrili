@@ -1,6 +1,6 @@
 package com.schedulecalendar.app.domain.util
 
-import org.junit.Assert.assertEquals
+import com.schedulecalendar.app.BuildConfig
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -73,6 +73,51 @@ class FileLogTest {
                 exported.absolutePath.contains("log-export"))
             val content = exported.readText()
             assertTrue("导出内容应包含当前日志，实际：$content", content.contains("current-line"))
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun logFileHeaderCarriesCurrentVersion() {
+        val base = tmpDir("header")
+        try {
+            FileLog.init(base, base)
+            FileLog.append('E', "Tag", "hello", null)
+            Thread.sleep(300)
+            val log = File(base, "logs/app-log.log")
+            val firstLine = log.useLines { it.firstOrNull() }.orEmpty()
+            assertTrue(
+                "首行应是带版本号的 header，实际：$firstLine",
+                firstLine.startsWith("# version=${BuildConfig.VERSION_NAME}")
+            )
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun logsFromAnotherVersionAreDiscarded() {
+        val base = tmpDir("stale")
+        try {
+            // 模拟「上个版本留下的日志」：首行版本号与当前不同
+            val logDir = File(base, "logs").apply { mkdirs() }
+            val log = File(logDir, "app-log.log")
+            log.writeText(
+                "# version=0.0.0 code=1 started=2026-01-01 00:00:00.000\n" +
+                    "01-01 00:00:00.000 E/Old: stale line\n"
+            )
+            FileLog.init(base, base) // 关闭可能残留的旧句柄，让下次写入重新判定版本
+            FileLog.append('E', "Tag", "fresh line", null)
+            Thread.sleep(300)
+
+            val content = log.readText()
+            assertTrue("旧版本日志应被丢弃，实际：$content", !content.contains("stale line"))
+            assertTrue(
+                "应写入当前版本 header，实际：$content",
+                content.contains("# version=${BuildConfig.VERSION_NAME}")
+            )
+            assertTrue("新日志应保留，实际：$content", content.contains("fresh line"))
         } finally {
             base.deleteRecursively()
         }
