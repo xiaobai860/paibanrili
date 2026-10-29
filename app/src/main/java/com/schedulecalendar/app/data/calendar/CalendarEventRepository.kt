@@ -460,8 +460,13 @@ class CalendarEventRepository @Inject constructor(
                     runCatching { deleteEvent(eventId) }
                     return -1L
                 }
+                // ⚠️ 扩展属性写失败**不在这里再记一条**：addExtendedProperty 内部已按
+                // 「抛异常 / insert 返回 null」两种形态各记一条（含原因），避免同一失败刷两条。
                 if (propId == null) {
-                    AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "extended property write failed for $eventId")
+                    AppLog.d(
+                        LogTags.CALENDAR_EVENT_REPOSITORY,
+                        "extended property missing for $eventId (need_alarm not applied)"
+                    )
                 }
             }
 
@@ -495,21 +500,26 @@ class CalendarEventRepository @Inject constructor(
      * {"need_alarm":true} 判断是否触发闹钟提醒
      */
     private fun addExtendedProperty(eventId: Long): Long? {
-        return try {
-            val values = ContentValues().apply {
-                put(CalendarContract.ExtendedProperties.EVENT_ID, eventId)
-                put(CalendarContract.ExtendedProperties.NAME, "customAppData")
-                put(CalendarContract.ExtendedProperties.VALUE, NEED_ALARM_PROPERTY_VALUE)
-            }
-            val uri = context.contentResolver.insert(
+        val values = ContentValues().apply {
+            put(CalendarContract.ExtendedProperties.EVENT_ID, eventId)
+            put(CalendarContract.ExtendedProperties.NAME, "customAppData")
+            put(CalendarContract.ExtendedProperties.VALUE, NEED_ALARM_PROPERTY_VALUE)
+        }
+        val uri = try {
+            context.contentResolver.insert(
                 CalendarContract.ExtendedProperties.CONTENT_URI, values
             )
-            uri?.let { ContentUris.parseId(it) }
         } catch (e: Exception) {
             // 部分国产 ROM 可能不支持 ExtendedProperties 写入 → 不阻断事件创建（提醒行已写好）。
             // 但必须记下**原因**：need_alarm 可能正是 ROM 用来判断「响铃提醒」开关的那个字段，
             // 只记 eventId 看不出是权限不足、字段被拒还是 provider 抛异常。
             AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "addExtendedProperty failed for $eventId", e)
+            return null
+        }
+        // insert 返回 null（provider 拒绝但未抛异常）→ 同样要留痕，
+        // 且与上面那条**互斥**（一个失败只出一条日志，不重复刷屏）
+        return uri?.let { ContentUris.parseId(it) } ?: run {
+            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "addExtendedProperty returned null for $eventId")
             null
         }
     }

@@ -63,6 +63,7 @@ class BootReceiver : BroadcastReceiver() {
                 }
             }
         }
-        result.exceptionOrNull()?.let { AppLog.e(LogTags.BOOT_RECEIVER, "boot reschedule failed", it) }
+        // 同步层异常（与协程内那条互斥），文案区分开以免看起来像重复记录
+        result.exceptionOrNull()?.let { AppLog.e(LogTags.BOOT_RECEIVER, "boot handling failed", it) }
     }
 }

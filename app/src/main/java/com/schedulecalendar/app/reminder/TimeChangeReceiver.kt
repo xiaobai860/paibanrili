@@ -50,7 +50,9 @@ class TimeChangeReceiver : BroadcastReceiver() {
                         runCatching { syncAllWidgets(app) }
                         runCatching { widgetScheduler.scheduleWidgetRefreshes() }
                     } catch (e: Exception) {
-                        AppLog.e(LogTags.TIME_CHANGE_RECEIVER, "time change handling failed", e)
+                        // ⚠️ 文案与下面同步层的 catch 区分开：两者互斥（这里只接协程内异常），
+                        // 但同一句话出现在两处会让人误以为同一次失败被记录了两遍。
+                        AppLog.e(LogTags.TIME_CHANGE_RECEIVER, "time change reschedule failed", e)
                     } finally {
                         pendingResult.finish()
                     }

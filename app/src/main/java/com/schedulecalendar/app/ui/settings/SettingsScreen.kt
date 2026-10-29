@@ -242,7 +242,8 @@ private fun exportDiagnosticLog(context: Context, scope: CoroutineScope) {
                     }
                     context.startActivity(Intent.createChooser(intent, "导出诊断日志"))
                 }.onFailure {
-                    AppLog.e(LogTags.SETTINGS_SCREEN, "export diagnostic log failed", it)
+                    // 与下面「生成导出文件失败」区分开：两者互斥，但同一句话会让人误以为重复记录
+                    AppLog.e(LogTags.SETTINGS_SCREEN, "export diagnostic log share failed", it)
                     android.widget.Toast.makeText(
                         context, "导出失败，请稍后重试", android.widget.Toast.LENGTH_SHORT
                     ).show()
