@@ -611,17 +611,29 @@ class ReminderScheduler @Inject constructor(
             }
             val dateStr = date.toString()
 
-            val triggerTime = date.atTime(LocalTime.of(hour, minute))
-                .minusMinutes(advanceMinutes.toLong())
+            // 事件落在**班次真实时刻**（如 8:30），而不是"提前后的时刻"：
+            // 提前量由日历提醒的偏移量承载（系统日历里显示「提醒：提前 15 分钟」，
+            // = 用户在 App 里设的提前量），响铃时刻 = 班次时间 − 提前量。
+            // 这样「系统日历里看到的」与「App 里设的」1:1 对应，不会出现
+            // 「事件显示 8:15、备注写着 8:30」这种需要二次换算的割裂感。
+            val eventStart = date.atTime(LocalTime.of(hour, minute))
                 .atZone(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli()
 
-            val dtStart = triggerTime.toInstant().toEpochMilli()
-            val dtEnd = dtStart + 5 * 60 * 1000 // 事件时长 5 分钟
+            val dtStart = eventStart // 事件落在班次真实时刻（提前量由提醒偏移承载）
+            val dtEnd = eventStart // 零时长：提醒型事件是「时间点」（8:30–8:30），不是一个 5 分钟的时段
 
             val description = "日期：$dateStr\n班次：$shiftName\n时间：$timeStr\n提前${advanceMinutes}分钟提醒"
 
-            // 始终写入 Reminders 提醒记录：提醒一定会弹通知，由总开关控制是否调度，
-            // 不再按「通知栏提醒」开关区分（该开关已无 UI 入口，仅保留历史兼容）
+            // 提醒偏移 = 用户在 App 里设置的提前量 → 系统日历里显示「提前 N 分钟」，
+            // 响铃时刻 = 班次时间 − 提前量，与 App 内的提醒时刻**完全一致**。
+            //
+            // ⚠️ 早期这里写 advanceMinutes，而 dtStart 又提前过一次 → 提前量被减两遍，
+            //    实际提前一倍（设 15 分钟却在班次前 30 分钟响）。现在两者各司其职：
+            //    dtStart = 班次时刻，提醒偏移 = 提前量。
+            // ⚠️ 必须传非 null：createEvent 用 `reminderMinutes >= 0` 判定「是否写提醒行」，
+            //    传 null 会变成「无提醒」→ 事件不响。
             val reminderMinutes: Int = advanceMinutes
 
             calendarRepo.createEvent(
