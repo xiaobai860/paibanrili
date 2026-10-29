@@ -176,11 +176,8 @@ class ReminderScheduler @Inject constructor(
                 } else {
                     when (prefsSnapshot.method) {
                         METHOD_CALENDAR -> scheduleFixedReminders(prefsSnapshot)
-                        else -> {
-                            // 精确闹钟模式：清理日历残留后注册 setAlarmClock 闹钟
-                            cleanupCalendarReminders()
-                            scheduleFixedReminders(prefsSnapshot)
-                        }
+                        // 精确闹钟模式：取消旧闹钟 + 清理日历残留 + 重建（都由 scheduleFixedReminders 内部完成）
+                        else -> scheduleFixedReminders(prefsSnapshot)
                     }
                 }
                 lastScheduledSignature = signature
