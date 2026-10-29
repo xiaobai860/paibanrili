@@ -226,7 +226,7 @@ object FileLog {
         } else {
             // 版本变了（或首次运行）：旧日志整体丢弃，避免污染
             runCatching { File(dir, ARCHIVE_NAME).delete() }
-            val header = headerLine()
+            val header = headerBlock()
             val w = BufferedWriter(OutputStreamWriter(FileOutputStream(file, false), Charsets.UTF_8), 8 * 1024)
             w.write(header)
             w.flush()
@@ -242,6 +242,15 @@ object FileLog {
     }
 
     /**
+     * header 区块（**含行尾换行**）。
+     *
+     * ⚠️ 必须带换行：否则 header 会与随后写入的第一条日志**粘连成一行**
+     *   （实测出现过：header 末尾直接接上 "10-29 17:55:57.631 W/…"），
+     *   既破坏可读性，也让"按首行判定版本"的逻辑读到脏内容。
+     */
+    private fun headerBlock(): String = headerLine() + "\n"
+
+    /**
      * 轮转：当前文件 → 归档（覆盖上一份归档），随后重新开一个带 header 的当前文件。
      *
      * ⚠️ 新文件**必须补 header**：否则下次进程启动时首行不是 header →
@@ -255,7 +264,7 @@ object FileLog {
             if (archive.exists()) archive.delete()
             if (current.exists()) current.renameTo(archive)
         }
-        val header = headerLine()
+        val header = headerBlock()
         runCatching { File(dir, FILE_NAME).writeText(header, Charsets.UTF_8) }
         writtenBytes = header.toByteArray(Charsets.UTF_8).size.toLong()
     }

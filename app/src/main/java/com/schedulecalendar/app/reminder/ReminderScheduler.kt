@@ -576,10 +576,11 @@ class ReminderScheduler @Inject constructor(
      * 通过 CalendarProvider 在应用本地日历中创建带提醒的事件，
      * 由系统日历应用负责触发通知。事件包含：
      * - HAS_ALARM 标志（标准 API）
-     * - Reminders 表提醒记录
-     * - ExtendedProperties 中的 need_alarm 标志（国产 ROM 兼容）
+     * - Reminders 表提醒记录（METHOD_ALERT，偏移量 = 用户设置的提前量）
      *
-     * 事件已存在时不会重复创建（通过日期+标题去重）
+     * ⚠️ 幂等策略是「**删光重建**」：重排时先按标题前缀删掉全部旧提醒事件，再按当前窗口重建。
+     *    不用增量删除是因为事件标题里含班次名 —— 班次改名后旧标题就匹配不上，
+     *    增量删除会留下永久残留（旧事件永远删不掉、还会在系统日历里显示）。
      */
     private fun scheduleCalendarReminder(
         date: LocalDate,

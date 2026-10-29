@@ -110,8 +110,6 @@ class CalendarEventRepository @Inject constructor(
          * 「界面写未分类、实际按日程走」的自相矛盾（用户看到的与实际行为对不上）。
          */
         const val DEFAULT_CATEGORY = CATEGORY_SCHEDULE
-        /** 国产 ROM 闹钟提醒标志（写入 ExtendedProperties 的 VALUE，全项目取值唯一） */
-        private const val NEED_ALARM_PROPERTY_VALUE = "{\"need_alarm\":true}"
         /** getAllEvents 结果缓存有效时长（毫秒）：短 TTL 避免首次/频繁进入时反复全量拉取系统日历 */
         private const val EVENTS_CACHE_TTL_MS = 30_000L
     }
@@ -450,24 +448,19 @@ class CalendarEventRepository @Inject constructor(
             // 添加提醒
             if (hasReminder) {
                 val reminderId = addReminder(eventId, reminderMinutes)
-                // 国产 ROM 兼容：通过 ExtendedProperties 设置 need_alarm 标志
-                // 国产 ROM（小米/华为/OPPO/vivo）不使用标准 hasAlarm 字段，
-                // 而是通过此扩展属性判断是否触发闹钟提醒
-                val propId = addExtendedProperty(eventId)
                 // 提醒写入失败必须回滚：否则留下「HAS_ALARM=1 但无 reminder 行」的僵尸事件，
                 // 用户以为设了提醒实际不响，且部分日历 App 会显示异常。
                 if (reminderId == null) {
                     runCatching { deleteEvent(eventId) }
                     return -1L
                 }
-                // ⚠️ 扩展属性写失败**不在这里再记一条**：addExtendedProperty 内部已按
-                // 「抛异常 / insert 返回 null」两种形态各记一条（含原因），避免同一失败刷两条。
-                if (propId == null) {
-                    AppLog.d(
-                        LogTags.CALENDAR_EVENT_REPOSITORY,
-                        "extended property missing for $eventId (need_alarm not applied)"
-                    )
-                }
+                // ⚠️ 这里**不再**写 ExtendedProperties 的 need_alarm（曾用于国产 ROM 兼容）：
+                //   2026-10-29 真机实测（OPPO/ColorOS）：**标准 CalendarProvider 直接拒绝** ——
+                //   `IllegalArgumentException: Only sync adapters may write using
+                //   content://com.android.calendar/extendedproperties`，
+                //   写入 100% 失败，且设备上 extendedproperties 表**一条记录都没有**
+                //   → 该机制从未生效过（此前「国产 ROM 靠它判断响铃」的注释是臆测）。
+                //   「响铃提醒」应改走标准字段 `Reminders.METHOD = METHOD_ALARM(4)`。
             }
 
             eventId
@@ -490,36 +483,6 @@ class CalendarEventRepository @Inject constructor(
             // 成功返回提醒行 ID；失败（uri 为 null）返回 null，由调用方决定回滚
             uri?.let { ContentUris.parseId(it) }
         } catch (_: Exception) {
-            null
-        }
-    }
-
-    /**
-     * 为事件添加扩展属性（国产 ROM 兼容）
-     * 国产 ROM（小米/华为/OPPO/vivo）通过 ExtendedProperties 中的
-     * {"need_alarm":true} 判断是否触发闹钟提醒
-     */
-    private fun addExtendedProperty(eventId: Long): Long? {
-        val values = ContentValues().apply {
-            put(CalendarContract.ExtendedProperties.EVENT_ID, eventId)
-            put(CalendarContract.ExtendedProperties.NAME, "customAppData")
-            put(CalendarContract.ExtendedProperties.VALUE, NEED_ALARM_PROPERTY_VALUE)
-        }
-        val uri = try {
-            context.contentResolver.insert(
-                CalendarContract.ExtendedProperties.CONTENT_URI, values
-            )
-        } catch (e: Exception) {
-            // 部分国产 ROM 可能不支持 ExtendedProperties 写入 → 不阻断事件创建（提醒行已写好）。
-            // 但必须记下**原因**：need_alarm 可能正是 ROM 用来判断「响铃提醒」开关的那个字段，
-            // 只记 eventId 看不出是权限不足、字段被拒还是 provider 抛异常。
-            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "addExtendedProperty failed for $eventId", e)
-            return null
-        }
-        // insert 返回 null（provider 拒绝但未抛异常）→ 同样要留痕，
-        // 且与上面那条**互斥**（一个失败只出一条日志，不重复刷屏）
-        return uri?.let { ContentUris.parseId(it) } ?: run {
-            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "addExtendedProperty returned null for $eventId")
             null
         }
     }
