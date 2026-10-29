@@ -639,9 +639,7 @@ class ReminderScheduler @Inject constructor(
                 dtEnd = dtEnd,
                 allDay = false,
                 calendarId = calendarRepo.getOrCreateReminderCalendarId(), // 强制使用提醒专用日历
-                reminderMinutes = reminderMinutes,
-                // 额外写一条「响铃提醒」（method=METHOD_ALARM）→ 系统日历里的「响铃提醒」开关默认打开
-                includeAlarmReminder = true
+                reminderMinutes = reminderMinutes
             )
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
