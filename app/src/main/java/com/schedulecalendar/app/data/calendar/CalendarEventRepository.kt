@@ -505,8 +505,11 @@ class CalendarEventRepository @Inject constructor(
                 CalendarContract.ExtendedProperties.CONTENT_URI, values
             )
             uri?.let { ContentUris.parseId(it) }
-        } catch (_: Exception) {
-            // 部分国产 ROM 可能不支持 ExtendedProperties 写入，忽略错误
+        } catch (e: Exception) {
+            // 部分国产 ROM 可能不支持 ExtendedProperties 写入 → 不阻断事件创建（提醒行已写好）。
+            // 但必须记下**原因**：need_alarm 可能正是 ROM 用来判断「响铃提醒」开关的那个字段，
+            // 只记 eventId 看不出是权限不足、字段被拒还是 provider 抛异常。
+            AppLog.w(LogTags.CALENDAR_EVENT_REPOSITORY, "addExtendedProperty failed for $eventId", e)
             null
         }
     }
