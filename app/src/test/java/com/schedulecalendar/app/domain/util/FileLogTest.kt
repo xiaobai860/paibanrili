@@ -1,6 +1,7 @@
 package com.schedulecalendar.app.domain.util
 
 import com.schedulecalendar.app.BuildConfig
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -118,6 +119,38 @@ class FileLogTest {
                 content.contains("# version=${BuildConfig.VERSION_NAME}")
             )
             assertTrue("新日志应保留，实际：$content", content.contains("fresh line"))
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
+    /**
+     * 版本隔离必须在**启动时**生效（[FileLog.init]），不能等"首次写入"。
+     *
+     * 背景（2026-10-30 实测踩过）：清理逻辑原先挂在「首次写入」上 →
+     * 新版本启动后若还没产生任何 w/e 日志，首次写入不会发生 →
+     * 旧版本日志一直留在文件里，导出时混进旧版本内容（导出的是 228 的日志、却顶着 229 的头）。
+     */
+    @Test
+    fun logsFromOtherVersionAreDiscardedOnInit() {
+        val base = tmpDir("stale-init")
+        try {
+            // 造一个「上个版本」留下的日志（当前文件 + 归档）
+            val logDir = File(base, "logs").apply { mkdirs() }
+            val log = File(logDir, "app-log.log")
+            log.writeText(
+                "# version=0.0.0 code=1 started=2026-01-01 00:00:00.000\n" +
+                    "01-01 00:00:00.000 E/Old: stale line\n"
+            )
+            val archive = File(logDir, "app-log.1.log")
+            archive.writeText("01-01 00:00:00.000 E/Old: archived stale line\n")
+
+            // 启动即应丢弃旧版本日志（不等首次写入）
+            FileLog.init(base, base)
+            Thread.sleep(300) // 等写线程完成清理
+
+            assertFalse("旧版本的当前日志应被丢弃", log.exists())
+            assertFalse("旧版本的归档日志应被丢弃", archive.exists())
         } finally {
             base.deleteRecursively()
         }

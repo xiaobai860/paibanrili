@@ -110,7 +110,38 @@ object FileLog {
         exportDir = File(cacheDir, EXPORT_DIR_NAME).apply { if (!exists()) mkdirs() }
         // 目录切换时丢弃旧句柄（否则会继续往旧目录写）
         synchronized(stateLock) { closeWriter() }
+        // ★ 版本隔离必须放在**启动时**做，不能等"首次写入"：
+        //   新版本启动后如果还没产生任何 w/e 日志 → 首次写入不会发生 →
+        //   旧版本日志会一直留在文件里，导出时混进旧版本内容（2026-10-30 实测踩过：
+        //   229 升级后直接导出，拿到的是 228 的日志文件）。
+        // 放在写线程执行：init 在 Application.onCreate（主线程）→ 不做主线程 IO；
+        //   写线程是单线程 → 清理一定排在后续写入之前，顺序有保证。
+        executor.execute { discardLogsOfOtherVersion() }
     }
+
+    /**
+     * 日志文件不属于当前版本（升级 / 降级）时，整体丢弃：**当前文件 + 归档**。
+     *
+     * 依据：文件首行的 header 记录了写入它的版本号（见 [headerLine]）。
+     * 文件不存在（首次运行）→ 无旧日志，无需处理。
+     */
+    private fun discardLogsOfOtherVersion() {
+        val dir = targetDir ?: return
+        runCatching {
+            val current = File(dir, FILE_NAME)
+            if (!current.exists()) return@runCatching
+            val firstLine = current.useLines { it.firstOrNull() }
+            val sameVersion = firstLine != null && firstLine.startsWith(expectedHeaderPrefix())
+            if (!sameVersion) {
+                // 旧版本的日志（当前 + 归档）整体丢弃，避免污染新版本的现场排查
+                runCatching { current.delete() }
+                runCatching { File(dir, ARCHIVE_NAME).delete() }
+            }
+        }
+    }
+
+    /** 当前版本的 header 前缀（`# version=<versionName> `） */
+    private fun expectedHeaderPrefix(): String = HEADER_PREFIX + BuildConfig.VERSION_NAME + " "
 
     /** 追加一条日志。格式化在调用线程完成（微秒级），写盘由 executor 调度。 */
     fun append(level: Char, tag: String, msg: String, tr: Throwable?) {
@@ -206,19 +237,19 @@ object FileLog {
      * 打开写入句柄。
      *
      * **版本隔离**：文件首行是 header（记录版本号）。
-     * 若已存在的文件属于**另一个版本**（升级 / 降级 / 旧版没写过 header / 首次运行），
-     * 则把旧内容（当前文件 + 归档）整体丢弃、从头开始 ——
-     * 避免旧版本日志污染新版本的现场排查，同时让「这份日志是哪一版写的」一眼可辨。
+     * 若已存在的文件属于**另一个版本**（降级 / 旧版没写过 header / 首次运行），
+     * 则把旧内容丢弃、从头开始 —— 避免旧版本日志污染新版本的现场排查。
      *
-     * 判定只需读文件首行，成本可忽略（进程内仅首次写入时发生一次）。
+     * ⚠️ 版本隔离的**主战场在 [init]**（启动即清理，含归档）：
+     *   正常升级路径下，旧日志在应用启动时就被丢弃了；这里只是兜底
+     *   （例如同一版本内文件被外部改写，或 init 的清理还没执行到）。
      */
     private fun openWriter(dir: File): BufferedWriter {
         val file = File(dir, FILE_NAME)
-        val expectedPrefix = HEADER_PREFIX + BuildConfig.VERSION_NAME + " "
         val firstLine = runCatching {
             if (file.exists()) file.useLines { lines -> lines.firstOrNull() } else null
         }.getOrNull()
-        val sameVersion = firstLine != null && firstLine.startsWith(expectedPrefix)
+        val sameVersion = firstLine != null && firstLine.startsWith(expectedHeaderPrefix())
 
         return if (sameVersion) {
             writtenBytes = file.length()
