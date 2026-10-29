@@ -473,7 +473,9 @@ class CalendarEventRepository @Inject constructor(
                 //   content://com.android.calendar/extendedproperties`，
                 //   写入 100% 失败，且设备上 extendedproperties 表**一条记录都没有**
                 //   → 该机制从未生效过（此前「国产 ROM 靠它判断响铃」的注释是臆测）。
-                //   「响铃提醒」应改走标准字段 `Reminders.METHOD = METHOD_ALARM(4)`。
+                //   后续又实测：改走标准字段 `Reminders.METHOD = METHOD_ALARM(4)` 在
+                //   ColorOS 与 MIUI 上同样**不生效**（两家 ROM 的「响铃提醒」开关是私有 UI 状态）
+                //   → 该行已整体移除，详见 [ReminderChannels] 的选型说明。
             }
 
             eventId

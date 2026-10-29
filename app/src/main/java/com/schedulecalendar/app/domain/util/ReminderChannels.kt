@@ -47,7 +47,7 @@ import android.provider.Settings
  * - 且通知音量是用户天天在用、知道怎么调的音量（闹钟音量很多人从没碰过）。
  *
  * 「抢注意力」不依赖音量流：锁屏顶屏 60 秒由 `CATEGORY_ALARM` + `setFullScreenIntent(true)`
- * 提供（见 [AlarmReceiver]），与声音走哪个流无关。
+ * 提供（见 `AlarmReceiver`），与声音走哪个流无关。
  *
  * ⚠️ 若 ROM 或用户在系统设置里锁定了渠道的声音 / 重要程度 → 那是**系统行为**，
  *   由用户在「通知管理」里调整（用户的选择优先，本类不覆盖、不换 ID 绕过）。

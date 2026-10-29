@@ -70,7 +70,14 @@ class ReminderScheduler @Inject constructor(
         const val NOTIFICATION_ID_CLOCK_IN = 1001
         const val NOTIFICATION_ID_CLOCK_OUT = 1002
 
-        /** 提醒方式：精确闹钟（AlarmManager.setAlarmClock，最高优先级、免疫省电/Doze） */
+        /**
+         * 提醒方式：精确闹钟（AlarmManager.setAlarmClock，最高优先级、免疫省电/Doze）。
+         *
+         * ⚠️ 与 `CalendarContract.Reminders.METHOD_ALARM`(=4) **同名但毫无关系**：
+         *   这里是**本应用的提醒方式标识**（存于 SharedPreferences，取值 "alarm" / "calendar"），
+         *   那个是 **CalendarProvider 的提醒方法码**（通知提醒 / 响铃提醒）。
+         *   两者同形极易误改，务必分清。
+         */
         const val METHOD_ALARM = "alarm"
         /** 提醒方式：系统日历事件 */
         const val METHOD_CALENDAR = "calendar"

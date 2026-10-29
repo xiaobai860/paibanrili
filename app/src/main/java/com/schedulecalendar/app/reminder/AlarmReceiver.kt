@@ -5,8 +5,6 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.media.RingtoneManager
-import android.net.Uri
 import androidx.core.app.NotificationCompat
 import com.schedulecalendar.app.MainActivity
 import com.schedulecalendar.app.data.prefs.AppPreferences
@@ -97,16 +95,13 @@ class AlarmReceiver : BroadcastReceiver() {
                             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                         )
 
-                        // 选取闹钟/通知默认铃声（优先闹钟声，缺失则回退通知声）
-                        val soundUri: Uri? = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                            ?.takeIf { it != Uri.EMPTY }
-                            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-
                         val notification = NotificationCompat.Builder(context, ReminderScheduler.CHANNEL_ID)
                             .setSmallIcon(android.R.drawable.ic_dialog_info)
                             .setContentTitle(title)
                             .setContentText(body)
-                            .setPriority(NotificationCompat.PRIORITY_MAX)
+                            // ⚠️ 不设 setPriority / setSound / setVibrate：
+                            //   minSdk 34 起**重要程度、声音、振动全部由渠道决定**
+                            //   （notification 级的这些设置会被系统忽略，见 ReminderChannels）。
                             .setCategory(NotificationCompat.CATEGORY_ALARM)
                             // 官方推荐的「闹钟式提醒」做法：屏幕锁定/熄屏时也会以 heads-up 形式出现，
                             // 且持续 60 秒（比普通 heads-up 更"粘"），到点不容易被忽略。
@@ -114,8 +109,6 @@ class AlarmReceiver : BroadcastReceiver() {
                             // 且需 manifest 声明 USE_FULL_SCREEN_INTENT。
                             .setFullScreenIntent(tapPending, true)
                             .setContentIntent(tapPending)
-                            .setSound(soundUri)
-                            .setVibrate(longArrayOf(0, 400, 200, 400))
                             .setAutoCancel(true)
                             .build()
 

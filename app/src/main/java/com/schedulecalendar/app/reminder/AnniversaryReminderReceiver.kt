@@ -48,7 +48,8 @@ class AnniversaryReminderReceiver : BroadcastReceiver() {
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(title)
                 .setContentText(if (date.isNotEmpty()) "日期：$date" else "纪念日到了")
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                // ⚠️ 不设 setPriority：minSdk 34 起重要程度完全由**渠道**的 IMPORTANCE 决定，
+                // notification 级 priority 已无效（见 ReminderChannels.ensureAlarmChannel）。
                 .setAutoCancel(true)
                 .build()
 
