@@ -31,10 +31,10 @@ android {
         //   而 `-d` 只对 debuggable 包生效、release 包无效 → 只能「完整卸载（不带 -k）→ 安装」。
         //   （不要为此把 versionCode 改成日期型。）
         // 注意：Android 仅比较 versionCode 决定是否允许覆盖安装。
-        versionCode   = 230
+        versionCode   = 231
         // 诊断版 release（-PdiagLogs=true）在展示用版本号后追加「诊断版」三个字，
         // 便于「设置 → 关于」、dumpsys package 与导出日志里一眼区分；正式版不带后缀。
-        versionName   = "2026110501" + if (project.findProperty("diagLogs") == "true") "诊断版" else ""
+        versionName   = "2026110502" + if (project.findProperty("diagLogs") == "true") "诊断版" else ""
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -7,8 +7,8 @@ plugins {
 }
 
 dependencies {
-    compileOnly("com.android.tools.lint:lint-api:32.4.0")
-    compileOnly("com.android.tools.lint:lint-checks:32.4.0")
+    compileOnly("com.android.tools.lint:lint-api:32.5.0")
+    compileOnly("com.android.tools.lint:lint-checks:32.5.0")
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib:2.3.21")
 }
 
