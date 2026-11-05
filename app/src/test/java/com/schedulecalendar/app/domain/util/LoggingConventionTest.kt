@@ -18,13 +18,24 @@ import java.io.File
  */
 class LoggingConventionTest {
 
-    /** 唯一允许出现裸 `android.util.Log` 的文件（封装本体） */
+    /** 唯一允许出现裸 `android.util.Log` 的文件（封装本体，路径级豁免） */
     private val appLogFile = "domain/util/AppLog.kt"
 
     /**
      * 守护测试自身 —— 内含大量「违规示例」的正则字面量，扫描时必须排除。
      */
     private val guardFile = "domain/util/LoggingConventionTest.kt"
+
+    /**
+     * TAG 必须是**纯** `LogTags` 常量引用。
+     *
+     * 旧判据 `startsWith("LogTags.")` 会放行 `LogTags.X + suffix`、`LogTags.X.lowercase()`
+     * 等动态拼接 —— 参数化 TAG 照样能绕开规范。现在要求整串完全匹配；
+     * 同时允许全限定写法（IDE 自动补全时可能出现），避免误报。
+     */
+    private val tagConstant = Regex(
+        """^(?:LogTags|com\.schedulecalendar\.app\.domain\.util\.LogTags)\.[A-Z0-9_]+$"""
+    )
 
     /** Windows 下 f.path 用反斜杠，比较时统一成正斜杠 */
     private fun String.normPath(): String = replace('\\', '/')
@@ -36,13 +47,13 @@ class LoggingConventionTest {
             val p = path.normPath()
             if (p.endsWith(appLogFile) || p.endsWith(guardFile)) return@forEachSource
             code.lines().forEachIndexed { i, line ->
-                if (Regex("(?<!App)\\bLog\\.[diwev]\\(").containsMatchIn(line)) {
+                if (Regex("(?<!App)\\bLog\\.(?:[diwev]|wtf|println)\\(").containsMatchIn(line)) {
                     offenders += "$path:${i + 1}: $line"
                 }
             }
         }
         assertTrue(
-            "禁止裸用 android.util.Log（请改用 AppLog，自动受级别/开关门控）：\n" +
+            "禁止裸用 android.util.Log（含 wtf / println，请改用 AppLog，自动受级别/开关门控）：\n" +
                 offenders.joinToString("\n"),
             offenders.isEmpty()
         )
@@ -95,7 +106,9 @@ class LoggingConventionTest {
      * 2. **变量 / 表达式 TAG**（`AppLog.w(tag, ...)`）—— 参数化 TAG 会让日志来源绕开
      *    `LogTags` 规范与本测试（2026-10-26 复审发现 `ChangeSignal` 曾用这种写法传
      *    "ShiftRepo" 等字符串）；TAG 必须提到调用点；
-     * 3. **换行书写漏检** —— 旧实现逐行正则匹配，`AppLog.d(\n  "Tag",` 整条调用会被跳过；
+     * 3. **动态拼接**（`AppLog.d(LogTags.X + suffix, ...)`）—— 2026-11-05 补齐，
+     *    旧的 `startsWith` 判据会放行；
+     * 4. **换行书写漏检** —— 旧实现逐行正则匹配，`AppLog.d(\n  "Tag",` 整条调用会被跳过；
      *    现在按整段源码匹配，跨行同样能抓到。
      */
     @Test
@@ -110,18 +123,18 @@ class LoggingConventionTest {
                 val raw = m.groupValues[1].trim()
                 val lineNo = code.substring(0, m.range.first).count { it == '\n' } + 1
                 when {
-                    raw.startsWith("LogTags.") -> Unit
+                    tagConstant.matches(raw) -> Unit
                     raw.startsWith("\"") -> offenders +=
                         "$path:$lineNo: 硬编码 TAG 字符串 $raw（请在 LogTags 里加常量后引用 LogTags.XXX）"
                     else -> offenders +=
-                        "$path:$lineNo: TAG 参数不是 LogTags 常量（实际：$raw）—— " +
-                            "参数化 TAG 会绕开 LogTags 规范与本测试，请把 TAG 提到调用点用 LogTags.XXX"
+                        "$path:$lineNo: TAG 参数不是纯 LogTags 常量（实际：$raw）—— " +
+                            "参数化/动态拼接 TAG 会绕开 LogTags 规范与本测试，请把 TAG 提到调用点用 LogTags.XXX"
                 }
             }
         }
         assertTrue("应能解析出 AppLog 调用点", callSites > 0)
         assertTrue(
-            "禁止硬编码或参数化 TAG（拼写会漂移、来源不可辨、无法守护）：\n" +
+            "禁止硬编码、参数化或动态拼接 TAG（拼写会漂移、来源不可辨、无法守护）：\n" +
                 offenders.joinToString("\n"),
             offenders.isEmpty()
         )
@@ -260,6 +273,24 @@ class LoggingConventionTest {
     }
 
     /**
+     * 诊断版 release 的展示版本号必须带「诊断版」后缀，正式版必须去掉。
+     *
+     * 「设置 → 关于」、`adb shell dumpsys package` 与导出日志 header 都显示 `versionName`，
+     * 现场诊断时靠这三个字一眼区分诊断包与正式包（用户 2026-11-05 明确要求）。
+     * versionCode 不因诊断/正式切换再 +1。
+     */
+    @Test
+    fun diagnosticBuildAppendsVersionNameSuffix() {
+        val gradle = locateModuleBuildFile()
+        val line = gradle.lines().firstOrNull { it.trimStart().startsWith("versionName") }
+        assertTrue(
+            "versionName 必须由 -PdiagLogs 开关决定是否追加「诊断版」，且正式版为空串：\n实际配置：$line",
+            line != null && line.contains("diagLogs") &&
+                line.contains("\"诊断版\"") && line.contains("else \"\"")
+        )
+    }
+
+    /**
      * 定位 **app 模块** 的 build.gradle.kts。
      *
      * 不能用 `../build.gradle.kts` —— 那是**根项目**的构建文件（不含 buildConfigField），
@@ -283,51 +314,111 @@ class LoggingConventionTest {
     // ── 工具 ──────────────────────────────────────────────────────────────────────
 
     /**
-     * 遍历 **main / test / androidTest** 三套源码（跳过注释，避免把文档里的示例当成违规）。
+     * 遍历 **main / debug / release / test / androidTest** 五套源码 + `lint/` 模块源码，
+     * `.kt` 与 `.java` 都扫（跳过注释，避免把文档里的示例当成违规）。
      *
-     * 2026-10-26 起从「只扫 main」扩展为三套全扫：
-     * - androidTest 跑在真机上，裸 `Log` 会真的进设备 logcat，与「release 零调试输出」相悖；
-     * - test 里的裸 `Log` / `println` 同样绕过规范，容易被后人当范例照抄。
+     * 2026-10-26 起从「只扫 main」扩展为三套全扫；2026-11-05 再加固：
+     * 不再限定 `com/schedulecalendar/app` 包路径、不再只扫 `.kt`、补上 `debug`/`release`
+     * 源集与 `lint/` 模块 —— 旧实现下这些位置新增裸 `Log` 完全没人拦。
      */
     private fun forEachSource(action: (path: String, code: String) -> Unit) {
-        listOf("main", "test", "androidTest").forEach { srcSet ->
-            listOf(
-                "app/src/$srcSet/java/com/schedulecalendar/app",   // 工作目录 = 仓库根
-                "src/$srcSet/java/com/schedulecalendar/app",        // 工作目录 = 模块目录 app/
-                "../src/$srcSet/java/com/schedulecalendar/app"       // 工作目录 = app/src/..
-            ).forEach { rel ->
-                val dir = File(rel)
-                if (!dir.isDirectory) return@forEach
-                dir.walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }.forEach { f ->
-                    action(f.path, stripComments(f.readText()))
+        val roots = mutableListOf<File>()
+        val srcSets = listOf("main", "debug", "release", "test", "androidTest")
+        listOf("app/src", "src", "../src").forEach { base ->
+            srcSets.forEach { srcSet ->
+                val setDir = File("$base/$srcSet")
+                if (setDir.isDirectory) {
+                    roots += File(setDir, "java")
+                    roots += File(setDir, "kotlin")
                 }
             }
         }
+        listOf("lint/src/main", "../lint/src/main").forEach { rel ->
+            val dir = File(rel)
+            if (dir.isDirectory) roots += dir
+        }
+        roots.filter { it.isDirectory }
+            .flatMap { root ->
+                root.walkTopDown()
+                    .filter { f -> f.isFile && (f.name.endsWith(".kt") || f.name.endsWith(".java")) }
+                    .toList()
+            }
+            .distinctBy { it.canonicalPath }
+            .forEach { f -> action(f.path, stripComments(f.readText())) }
     }
 
-    /** 去掉行注释与块注释（字符串字面量里的内容保留即可，足够用） */
+    /**
+     * 去掉行注释与块注释，**保留字符串字面量里的 `//` 与块注释起始符**。
+     *
+     * 旧实现无条件按 `//` 截断整行：字符串里含 URL（`https://…`）时，同行其后的
+     * 真实裸 `Log` 会被一起吞掉 → 漏检。注释内容替换为空格但保留换行，行号仍对齐。
+     */
     private fun stripComments(src: String): String {
         val out = StringBuilder()
+        var i = 0
         var inBlock = false
-        for (raw in src.split("\n")) {
-            var line = raw
+        var inTripleQuote = false
+        var quote: Char? = null
+        while (i < src.length) {
+            val c = src[i]
+            val n = src.getOrNull(i + 1)
             if (inBlock) {
-                val end = line.indexOf("*/")
-                if (end < 0) { out.append('\n'); continue }
-                line = line.substring(end + 2)
-                inBlock = false
+                if (c == '*' && n == '/') {
+                    inBlock = false
+                    i += 2
+                    out.append(' ')
+                } else {
+                    if (c == '\n') out.append(c)
+                    i++
+                }
+                continue
             }
-            while (true) {
-                val b = line.indexOf("/*")
-                if (b >= 0) {
-                    val e = line.indexOf("*/", b + 2)
-                    if (e < 0) { line = line.substring(0, b); inBlock = true; break }
-                    line = line.substring(0, b) + line.substring(e + 2)
-                } else break
+            if (inTripleQuote) {
+                if (c == '"' && n == '"' && src.getOrNull(i + 2) == '"') {
+                    inTripleQuote = false
+                    out.append("\"\"\"")
+                    i += 3
+                } else {
+                    out.append(c)
+                    i++
+                }
+                continue
             }
-            val c = line.indexOf("//")
-            if (c >= 0) line = line.substring(0, c)
-            out.append(line).append('\n')
+            if (quote != null) {
+                out.append(c)
+                i++
+                if (c == '\\' && i < src.length) {
+                    out.append(src[i])
+                    i++
+                } else if (c == quote) {
+                    quote = null
+                }
+                continue
+            }
+            if (c == '"' && n == '"' && src.getOrNull(i + 2) == '"') {
+                inTripleQuote = true
+                out.append("\"\"\"")
+                i += 3
+                continue
+            }
+            if (c == '"' || c == '\'') {
+                quote = c
+                out.append(c)
+                i++
+                continue
+            }
+            if (c == '/' && n == '/') {
+                while (i < src.length && src[i] != '\n') i++
+                continue
+            }
+            if (c == '/' && n == '*') {
+                inBlock = true
+                i += 2
+                out.append(' ')
+                continue
+            }
+            out.append(c)
+            i++
         }
         return out.toString()
     }
@@ -350,4 +441,4 @@ class LoggingConventionTest {
     private fun locateFile(vararg candidates: String): File =
         candidates.map { File(it) }.firstOrNull { it.exists() }
             ?: error("找不到文件（尝试过：${candidates.toList()}）")
-} 
+}

@@ -153,6 +153,15 @@ jobs:
 
           chmod +x ./gradlew
 
+          # 守护闸门：assembleRelease 不会执行单测与 lint，必须显式跑一次
+          env -u JAVA_TOOL_OPTIONS -u _JAVA_OPTIONS -u GRADLE_OPTS \
+            ./gradlew testDebugUnitTest lintDebug \
+              --no-daemon --no-build-cache --no-configuration-cache \
+              --stacktrace || {
+                echo "守护单测或自定义 Lint 未通过，已终止发版。" >&2
+                exit 1
+              }
+
           # 使用 --stacktrace 和 --info 输出完整诊断。禁用配置缓存以避免相关不确定性。
           env -u JAVA_TOOL_OPTIONS -u _JAVA_OPTIONS -u GRADLE_OPTS \
             ./gradlew clean assembleRelease \
