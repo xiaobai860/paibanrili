@@ -16,6 +16,7 @@ import com.schedulecalendar.app.domain.util.DateFormats
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.YearMonth
 import kotlinx.coroutines.CoroutineScope
@@ -377,17 +378,24 @@ internal fun computeShiftClockButtons(
     return showIn to showOut
 }
 
-/** 回源数据库计算 2x1 打卡组件数据（S1–S5 场景 + 时间窗规则，需求 §3）。 */
-private fun computeClockInWidgetData(
+/**
+ * 回源数据库计算 2x1 打卡组件数据（S1–S5 场景 + 时间窗规则，需求 §3）。
+ *
+ * [clock] 可注入：生产走 `LocalDateTime.now()`，守护单测传固定时刻，
+ * 避免场景判定依赖真实时钟而在跨零点时偶发失败。除时钟外本函数是纯函数
+ * （Context / Repository 的数据由 [syncAllWidgets] 取好后以三张表传入），故开放为 internal 供测试直接调用。
+ */
+internal fun computeClockInWidgetData(
     shifts: List<Shift>,
     schedules: Map<String, ScheduleRecord>,
-    statusMap: Map<String, ShiftStatus>
+    statusMap: Map<String, ShiftStatus>,
+    clock: LocalDateTime = LocalDateTime.now()
 ): ClockInWidgetData {
-    val today = LocalDate.now()
+    val today = clock.toLocalDate()
     val todayStr = fmtDate(today)
     val tomorrowStr = fmtDate(today.plusDays(1))
     val yesterdayStr = fmtDate(today.minusDays(1))
-    val now = LocalTime.now()
+    val now: LocalTime = clock.toLocalTime()
     val nowMin = now.hour * 60 + now.minute
 
     val todayRecord = schedules[todayStr]
