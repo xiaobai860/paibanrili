@@ -361,7 +361,8 @@ internal fun computeOutCutoff(
  * - 上班卡：上班前 5h 起显示；未打卡则持续显示到下班时间，届时自动变为下班卡。
  * - 下班卡：打完上班卡后立即显示；持续到 [outCutoff]。
  */
-private fun computeShiftClockButtons(
+// internal：与 computeOutCutoff 一样开放给守护单测直接校验窗口边界（纯函数，无副作用）
+internal fun computeShiftClockButtons(
     nowAbs: Int,
     ss: Int,
     normE: Int,

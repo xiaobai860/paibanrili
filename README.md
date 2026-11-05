@@ -82,7 +82,7 @@
 | 桌面组件 | Glance 1.2.0 + WorkManager 2.12.0 |
 | 序列化 | Gson（配置/组件数据 JSON）+ kotlinx-serialization（Navigation 路由） |
 | 农历/节气/黄历 | tyme4j 1.5.2（`cn.6tail:tyme4j`，依据紫金山天文台《农历的编算和颁行》） |
-| 单元测试 | JUnit 4（15 个测试类 / 135 例：法定节假日表 + 历法数据对账 + 加班判定与三档计薪金额映射 + 计算口径档案区间选择 + 备份反序列化默认值 + 备份往返 + 数据格式栅栏 + ProGuard 规则 + 日志规范 + 日志文件滚动/导出） |
+| 单元测试 | JUnit 4（15 个测试类 / 153 例：法定节假日表 + 历法数据对账 + 加班判定与三档计薪金额映射 + 计算口径档案区间选择 + 备份反序列化默认值 + 备份往返 + 数据格式栅栏 + ProGuard 规则 + 日志规范 + 日志文件滚动/导出） |
 | 仪器测试 | AndroidX Test Runner（5 个测试类，需连真机：档案删除残留 / 孤儿数据清理 / 薪资考勤一致性） |
 
 ## 构建环境与版本信息
@@ -121,7 +121,7 @@
 # 发布版（改过资源/混淆敏感代码后务必加参数关闭缓存）
 ./gradlew assembleRelease --rerun-tasks --no-build-cache
 
-# 单元测试（135 例：节假日/历法/计薪/档案/备份格式/日志规范守护；改过 HolidayData / LunarCalendar / CalcUtils / 备份载荷后必跑）
+# 单元测试（153 例：节假日/历法/计薪/档案/备份格式/日志规范守护；改过 HolidayData / LunarCalendar / CalcUtils / 备份载荷后必跑）
 ./gradlew testDebugUnitTest
 
 # 仪器测试（5 例，必须连真机；改过档案删除、孤儿数据清理、薪资考勤一致性后必跑）
@@ -325,7 +325,7 @@ app/src/main/java/com/schedulecalendar/app/
 │   └── navigation/          #   AppNavHost + 类型安全路由（Route*）
 └── widget/                  # Glance 小组件 + 数据同步 + 周期刷新 Worker
 
-app/src/test/java/com/schedulecalendar/app/          # 单元测试（15 个测试类，共 135 例）
+app/src/test/java/com/schedulecalendar/app/          # 单元测试（15 个测试类，共 153 例）
 │   ├── data/compat/            #   BackupRestoreRoundTrip / DataFormatFence / ProguardBackupRules
 │   ├── data/repository/        #   ReferenceIdParser
 │   ├── domain/model/           #   CalcProfile / CalcUtilsAttendance / CalcUtilsOvertime
@@ -485,6 +485,10 @@ app/src/androidTest/java/com/schedulecalendar/app/  # 仪器测试（5 个测试
 **`BackupGsonTest.kt`**（7 用例，守护备份反序列化的默认值与可空字段策略）
 **`ReferenceIdParserTest.kt`**（7 用例，守护归档记录引用的班次/状态 id 解析）
 
+**桌面小组件（`widget/`）**
+
+**`WidgetClockWindowTest.kt`**（18 用例，守护 2x1 快捷打卡「统一时间窗」）：下班卡截止四分支（次日正常班前 5h / 次日附加状态前 5h / 白班次日 12:00 / 夜班次日 24:00）、分支优先级与各 fallback；上班卡窗口 `[上班−5h, 下班]` 与下班卡起点（已打上班卡立即 / 未打则严格在下班后）；截止闭区间、已打卡状态、跨午夜夜班 `2880`、自定义时间、极早次日班无下限钳制。`computeShiftClockButtons` 由 `private` 放宽为 `internal` 仅供本测试直接调用；S1–S5 场景矩阵依赖 Context / Repository，仍需真机验证。
+
 **日志规范（`domain/util/`）**
 
 **`LoggingConventionTest.kt`**（11 用例，守护日志规范）：零裸用 `android.util.Log`（含 `wtf` / `println`）、零 `printStackTrace`、
@@ -499,7 +503,7 @@ release 的 `LOG_TO_FILE` **不得默认关闭**（否则「导出日志文件�
 且当前文件不无限增长；导出会把归档与当前合并成一份可分享文件；版本变化清空旧日志与归档（含 init 提前清理）。
 
 ```bash
-# 单元测试（135 例）
+# 单元测试（153 例）
 ./gradlew testDebugUnitTest
 
 # 仪器测试（5 例，必须连真机）
