@@ -163,8 +163,10 @@ private fun CalendarWidgetContent(
     val weekLabels = listOf("一", "二", "三", "四", "五", "六", "日")
     val useBig = isLarge && !compact
     val wfs = if (useBig) 10.sp else 10.sp
-    val dfs = 14.sp
-    val sfs = if (useBig) 10.sp else 10.sp
+    // 3x3 日期字号 10.sp；3x4 保持 14.sp（两者共用 CalendarWidgetContent）
+    val dfs = if (compact) 10.sp else 14.sp
+    // 3x3 班次字号 9.sp；3x4 保持 10.sp（两者共用 CalendarWidgetContent）
+    val sfs = if (compact) 9.sp else 10.sp
     val statusFontSize = if (useBig) 9.sp else 9.sp
     val lfs = if (isLarge) 8.sp else 9.sp
     val visibleRows = minOf(data.totalRows, maxVisibleRows)
